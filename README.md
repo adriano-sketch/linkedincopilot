@@ -1,59 +1,43 @@
-# LinkedIn Copilot (Sandbox)
+# LinkedIn Copilot (Sandbox + GitHub)
 
-## Project info
+## Quick start (sandbox)
 
-**Preview**: run locally in the sandbox (port 3000).
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+This sandbox exposes port 3000. Run the dev server in `/home/vibecode/workspace/linkedincopilot` (or this repo) and open the preview.
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
 npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Environment variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Set these in `.env` (do not commit):
 
-**Use GitHub Codespaces**
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Deployment (Vercel)
 
-## What technologies are used for this project?
+1. Push this repo to GitHub.
+2. In Vercel, **Import Project** and select the repo.
+3. Set:
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+   - Install Command: `npm ci`
+4. Add the same environment variables used locally.
+5. Add your domain (ex: `www.linkedincopilot.io`) in Vercel and follow the DNS records shown in the Vercel UI.
 
-This project is built with:
+## Supabase CI (migrations + functions)
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+This repo includes a GitHub Actions workflow at `.github/workflows/supabase-deploy.yml` that runs on push to `main` (for changes under `supabase/**`).
 
-## Deployment
+Required GitHub repo secrets:
 
-Use your own hosting workflow (Vercel, Netlify, etc.) or run it in this sandbox.
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_PROJECT_REF` (example: `gdwpkojugtggozyofpmw`)
+- `SUPABASE_DB_URL` (percent-encoded connection string, e.g. `postgresql://postgres:<PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/postgres`)
+
+Once secrets are set, pushing to `main` will:
+
+- Apply new migrations to the remote database.
+- Deploy all functions under `supabase/functions`.
