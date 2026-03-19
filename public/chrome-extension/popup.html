@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Copilot</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <img src="icon48.png" alt="LinkedIn Copilot" class="header-logo">
+      <span class="header-title">LinkedIn Copilot</span>
+    </div>
+
+    <!-- Login View -->
+    <div id="login-view" class="view">
+      <div class="status-bar">
+        <span class="dot dot-red"></span>
+        <span class="status-text">Not connected</span>
+      </div>
+      <div class="content-area">
+        <div class="form-group">
+          <input type="email" id="email" placeholder="Email" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+        </div>
+        <div id="login-error" class="error-message"></div>
+        <button id="login-btn" class="btn btn-primary">Connect</button>
+      </div>
+    </div>
+
+    <!-- Status View -->
+    <div id="status-view" class="view hidden">
+      <div id="warmup-banner" class="warmup-banner hidden"></div>
+      <div id="cooldown-banner" class="cooldown-banner hidden"></div>
+      <div class="status-bar">
+        <span id="status-dot" class="dot dot-green"></span>
+        <span id="status-text" class="status-text">Connected</span>
+      </div>
+      <div class="content-area">
+        <!-- 24/7 Passive Actions -->
+        <div class="section-label">
+          Passive Actions <span class="label-badge">24/7</span>
+        </div>
+        <div class="stats-section">
+          <div class="stat-row">
+            <span class="stat-label"><span class="stat-icon">👁</span> Profile visits</span>
+            <span id="stat-visits" class="stat-value">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label"><span class="stat-icon">➕</span> Follows</span>
+            <span id="stat-follows" class="stat-value">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label"><span class="stat-icon">👍</span> Post likes</span>
+            <span id="stat-likes" class="stat-value">0</span>
+          </div>
+        </div>
+
+        <!-- Business Hours Messaging -->
+        <div class="section-label">
+          Messaging <span class="label-badge-blue label-badge">Business Hours</span>
+        </div>
+        <div class="stats-section">
+          <div class="stat-row">
+            <span class="stat-label"><span class="stat-icon">🤝</span> Connection requests</span>
+            <span id="stat-connections" class="stat-value">0 / 40</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label"><span class="stat-icon">💬</span> DMs sent</span>
+            <span id="stat-messages" class="stat-value">0 / 100</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label"><span class="stat-icon">📨</span> Follow-ups</span>
+            <span id="stat-followups" class="stat-value">0</span>
+          </div>
+        </div>
+
+        <!-- Queue -->
+        <div class="queue-info">
+          <div class="stat-row">
+            <span class="stat-label">Queue</span>
+            <span id="stat-queue" class="stat-value">0 pending</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Last action</span>
+            <span id="stat-last-action" class="stat-value">-</span>
+          </div>
+        </div>
+
+        <button id="pause-btn" class="btn btn-secondary">Pause Automation</button>
+      </div>
+      <div class="popup-footer">
+        <a id="dashboard-link" href="#" class="dashboard-link">Open Dashboard →</a>
+        <a id="logout-link" href="#" class="logout-link">Disconnect</a>
+      </div>
+    </div>
+
+    <!-- No LinkedIn Tab View -->
+    <div id="no-linkedin-view" class="view hidden">
+      <div class="status-bar">
+        <span class="dot dot-yellow"></span>
+        <span class="status-text">Open LinkedIn to start</span>
+      </div>
+      <div class="content-area">
+        <p class="info-text">The extension needs a LinkedIn tab open to execute actions. Keep it open in the background.</p>
+        <button id="open-linkedin-btn" class="btn btn-primary">Open LinkedIn</button>
+      </div>
+      <div class="popup-footer">
+        <a id="dashboard-link-2" href="#" class="dashboard-link">Open Dashboard →</a>
+        <a id="logout-link-2" href="#" class="logout-link">Disconnect</a>
+      </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loading-view" class="view hidden">
+      <div class="content-area">
+        <div class="spinner"></div>
+        <p class="loading-text">Connecting...</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+ALTER TABLE public.campaign_profiles ADD COLUMN message_language text NOT NULL DEFAULT 'English';

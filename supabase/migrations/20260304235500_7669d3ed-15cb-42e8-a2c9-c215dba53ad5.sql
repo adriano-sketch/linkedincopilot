@@ -1,0 +1,1 @@
+UPDATE user_settings SET leads_used_this_cycle = 100 WHERE user_id = '8e8733c7-1e14-4537-a0a6-d4045b5f1df3'

@@ -1,0 +1,1 @@
+UPDATE user_settings SET leads_used_this_cycle = 0, max_leads_per_cycle = 5000, cycle_reset_date = (CURRENT_DATE + INTERVAL '1 month')::date WHERE user_id = '8e8733c7-1e14-4537-a0a6-d4045b5f1df3';

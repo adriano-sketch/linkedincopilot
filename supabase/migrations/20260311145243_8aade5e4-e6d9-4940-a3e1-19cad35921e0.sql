@@ -1,0 +1,1 @@
+UPDATE action_queue SET status = 'pending', picked_up_at = NULL, error_message = NULL WHERE action_type = 'check_connection_status' AND status IN ('failed', 'in_progress')

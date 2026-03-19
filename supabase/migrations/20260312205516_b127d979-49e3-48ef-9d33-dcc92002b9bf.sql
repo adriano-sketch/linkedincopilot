@@ -1,0 +1,1 @@
+UPDATE campaign_leads SET status = 'connected', next_action_at = now() + interval '2 minutes', updated_at = now() WHERE status = 'liking_post';

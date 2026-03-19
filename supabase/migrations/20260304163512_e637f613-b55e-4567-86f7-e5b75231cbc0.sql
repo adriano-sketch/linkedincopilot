@@ -1,0 +1,1 @@
+DELETE FROM action_queue WHERE status = 'skipped';

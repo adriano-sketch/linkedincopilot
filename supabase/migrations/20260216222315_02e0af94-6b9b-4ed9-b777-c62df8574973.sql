@@ -1,0 +1,2 @@
+ALTER TABLE public.linkedin_events DROP CONSTRAINT linkedin_events_dm_status_check;
+ALTER TABLE public.linkedin_events ADD CONSTRAINT linkedin_events_dm_status_check CHECK (dm_status = ANY (ARRAY['NEEDS_SNAPSHOT','READY_TO_SEND','SENT','REPLIED','NO_REPLY','DO_NOT_CONTACT','SKIPPED']));

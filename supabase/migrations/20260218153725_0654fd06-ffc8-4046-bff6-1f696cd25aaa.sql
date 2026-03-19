@@ -1,0 +1,1 @@
+ALTER TABLE profile_snapshots ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'chrome_extension';

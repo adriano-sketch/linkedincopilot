@@ -1,0 +1,1 @@
+ALTER TABLE public.campaign_profiles ADD COLUMN icp_employee_ranges text[] DEFAULT NULL;

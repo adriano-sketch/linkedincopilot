@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX idx_campaign_leads_user_linkedin ON campaign_leads (user_id, linkedin_url)
