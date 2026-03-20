@@ -49,6 +49,22 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
         throw new Error('Supabase env vars missing. Please refresh and try again.');
       }
 
+      const decodeJwt = (jwt: string) => {
+        try {
+          const base64 = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+          const json = decodeURIComponent(atob(base64).split('').map(c => `%${('00' + c.charCodeAt(0).toString(16)).slice(-2)}`).join(''));
+          return JSON.parse(json);
+        } catch {
+          return null;
+        }
+      };
+
+      const expectedHost = new URL(supabaseUrl).host;
+      const payload = token ? decodeJwt(token) : null;
+      if (payload?.iss && !String(payload.iss).includes(expectedHost)) {
+        throw new Error('Supabase URL/ANON do not match the session token. Check Vercel env vars.');
+      }
+
       const doRequest = async (accessToken: string) => fetch(`${supabaseUrl}/functions/v1/create-checkout`, {
         method: 'POST',
         headers: {
@@ -68,14 +84,16 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
         }
       }
 
-      const payload = await resp.json().catch(() => ({}));
+      const responseBody = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        const message = payload?.error || `Checkout failed (${resp.status})`;
+        const message = responseBody?.error || (resp.status === 401
+          ? 'Checkout failed (401). Please log out and log in again.'
+          : `Checkout failed (${resp.status})`);
         throw new Error(message);
       }
 
-      if (payload?.url) {
-        window.open(payload.url, '_blank');
+      if (responseBody?.url) {
+        window.open(responseBody.url, '_blank');
       } else {
         throw new Error('Checkout URL not returned. Please try again.');
       }

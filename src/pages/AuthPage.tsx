@@ -49,10 +49,24 @@ export default function AuthPage() {
     setPasswordError('');
     setSubmitting(true);
     const fn = mode === 'signup' ? signUpWithEmail : signInWithEmail;
-    const { error } = await fn(email, password);
+    const result = await fn(email, password);
+    const error = (result as any)?.error;
     setSubmitting(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return;
+    }
+    if (mode === 'signup') {
+      const session = (result as any)?.data?.session ?? null;
+      if (!session) {
+        toast({
+          title: 'Check your email to confirm',
+          description: 'We sent a confirmation link. After confirming, return here to sign in.',
+        });
+        setMode('signin');
+      } else {
+        toast({ title: 'Account created', description: 'Welcome to LinkedIn Copilot.' });
+      }
     }
   };
 
