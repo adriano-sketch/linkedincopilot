@@ -1,20 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildMessagePrompts } from "../_shared/ai-prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-// Detect if a "name" is actually a company/organization name
-function detectCompanyName(name: string): boolean {
-  if (!name) return false;
-  const companyIndicators = [
-    /\b(solutions|consulting|services|technologies|group|inc|llc|ltd|corp|agency|partners|associates|holdings|enterprises|healthcare|capital|ventures|labs|studio|media|digital|systems|network|global|international|foundation|institute)\b/i,
-    /\b(co\.|company|gmbh|s\.a\.|s\.r\.l|pvt|pty)\b/i,
-  ];
-  return companyIndicators.some(regex => regex.test(name));
-}
 
 function validateICP(lead: any, campaign: any): { pass: boolean; reasons: string[] } {
   const failures: string[] = [];
@@ -68,10 +59,7 @@ function validateICP(lead: any, campaign: any): { pass: boolean; reasons: string
   return { pass: true, reasons: [] };
 }
 
-function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength).trim() + "...";
-}
+// Prompt building lives in _shared/ai-prompts.ts
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -105,6 +93,17 @@ serve(async (req) => {
       .single();
 
     if (!campaign) throw new Error("Campaign not found");
+
+    // Fetch vertical context if available (for better personalization)
+    let verticalContext: any = null;
+    if (campaign.vertical_id) {
+      const { data: vertical } = await supabase
+        .from("verticals")
+        .select("name, primary_compliance, fear_trigger, default_pain_points")
+        .eq("id", campaign.vertical_id)
+        .single();
+      verticalContext = vertical;
+    }
 
     // Get sender profile
     const { data: profile } = await supabase
@@ -255,44 +254,50 @@ serve(async (req) => {
           .update({ status: "generating_messages", updated_at: new Date().toISOString() } as any)
           .eq("id", lead.id);
 
-        const senderFirstName = (profile.sender_name || "").split(" ")[0] || "Unknown";
         const fullName = lead.full_name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim();
-        const isCompanyName = detectCompanyName(fullName);
-        const leadFirstName = isCompanyName ? "" : (lead.first_name || fullName.split(" ")[0] || "Unknown");
 
-        const messageLanguage = campaign.message_language || 'English';
-        const systemPrompt = `You are a world-class LinkedIn outreach strategist. Generate 3 hyper-personalized messages.
-You MUST write ALL messages entirely in ${messageLanguage}. Every word must be native ${messageLanguage} — no mixing languages.
-Return ONLY valid JSON: {"connection_note": "...", "custom_dm": "...", "custom_followup": "..."}
-
-RULES:
-- connection_note: MAX 200 chars. Reference ONE specific thing from their profile. Zero selling. Don't start with "Hi [Name]".
-- custom_dm: 200-350 chars. Different hook than connection note. MUST address one of the listed pain points using the campaign angle. Use first name once (if available — skip name if it's a company). End with low-friction question. Sign with sender's first name only.
-- custom_followup: 150-280 chars. Completely different angle from DM. Never say "following up". Sign with sender's first name only.
-- ALL messages MUST be written in native ${messageLanguage}. Use natural, culturally appropriate expressions for ${messageLanguage}.
-- CRITICAL: The custom_dm must make the recipient think "this person understands MY specific challenge." Generic industry observations are NOT acceptable. If a DM example is provided, study its APPROACH (how it raises a pain point) and write something with the same strategic intent but different words.
-
-Tone: ${campaign.dm_tone || "professional_warm"}
-Objective: ${campaign.campaign_objective || "start_conversation"}`;
-
-        const userPrompt = `Generate 3 LinkedIn messages for this lead.
-
-SENDER: ${profile.sender_name || "Unknown"}, ${profile.sender_title || ""} at ${profile.company_name || ""}
-Value prop: ${campaign.value_proposition || profile.value_proposition || ""}
-Pain points (MUST address at least ONE in the DM): ${Array.isArray(campaign.pain_points) ? campaign.pain_points.join(", ") : ""}
-${campaign.campaign_angle ? `Campaign angle (CORE STRATEGY — DM must align): ${campaign.campaign_angle}` : ""}
-${campaign.dm_example ? `Example DM (study APPROACH, don't copy): ${campaign.dm_example}` : ""}
-
-LEAD:
-Name: ${fullName || "Unknown"}${isCompanyName ? " ⚠️ This is a COMPANY name, NOT a person. Do NOT use it as a personal name greeting." : ""}
-Title: ${enrichUpdate.profile_current_title || lead.title || "N/A"}
-Company: ${enrichUpdate.profile_current_company || lead.company || "N/A"}
-Headline: ${enrichUpdate.profile_headline || "N/A"}
-About: ${truncateText(enrichUpdate.profile_about || "", 600)}
-Industry: ${lead.industry || "N/A"}
-Location: ${lead.location || "N/A"}
-
-Sign messages as "${senderFirstName}".`;
+        const { systemPrompt, userPrompt } = buildMessagePrompts({
+          sender: {
+            name: profile.sender_name || "Unknown",
+            title: profile.sender_title || "",
+            company: profile.company_name || "",
+            companyDescription: profile.company_description || "",
+          },
+          campaign: {
+            name: campaign.name,
+            objective: campaign.campaign_objective || "start_conversation",
+            tone: campaign.dm_tone || "professional_warm",
+            angle: campaign.campaign_angle,
+            painPoints: Array.isArray(campaign.pain_points) ? campaign.pain_points : [],
+            valueProposition: campaign.value_proposition || profile.value_proposition || "",
+            proofPoints: campaign.proof_points || "",
+            icpDescription: campaign.icp_description || "",
+            icpTitles: Array.isArray(campaign.icp_titles) ? campaign.icp_titles : [],
+            dmExample: campaign.dm_example || "",
+            messageLanguage: campaign.message_language || "English",
+          },
+          lead: {
+            fullName: fullName,
+            firstName: lead.first_name || "",
+            lastName: lead.last_name || "",
+            title: enrichUpdate.profile_current_title || lead.title || "N/A",
+            company: enrichUpdate.profile_current_company || lead.company || "N/A",
+            headline: enrichUpdate.profile_headline || lead.profile_headline || "N/A",
+            about: enrichUpdate.profile_about || lead.profile_about || "",
+            industry: lead.industry || "N/A",
+            location: lead.location || "N/A",
+            currentTitle: enrichUpdate.profile_current_title || lead.profile_current_title || lead.title || "N/A",
+            currentCompany: enrichUpdate.profile_current_company || lead.profile_current_company || lead.company || "N/A",
+            previousTitle: enrichUpdate.profile_previous_title || lead.profile_previous_title || "N/A",
+            previousCompany: enrichUpdate.profile_previous_company || lead.profile_previous_company || "N/A",
+            educationSchool: lead.profile_education || "N/A",
+            educationDegree: "",
+            educationField: "",
+            skills: Array.isArray(enrichUpdate.profile_skills) ? enrichUpdate.profile_skills.join(", ") : (Array.isArray(lead.profile_skills) ? lead.profile_skills.join(", ") : "N/A"),
+            fullProfileText: `${enrichUpdate.profile_headline || ""} | ${enrichUpdate.profile_about || ""} | ${enrichUpdate.profile_current_title || ""} | ${enrichUpdate.profile_current_company || ""}`.trim(),
+          },
+          vertical: verticalContext,
+        });
 
         try {
           const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
