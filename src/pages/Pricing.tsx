@@ -48,6 +48,25 @@ const plans = [
     cta: 'Start 7-day trial',
     highlighted: true,
   },
+  {
+    name: 'Agency',
+    price: 'Custom',
+    period: '',
+    subtitle: 'multi-account teams',
+    leads: '5,000 leads/month',
+    campaigns: 'Unlimited campaigns',
+    features: [
+      'AI-powered personalized DMs',
+      'Unlimited CSV imports',
+      'Lead enrichment included',
+      'Chrome extension with smart limits',
+      'Batch DM approval',
+      '5 LinkedIn accounts',
+      'Priority support',
+    ],
+    cta: 'Upgrade to Agency',
+    highlighted: false,
+  },
 ];
 
 const funnelSteps = [

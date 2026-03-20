@@ -24,8 +24,15 @@ serve(async (req) => {
     const user = data.user;
     if (!user?.email) throw new Error("User not authenticated");
 
-    const { priceId } = await req.json();
-    if (!priceId) throw new Error("priceId is required");
+    const { priceId, plan } = await req.json();
+    const planKey = (plan || "").toLowerCase();
+    const pricePro = Deno.env.get("STRIPE_PRICE_PRO") || "";
+    const priceAgency = Deno.env.get("STRIPE_PRICE_AGENCY") || "";
+    const resolvedPriceId =
+      priceId ||
+      (planKey === "pro" ? pricePro : planKey === "agency" ? priceAgency : "");
+    if (!resolvedPriceId) throw new Error("priceId or plan is required");
+    const finalPlan = planKey || (resolvedPriceId === pricePro ? "pro" : resolvedPriceId === priceAgency ? "agency" : "pro");
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
       apiVersion: "2025-08-27.basil",
@@ -35,16 +42,31 @@ serve(async (req) => {
     let customerId: string | undefined;
     if (customers.data.length > 0) {
       customerId = customers.data[0].id;
+    } else {
+      const created = await stripe.customers.create({
+        email: user.email,
+        metadata: { user_id: user.id },
+      });
+      customerId = created.id;
     }
+
+    const baseUrl = Deno.env.get("APP_BASE_URL") || req.headers.get("origin") || "https://linkedincopilot.io";
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: resolvedPriceId, quantity: 1 }],
       mode: "subscription",
       allow_promotion_codes: true,
-      success_url: `${req.headers.get("origin")}/dashboard?checkout=success`,
-      cancel_url: `${req.headers.get("origin")}/dashboard`,
+      client_reference_id: user.id,
+      subscription_data: {
+        metadata: {
+          user_id: user.id,
+          plan: finalPlan,
+        },
+      },
+      success_url: `${baseUrl}/dashboard?checkout=success&plan=${finalPlan}`,
+      cancel_url: `${baseUrl}/dashboard?checkout=cancel`,
     });
 
     return new Response(JSON.stringify({ url: session.url }), {

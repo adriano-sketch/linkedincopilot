@@ -41,3 +41,27 @@ Once secrets are set, pushing to `main` will:
 
 - Apply new migrations to the remote database.
 - Deploy all functions under `supabase/functions`.
+
+## Stripe (subscriptions)
+
+Set these **Supabase function secrets** (Dashboard → Project → Settings → Functions → Secrets):
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_PRO`
+- `STRIPE_PRICE_AGENCY`
+- `STRIPE_PRODUCT_PRO` (optional)
+- `STRIPE_PRODUCT_AGENCY` (optional)
+- `APP_BASE_URL` (e.g. `https://linkedincopilot.io`)
+
+Webhook endpoint to configure in Stripe:
+
+```
+https://<PROJECT_REF>.functions.supabase.co/stripe-webhook
+```
+
+Recommended events:
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`

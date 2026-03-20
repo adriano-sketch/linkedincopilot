@@ -13,12 +13,25 @@ const PLANS = [
     price: '$97',
     period: '/mo',
     subtitle: 'per LinkedIn account',
-    priceId: 'price_1T6f2CAcsSpleF27TVaHn0V3',
     features: [
       '1,000 leads/month',
       'Unlimited campaigns',
       'Batch DM approval',
       'CSV upload',
+      'Priority support',
+    ],
+  },
+  {
+    key: 'agency',
+    name: 'Agency',
+    price: 'Custom',
+    period: '',
+    subtitle: 'multi-account teams',
+    features: [
+      '5,000 leads/month',
+      '5 LinkedIn accounts',
+      'Unlimited campaigns',
+      'Batch DM approval',
       'Priority support',
     ],
   },
@@ -32,11 +45,11 @@ interface UpgradeModalProps {
 export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
   const [loading, setLoading] = useState<string | null>(null);
 
-  const handleCheckout = async (priceId: string, planKey: string) => {
+  const handleCheckout = async (planKey: string) => {
     setLoading(planKey);
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { priceId },
+        body: { plan: planKey },
       });
       if (error) throw error;
       if (data?.url) {
@@ -81,7 +94,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
                 <Button
                   className="mt-4 w-full"
                   disabled={loading !== null}
-                  onClick={() => handleCheckout(plan.priceId, plan.key)}
+                  onClick={() => handleCheckout(plan.key)}
                 >
                   {loading === plan.key ? (
                     <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Processing...</>

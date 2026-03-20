@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
+import { useUserPlan } from '@/hooks/useUserPlan';
 import { useCampaignProfiles, CampaignProfile } from '@/hooks/useCampaignProfiles';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,8 +14,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CampaignEditDialog from '@/components/CampaignEditDialog';
+import { UpgradeModal } from '@/components/UpgradeModal';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, ChevronDown, User, Building2, Rocket, Trash2, Star, CopyPlus, BookmarkPlus, Chrome, Pause, Play, Wifi, WifiOff, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, ChevronDown, User, Building2, Rocket, Trash2, Star, CopyPlus, BookmarkPlus, Chrome, Pause, Play, Wifi, WifiOff, Download, Loader2, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const OBJECTIVE_LABELS: Record<string, string> = {
@@ -41,6 +43,7 @@ export default function SettingsPage() {
   const { user, loading } = useAuth();
   const { profile, isLoading, updateProfile } = useProfile();
   const { extensionStatus } = useExtensionStatus();
+  const { plan, leadsLimit, isFree, isAgency } = useUserPlan();
   const { campaigns, templates, updateCampaign, deleteCampaign, duplicateCampaign, saveAsTemplate } = useCampaignProfiles();
   const navigate = useNavigate();
 
@@ -58,11 +61,13 @@ export default function SettingsPage() {
   });
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    profile: true, extension: true, campaigns: false, templates: false,
+    profile: true, billing: true, extension: true, campaigns: false, templates: false,
   });
 
   const [editingCampaign, setEditingCampaign] = useState<CampaignProfile | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   const handleDownloadExtension = async () => {
     setDownloading(true);
@@ -153,6 +158,21 @@ export default function SettingsPage() {
 
   const toggle = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
 
+  const handleBillingPortal = async () => {
+    setBillingLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('customer-portal');
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      }
+    } catch {
+      toast.error('Failed to open billing portal');
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
   if (isLoading) return null;
 
   const SectionHeader = ({ id, icon: Icon, title }: { id: string; icon: React.ElementType; title: string }) => (
@@ -191,6 +211,34 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground text-right">{masterForm.company_description.length}/1000</p>
                 </div>
                 <Button size="sm" onClick={handleSaveMaster} disabled={updateProfile.isPending}><Save className="w-3 h-3 mr-1" /> Save</Button>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {/* Billing */}
+        <Card>
+          <Collapsible open={openSections.billing}>
+            <CardHeader className="pb-2"><SectionHeader id="billing" icon={CreditCard} title="Billing & Plan" /></CardHeader>
+            <CollapsibleContent>
+              <CardContent className="space-y-3 pt-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Current plan</p>
+                    <p className="text-xs text-muted-foreground">Plan: {plan.toUpperCase()} · Lead limit: {leadsLimit.toLocaleString()}/cycle</p>
+                  </div>
+                  <Badge variant={isFree ? 'secondary' : 'default'}>{isFree ? 'Free' : isAgency ? 'Agency' : 'Pro'}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {isFree && (
+                    <Button size="sm" onClick={() => setUpgradeOpen(true)}>Upgrade Plan</Button>
+                  )}
+                  {!isFree && (
+                    <Button size="sm" variant="outline" onClick={handleBillingPortal} disabled={billingLoading}>
+                      {billingLoading ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Loading...</> : 'Manage Billing'}
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </CollapsibleContent>
           </Collapsible>
@@ -420,6 +468,8 @@ export default function SettingsPage() {
           </Collapsible>
         </Card>
       </div>
+
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
 
       <CampaignEditDialog
         campaign={editingCampaign}
