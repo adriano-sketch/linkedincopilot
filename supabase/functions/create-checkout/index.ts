@@ -34,8 +34,16 @@ serve(async (req) => {
     if (!resolvedPriceId) throw new Error("priceId or plan is required");
     const finalPlan = planKey || (resolvedPriceId === pricePro ? "pro" : resolvedPriceId === priceAgency ? "agency" : "pro");
 
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-      apiVersion: "2025-08-27.basil",
+    const stripeSecret = Deno.env.get("STRIPE_SECRET_KEY") || "";
+    if (!stripeSecret || !stripeSecret.startsWith("sk_")) {
+      throw new Error("Stripe secret key is missing or invalid (expected sk_*)");
+    }
+    if (!pricePro && !priceAgency) {
+      throw new Error("Stripe price IDs not configured");
+    }
+
+    const stripe = new Stripe(stripeSecret, {
+      apiVersion: "2023-10-16",
     });
 
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
@@ -74,7 +82,7 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error.message, code: "checkout_failed" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
     });

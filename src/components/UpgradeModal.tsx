@@ -37,7 +37,19 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: { plan: planKey },
       });
-      if (error) throw error;
+      if (error) {
+        let message = error.message || 'Failed to start checkout';
+        const context = (error as any)?.context;
+        if (context?.json) {
+          try {
+            const body = await context.json();
+            if (body?.error) message = body.error;
+          } catch {
+            // ignore JSON parse failures
+          }
+        }
+        throw new Error(message);
+      }
       if (data?.url) {
         window.open(data.url, '_blank');
       }
