@@ -34,24 +34,36 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
   const handleCheckout = async (planKey: string) => {
     setLoading(planKey);
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { plan: planKey },
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('You must be logged in to upgrade.');
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseAnon) {
+        throw new Error('Supabase env vars missing. Please refresh and try again.');
+      }
+
+      const resp = await fetch(`${supabaseUrl}/functions/v1/create-checkout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: supabaseAnon,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ plan: planKey }),
       });
-      if (error) {
-        let message = error.message || 'Failed to start checkout';
-        const context = (error as any)?.context;
-        if (context?.json) {
-          try {
-            const body = await context.json();
-            if (body?.error) message = body.error;
-          } catch {
-            // ignore JSON parse failures
-          }
-        }
+
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const message = payload?.error || `Checkout failed (${resp.status})`;
         throw new Error(message);
       }
-      if (data?.url) {
-        window.open(data.url, '_blank');
+
+      if (payload?.url) {
+        window.open(payload.url, '_blank');
+      } else {
+        throw new Error('Checkout URL not returned. Please try again.');
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to start checkout');
