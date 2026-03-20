@@ -349,7 +349,6 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
                       <Badge variant="secondary" className="gap-1">No DMs pending</Badge>
                     )}
                   </div>
-                  </div>
                   <div className="flex items-center gap-2">
                     {!dmApproved && onEditCampaign && (
                       <Button
