@@ -390,13 +390,20 @@ serve(async (req) => {
         }
 
         // ── Per-lead DM approval gate ──
-        // DMs require individual approval before sending (sniper approach)
+        // DMs require approval unless the DM stage is auto-approved
         if (actionType === "send_dm" && !lead.dm_approved) {
-          await supabase.from("campaign_leads")
-            .update({ status: "dm_pending_approval", updated_at: now } as any)
-            .eq("id", lead.id);
-          console.log(`Lead ${lead.id} → dm_pending_approval (individual DM approval required)`);
-          continue;
+          const dmStageApproved = campaignStageDm.get(lead.campaign_profile_id) === true;
+          if (isAutoApprove || dmStageApproved) {
+            await supabase.from("campaign_leads")
+              .update({ dm_approved: true, dm_approved_at: now, updated_at: now } as any)
+              .eq("id", lead.id);
+          } else {
+            await supabase.from("campaign_leads")
+              .update({ status: "dm_pending_approval", updated_at: now } as any)
+              .eq("id", lead.id);
+            console.log(`Lead ${lead.id} → dm_pending_approval (individual DM approval required)`);
+            continue;
+          }
         }
 
         // If this lead needs messages generated before connection request

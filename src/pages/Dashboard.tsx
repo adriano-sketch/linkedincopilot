@@ -221,7 +221,7 @@ export default function Dashboard() {
   // Count unapproved stages needing attention
   const needsApproval = stageFlags ? (
     (!stageFlags.stage_connection_approved && leads.some(l => l.connection_note && ['pending_approval', 'dm_ready', 'ready_for_dm', 'ready'].includes(l.status))) ||
-    (!stageFlags.stage_dm_approved && leads.some(l => (l.custom_dm || l.dm_text) && ['connected'].includes(l.status))) ||
+    (!stageFlags.stage_dm_approved && leads.some(l => (l.custom_dm || l.dm_text) && ['connected', 'dm_pending_approval'].includes(l.status))) ||
     (!stageFlags.stage_followup_approved && leads.some(l => (l.custom_followup || l.follow_up_text) && ['dm_sent', 'waiting_reply'].includes(l.status)))
   ) : pendingApprovalCount > 0;
 
@@ -621,7 +621,16 @@ export default function Dashboard() {
 
           {/* Approval Queue Tab */}
           <TabsContent value="approval">
-            <DmApprovalQueue leads={leads} onRefresh={refreshLeads} campaignProfileId={selectedCampaignId || undefined} stageFlags={stageFlags} />
+            <DmApprovalQueue
+              leads={leads}
+              onRefresh={refreshLeads}
+              campaignProfileId={selectedCampaignId || undefined}
+              stageFlags={stageFlags}
+              onEditCampaign={() => {
+                const c = campaigns.find(c => c.id === selectedCampaignId);
+                if (c) setEditingCampaign(c);
+              }}
+            />
           </TabsContent>
         </Tabs>
       </main>

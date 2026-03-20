@@ -143,6 +143,43 @@ serve(async (req) => {
         }
       }
 
+      // For DM stage: auto-approve all connected/pending DMs
+      if (stage === "dm") {
+        const { data: dmLeads } = await supabase
+          .from("campaign_leads")
+          .select("id, status")
+          .eq("campaign_profile_id", cpId)
+          .eq("user_id", user.id)
+          .in("status", ["connected", "dm_pending_approval"]);
+
+        const pendingIds = (dmLeads || []).filter(l => l.status === "dm_pending_approval").map(l => l.id);
+        const connectedIds = (dmLeads || []).filter(l => l.status === "connected").map(l => l.id);
+
+        if (pendingIds.length > 0) {
+          await supabase.from("campaign_leads")
+            .update({
+              dm_approved: true,
+              dm_approved_at: now,
+              status: "connected",
+              next_action_at: nextBusinessHour(),
+              updated_at: now,
+            } as any)
+            .in("id", pendingIds);
+          results.approved += pendingIds.length;
+        }
+
+        if (connectedIds.length > 0) {
+          await supabase.from("campaign_leads")
+            .update({
+              dm_approved: true,
+              dm_approved_at: now,
+              updated_at: now,
+            } as any)
+            .in("id", connectedIds);
+          results.approved += connectedIds.length;
+        }
+      }
+
       // Log
       await supabase.from("activity_log").insert({
         user_id: user.id,
@@ -264,13 +301,13 @@ serve(async (req) => {
 
     for (const lead of leads) {
       try {
-        // Per-lead DM approval: move back to liking_post so scheduler queues send_dm
+        // Per-lead DM approval: allow scheduler to queue send_dm
         if (lead.status === "dm_pending_approval") {
           await supabase.from("campaign_leads")
             .update({
               dm_approved: true,
               dm_approved_at: now,
-              status: "liking_post",
+              status: "connected",
               next_action_at: nextBusinessHour(),
               updated_at: now,
             } as any)
