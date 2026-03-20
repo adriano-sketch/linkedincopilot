@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
 import SplitFlapText from '@/components/SplitFlapText';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import React, { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -35,6 +35,7 @@ const stagger = (i: number) => ({
 export default function Landing() {
   const { user, loading, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const howRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const pricingRef = useRef<HTMLDivElement>(null);
@@ -42,6 +43,12 @@ export default function Landing() {
   useEffect(() => {
     if (!loading && user) navigate('/dashboard');
   }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (location.pathname === '/pricing' || location.hash === '#pricing') {
+      setTimeout(() => scrollTo(pricingRef), 50);
+    }
+  }, [location.pathname, location.hash]);
 
   const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth' });
