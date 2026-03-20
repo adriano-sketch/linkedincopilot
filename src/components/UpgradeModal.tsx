@@ -34,9 +34,14 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
   const handleCheckout = async (planKey: string) => {
     setLoading(planKey);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('You must be logged in to upgrade.');
+      const getAccessToken = async () => {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.access_token) return sessionData.session.access_token;
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        return refreshed.session?.access_token || null;
+      };
+      let token = await getAccessToken();
+      if (!token) throw new Error('Your session expired. Please log in again.');
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -44,15 +49,24 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
         throw new Error('Supabase env vars missing. Please refresh and try again.');
       }
 
-      const resp = await fetch(`${supabaseUrl}/functions/v1/create-checkout`, {
+      const doRequest = async (accessToken: string) => fetch(`${supabaseUrl}/functions/v1/create-checkout`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${accessToken}`,
           apikey: supabaseAnon,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ plan: planKey }),
       });
+
+      let resp = await doRequest(token);
+      if (resp.status === 401) {
+        const refreshedToken = await getAccessToken();
+        if (refreshedToken) {
+          token = refreshedToken;
+          resp = await doRequest(token);
+        }
+      }
 
       const payload = await resp.json().catch(() => ({}));
       if (!resp.ok) {
