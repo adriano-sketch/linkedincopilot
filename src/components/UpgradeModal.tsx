@@ -21,20 +21,6 @@ const PLANS = [
       'Priority support',
     ],
   },
-  {
-    key: 'agency',
-    name: 'Agency',
-    price: 'Custom',
-    period: '',
-    subtitle: 'multi-account teams',
-    features: [
-      '5,000 leads/month',
-      '5 LinkedIn accounts',
-      'Unlimited campaigns',
-      'Batch DM approval',
-      'Priority support',
-    ],
-  },
 ];
 
 interface UpgradeModalProps {
@@ -107,7 +93,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
           ))}
         </div>
         <p className="text-xs text-center text-muted-foreground mt-4">
-          Need multiple LinkedIn accounts? <a href="mailto:sale@scantosell.io" className="text-primary hover:underline font-medium">Contact sales</a>
+          Need higher volume? <a href="mailto:sale@scantosell.io" className="text-primary hover:underline font-medium">Contact sales</a>
         </p>
       </DialogContent>
     </Dialog>

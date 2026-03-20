@@ -105,8 +105,45 @@ export default function Landing() {
   ];
 
   const pricing = [
-    { name: 'Free', price: '$0', period: '/month', perLead: null, features: ['50 leads (one-time)', '1 campaign', 'CSV import', 'AI-powered DMs (GPT-5)', 'ICP validation (Gemini 2.5 Pro)', 'Ghost Profile Detection', 'Chrome Extension', 'Basic dashboard'], cta: 'Start Free', sub: 'No credit card required.', highlighted: false },
-    { name: 'Pro', price: '$97', period: '/mo', perLead: '~$0.10 per personalized lead', features: ['1,000 leads/month', 'Unlimited campaigns', 'CSV import', 'AI-powered DMs (GPT-5)', 'ICP validation (Gemini 2.5 Pro)', 'Ghost Profile Detection', 'Batch approval', 'Full dashboard', 'Priority support'], cta: 'Start Pro Trial', sub: '7-day free trial. Cancel anytime.', highlighted: true },
+    {
+      name: 'Free',
+      price: '$0',
+      period: '/mo',
+      subtitle: '',
+      leads: '50 leads total',
+      campaigns: '1 campaign',
+      features: [
+        'AI-powered personalized DMs',
+        'CSV import',
+        'Lead enrichment included',
+        'Chrome extension included',
+        'Full automation sequence',
+        'Manual DM approval only',
+      ],
+      cta: 'Start Free',
+      sub: 'No credit card required.',
+      highlighted: false,
+    },
+    {
+      name: 'Pro',
+      price: '$97',
+      period: '/mo',
+      subtitle: 'per LinkedIn account',
+      leads: '1,000 leads/month',
+      campaigns: 'Unlimited campaigns',
+      features: [
+        'AI-powered personalized DMs',
+        'Unlimited CSV imports',
+        'Lead enrichment included',
+        'Chrome extension with smart limits',
+        'Batch DM approval',
+        'Auto-capture LinkedIn profiles',
+        'Priority support',
+      ],
+      cta: 'Start 7-day trial',
+      sub: 'Cancel anytime.',
+      highlighted: true,
+    },
   ];
 
   return (
@@ -120,7 +157,7 @@ export default function Landing() {
           <div className="hidden md:flex items-center gap-6 text-sm font-display font-semibold uppercase tracking-wider text-sidebar-foreground">
             <button onClick={() => scrollTo(howRef)} className="hover:text-primary transition-colors">How it Works</button>
             <button onClick={() => scrollTo(featuresRef)} className="hover:text-primary transition-colors">Features</button>
-            <Link to="/pricing" className="hover:text-primary transition-colors">Pricing</Link>
+            <button onClick={() => scrollTo(pricingRef)} className="hover:text-primary transition-colors">Pricing</button>
           </div>
           <div className="flex items-center gap-3">
             <Link to="/auth" className="text-sm font-display font-semibold uppercase tracking-wider text-sidebar-foreground hover:text-primary transition-colors">
@@ -469,7 +506,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {pricing.map((plan, i) => (
               <motion.div key={plan.name} {...stagger(i)}>
-                <Card className={`relative hover-float h-full ${plan.highlighted ? 'border-primary border-2 shadow-gold glow-subtle ring-2 ring-primary/20' : ''}`}>
+                <Card className={`relative hover-float h-full ${plan.highlighted ? 'border-primary border-2 shadow-gold glow-subtle ring-2 ring-primary/20 bg-white/95' : 'bg-white/80'}`}>
                   {plan.highlighted && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-display font-bold uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1">
                       <Star className="w-3 h-3" /> Most Popular
@@ -477,23 +514,29 @@ export default function Landing() {
                   )}
                   <CardContent className="p-6 pt-8 flex flex-col h-full">
                     <h3 className="text-lg font-display font-bold uppercase tracking-wide">{plan.name}</h3>
-                    <div className="mt-2 mb-1">
+                    <div className="mt-2">
                       <span className="text-4xl font-numbers font-bold">{plan.price}</span>
                       <span className="text-muted-foreground text-sm">{plan.period}</span>
                     </div>
-                    {plan.perLead && <p className="text-xs text-muted-foreground mb-4">{plan.perLead}</p>}
-                    {!plan.perLead && <div className="mb-4" />}
-                    <ul className="space-y-3 text-sm text-left flex-1">
+                    {plan.subtitle && <p className="text-xs text-muted-foreground mt-1">{plan.subtitle}</p>}
+
+                    <div className="mt-4 mb-2 space-y-1 text-left">
+                      <p className="font-semibold text-sm">{plan.leads}</p>
+                      <p className="text-sm text-muted-foreground">{plan.campaigns}</p>
+                    </div>
+
+                    <ul className="space-y-3 text-sm text-left flex-1 mt-4">
                       {plan.features.map((f) => (
                         <li key={f} className="flex items-start gap-2">
-                          <Star className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                          <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                           <span>{f}</span>
                         </li>
                       ))}
                     </ul>
                     <Button
                       onClick={handleCTA}
-                      className="mt-6 w-full font-display font-bold uppercase tracking-wider rounded-md shine-effect bg-primary text-primary-foreground hover:bg-gold-light"
+                      className={`mt-6 w-full font-display font-bold uppercase tracking-wider rounded-md shine-effect ${plan.highlighted ? 'bg-primary text-primary-foreground hover:bg-gold-light' : ''}`}
+                      variant={plan.highlighted ? 'default' : 'outline'}
                     >
                       {plan.cta}
                     </Button>
@@ -504,9 +547,44 @@ export default function Landing() {
             ))}
           </div>
 
-          <motion.p {...fadeUp} className="text-xs text-muted-foreground mt-8 max-w-xl mx-auto">
-            1,000 leads/month = LinkedIn's natural safe limit per account. We don't sell more than the platform allows you to safely use. Import unlimited leads from any source. No hidden costs.
-          </motion.p>
+          <div className="max-w-3xl mx-auto mt-8">
+            <Card className="border-dashed border-2 border-border bg-white/80">
+              <CardContent className="p-6 flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <Zap className="w-6 h-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-sm">Need higher volumes?</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    For larger teams or higher limits, contact us and we'll build a custom plan.
+                  </p>
+                </div>
+                <a href="mailto:sale@scantosell.io">
+                  <Button variant="outline" className="shrink-0">
+                    Contact Sales
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="max-w-3xl mx-auto mt-8">
+            <Card className="bg-white/90">
+              <CardContent className="p-8 text-left">
+                <h3 className="text-xl font-bold mb-3">Why 1,000 leads per month?</h3>
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  <p>LinkedIn limits connection requests to ~40 per day to keep accounts safe. On business days, that's roughly 880 requests per month.</p>
+                  <p>We round up to 1,000 to give you a buffer for:</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>higher acceptance on days you send fewer requests,</li>
+                    <li>short holidays and weekends,</li>
+                    <li>and natural variance in your sequence timing.</li>
+                  </ul>
+                  <p>We don't sell more leads than you can safely use.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </section>
 
