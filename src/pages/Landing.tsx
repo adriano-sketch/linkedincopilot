@@ -152,6 +152,16 @@ export default function Landing() {
       highlighted: true,
     },
   ];
+  const pricingCompare = [
+    { feature: 'Monthly leads', free: '50 total', pro: '1,000 / mo' },
+    { feature: 'Campaigns', free: '1', pro: 'Unlimited' },
+    { feature: 'CSV imports', free: 'Basic', pro: 'Unlimited' },
+    { feature: 'Lead enrichment', free: 'Included', pro: 'Included' },
+    { feature: 'ICP validation', free: 'Included', pro: 'Included' },
+    { feature: 'Approval flow', free: 'Manual only', pro: 'Batch + auto-run' },
+    { feature: 'Chrome extension limits', free: 'Standard', pro: 'Smart limits' },
+    { feature: 'Support', free: 'Community', pro: 'Priority' },
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -507,8 +517,8 @@ export default function Landing() {
       {/* SECTION 7: PRICING (light) */}
       <section ref={pricingRef} className="py-24 px-4 section-cream section-textured relative">
         <div className="container mx-auto max-w-5xl text-center relative z-10">
-          <motion.h2 {...fadeUp} className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">Simple Pricing.</motion.h2>
-          <motion.p {...fadeUp} className="text-muted-foreground mb-12">Start free. Upgrade when you're ready.</motion.p>
+          <motion.h2 {...fadeUp} className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">Pricing built for real outreach.</motion.h2>
+          <motion.p {...fadeUp} className="text-muted-foreground mb-12">Start free, validate results, then scale with confidence.</motion.p>
 
           <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {pricing.map((plan, i) => (
@@ -552,6 +562,64 @@ export default function Landing() {
                 </Card>
               </motion.div>
             ))}
+          </div>
+
+          <div className="max-w-5xl mx-auto mt-10 grid md:grid-cols-3 gap-6 text-left">
+            <Card className="bg-white/90">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-sm mb-2">Everything included</h3>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> AI message generation (notes, DMs, follow-ups)</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> ICP filtering before outreach</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> Extension-based, safe automation</li>
+                </ul>
+              </CardContent>
+            </Card>
+            <Card className="bg-white/90">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-sm mb-2">Safety limits</h3>
+                <p className="text-sm text-muted-foreground">Hard caps are enforced to keep accounts safe. New accounts ramp up automatically.</p>
+                <div className="mt-3 text-sm text-muted-foreground space-y-1">
+                  <p><span className="font-semibold text-foreground">40</span> connection requests/day</p>
+                  <p><span className="font-semibold text-foreground">80</span> profile visits/day</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-white/90">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-sm mb-2">Team-ready</h3>
+                <p className="text-sm text-muted-foreground">Run multiple campaigns, validate messages once, then switch to auto-run.</p>
+                <p className="text-xs text-muted-foreground mt-3">Custom plans available for agencies and large teams.</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="max-w-4xl mx-auto mt-10">
+            <Card className="bg-white/95 border-border">
+              <CardContent className="p-6">
+                <h3 className="text-lg font-bold mb-4 text-left">Plan comparison</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-border/60">
+                        <th className="py-2 pr-2 font-semibold">Feature</th>
+                        <th className="py-2 px-2 font-semibold">Free</th>
+                        <th className="py-2 pl-2 font-semibold">Pro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {pricingCompare.map(row => (
+                        <tr key={row.feature}>
+                          <td className="py-2 pr-2 text-muted-foreground">{row.feature}</td>
+                          <td className="py-2 px-2">{row.free}</td>
+                          <td className="py-2 pl-2">{row.pro}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="max-w-3xl mx-auto mt-8">
