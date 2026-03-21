@@ -237,8 +237,14 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     if (csvParsed.length === 0) { toast.error('No leads ready to import'); return; }
     setCsvImporting(true);
     try {
-      const { data: inserted, error } = await supabase.from('campaign_leads')
-        .insert(csvParsed.map(r => ({
+      const batchSize = 200;
+      let totalInserted = 0;
+      let queueIndex = 0;
+      const totalRows = csvParsed.length;
+
+      for (let i = 0; i < csvParsed.length; i += batchSize) {
+        const batch = csvParsed.slice(i, i + batchSize);
+        const payload = batch.map(r => ({
           user_id: user.id,
           campaign_profile_id: createdCampaignId,
           first_name: r.first_name || null,
@@ -251,27 +257,43 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           source: 'csv',
           status: 'imported',
           profile_quality_status: 'pending',
-        })))
-        .select('id, linkedin_url');
-      if (error) throw error;
-      if (inserted && inserted.length > 0) {
-        const now = new Date();
-        const queued = inserted.map((lead, index) => ({
-          user_id: user.id,
-          campaign_lead_id: lead.id,
-          action_type: 'check_profile_quality',
-          linkedin_url: lead.linkedin_url,
-          scheduled_for: new Date(now.getTime() + index * 15000).toISOString(),
-          priority: 1,
         }));
-        await supabase.from('action_queue').insert(queued);
-        toast.info(`Queued ${queued.length} LinkedIn quality checks. Keep the extension open.`, { duration: 8000 });
+
+        const { data: inserted, error } = await supabase
+          .from('campaign_leads')
+          .upsert(payload, { onConflict: 'user_id,linkedin_url', ignoreDuplicates: true })
+          .select('id, linkedin_url');
+        if (error) throw error;
+
+        const insertedRows = inserted || [];
+        if (insertedRows.length > 0) {
+          const now = new Date();
+          const queued = insertedRows.map((lead, index) => ({
+            user_id: user.id,
+            campaign_lead_id: lead.id,
+            action_type: 'check_profile_quality',
+            linkedin_url: lead.linkedin_url,
+            scheduled_for: new Date(now.getTime() + (queueIndex + index) * 15000).toISOString(),
+            priority: 1,
+          }));
+          queueIndex += insertedRows.length;
+          await supabase.from('action_queue').insert(queued);
+        }
+
+        totalInserted += insertedRows.length;
+        setImportedCount(totalInserted);
       }
-      setImportedCount(csvParsed.length);
+
+      if (totalInserted > 0) {
+        toast.info(`Queued ${totalInserted} LinkedIn quality checks. Keep the extension open.`, { duration: 8000 });
+      }
       setCsvParsed([]);
-      toast.success(`Imported ${csvParsed.length} leads — click Launch to start enrichment & outreach`);
+      toast.success(`Imported ${totalInserted} of ${totalRows} leads — click Launch to start enrichment & outreach`);
     } catch (e) {
-      toast.error('Import failed: ' + (e instanceof Error ? e.message : 'Unknown'));
+      const message = e instanceof Error
+        ? e.message
+        : (typeof e === 'string' ? e : (e as any)?.message || (e as any)?.details || 'Unknown');
+      toast.error('Import failed: ' + message);
     } finally { setCsvImporting(false); }
   };
 
