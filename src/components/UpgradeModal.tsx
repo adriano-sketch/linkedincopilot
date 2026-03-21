@@ -43,10 +43,18 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       let token = await getAccessToken();
       if (!token) throw new Error('Your session expired. Please log in again.');
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+      const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
       if (!supabaseUrl || !supabaseAnon) {
         throw new Error('Supabase env vars missing. Please refresh and try again.');
+      }
+      try {
+        new URL(supabaseUrl);
+      } catch {
+        throw new Error('Invalid Supabase URL. Check Vercel env vars.');
+      }
+      if (/\s/.test(supabaseAnon)) {
+        throw new Error('Supabase anon key has whitespace. Re-save it without quotes or line breaks.');
       }
 
       const decodeJwt = (jwt: string) => {
