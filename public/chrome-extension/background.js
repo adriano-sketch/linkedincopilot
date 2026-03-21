@@ -698,6 +698,10 @@ const queueProcessor = {
       console.log(`[QueueProcessor] Waiting ${Math.round(delay / 1000)}s before ${action.action_type}...`);
       await this.sleep(delay);
       const result = await this.sendToContentScript(action);
+      if (result && result.skip_report) {
+        console.log(`[QueueProcessor] ${action.action_type} skipped: ${result.reason || 'skip_report'}`);
+        return;
+      }
       await supabase.update('action_queue',
         { status: 'completed', completed_at: new Date().toISOString(), result: result },
         `id=eq.${action.id}`
@@ -721,7 +725,128 @@ const queueProcessor = {
     }
   },
 
+  async runProfileQualityCheck(tabId) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+          const debugInfo = { url: window.location.href };
+
+          const bodyText = normalize(document.body?.innerText || '');
+          const unavailablePhrases = [
+            'profile not found',
+            "this profile doesn't exist",
+            "this page doesn't exist",
+            'profile unavailable',
+            'this profile is unavailable',
+            'member only',
+            'private member',
+            'linkedin member',
+            'linkedin user',
+            'membro do linkedin',
+            'miembro de linkedin',
+            'membre linkedin',
+            'perfil indisponível',
+            'perfil no disponible',
+            'perfil non disponibile',
+            'não encontramos',
+            'no encontramos',
+            'page not found'
+          ];
+
+          if (unavailablePhrases.some(p => bodyText.includes(p))) {
+            return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'profile_unavailable', confidence: 'strong', debug: debugInfo };
+          }
+
+          const h1 = document.querySelector('main h1');
+          const name = normalize(h1?.textContent || '');
+          debugInfo.name = name || null;
+          if (!name) {
+            return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'no_h1', confidence: 'weak', debug: debugInfo };
+          }
+
+          const placeholderNames = ['linkedin member', 'linkedin user', 'member only', 'private member', 'membro do linkedin', 'miembro de linkedin', 'membre linkedin'];
+          if (placeholderNames.some(p => name.includes(p))) {
+            return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'placeholder_name', confidence: 'strong', debug: debugInfo };
+          }
+
+          const headings = Array.from(document.querySelectorAll('main h2, main h3'));
+          const hasSection = (keywords, minChars) => {
+            const heading = headings.find(h => {
+              const txt = normalize(h.textContent || '');
+              return keywords.some(k => txt.includes(k));
+            });
+            if (!heading) return false;
+            const section = heading.closest('section') || heading.parentElement?.parentElement;
+            const text = normalize(section?.innerText || '');
+            return text.length >= minChars;
+          };
+
+          const headlineEl = document.querySelector('main h2');
+          const headline = normalize(headlineEl?.textContent || '');
+          const hasHeadline = headline.length >= 4;
+
+          const hasAbout = hasSection(['about', 'sobre', 'acerca', 'à propos', 'informações', 'informacion', 'informazioni'], 40);
+          const hasExperience = hasSection(['experience', 'experiência', 'experiencia', 'experienze'], 40);
+          const hasEducation = hasSection(['education', 'educação', 'educacion', 'formação', 'formacion', 'istruzione'], 30);
+          const hasSkills = hasSection(['skills', 'competências', 'competencias', 'habilidades', 'competenze'], 20);
+
+          const signalCount = [hasHeadline, hasAbout, hasExperience, hasEducation, hasSkills].filter(Boolean).length;
+          debugInfo.signalCount = signalCount;
+
+          if (signalCount === 0) {
+            return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'no_profile_signals', confidence: 'strong', debug: debugInfo };
+          }
+
+          if (signalCount <= 1 && !hasHeadline) {
+            return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'minimal_profile_signals', confidence: 'weak', debug: debugInfo };
+          }
+
+          return { success: true, action: 'check_profile_quality', is_ghost: false, note: 'ok', confidence: 'strong', debug: debugInfo };
+        },
+      });
+      if (results && results[0] && results[0].result) {
+        return results[0].result;
+      }
+      throw new Error('No result from quality check');
+    } catch (err) {
+      console.error('[QueueProcessor] Quality check failed:', err.message);
+      return null;
+    }
+  },
+
   async sendToContentScript(action) {
+    if (action.action_type === 'check_profile_quality') {
+      const now = new Date().toISOString();
+      const result = { action: 'check_profile_quality', skipped: true, note: 'jit_only' };
+      try {
+        await supabase.update(
+          'campaign_leads',
+          {
+            profile_quality_status: 'ok',
+            profile_quality_checked_at: now,
+            profile_quality_note: 'csv_precheck',
+          },
+          `id=eq.${action.campaign_lead_id}`
+        );
+        await supabase.update(
+          'action_queue',
+          { status: 'completed', completed_at: now, result },
+          `id=eq.${action.id}`
+        );
+        await supabase.insert('activity_log', {
+          user_id: supabase.userId,
+          campaign_lead_id: action.campaign_lead_id,
+          action: 'check_profile_quality_skipped',
+          details: { result },
+        });
+      } catch (err) {
+        console.warn('[QueueProcessor] Failed to skip check_profile_quality:', err.message);
+      }
+      return { ...result, skip_report: true, reason: 'quality_scan_disabled' };
+    }
+
     let tabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/*' });
     let tab;
     if (tabs.length > 0) {
@@ -731,7 +856,7 @@ const queueProcessor = {
       await this.waitForTabLoad(tab.id);
       await this.sleep(3000);
     }
-    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status', 'check_profile_quality'];
+    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
     if (actionTypes.includes(action.action_type)) {
       let targetUrl = action.action_data?.linkedin_url || action.linkedin_url;
       if (targetUrl) {
@@ -776,6 +901,43 @@ const queueProcessor = {
         await chrome.tabs.update(tab.id, { url: targetUrl });
         await this.waitForTabLoad(tab.id);
         await this.sleep(6000);
+      }
+    }
+
+    const ghostGuardActions = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'send_dm', 'send_followup'];
+    if (ghostGuardActions.includes(action.action_type)) {
+      const quality = await this.runProfileQualityCheck(tab.id);
+      if (quality?.is_ghost) {
+        const now = new Date().toISOString();
+        const ghostResult = { ...quality, action: 'check_profile_quality', jit: true };
+        try {
+          await supabase.update(
+            'campaign_leads',
+            {
+              profile_quality_status: 'ghost',
+              profile_quality_checked_at: now,
+              profile_quality_note: quality.note || 'ghost_profile',
+              status: 'skipped',
+              profile_enriched_at: now,
+              error_message: 'Ghost profile (LinkedIn)',
+            },
+            `id=eq.${action.campaign_lead_id}`
+          );
+          await supabase.update(
+            'action_queue',
+            { status: 'completed', completed_at: now, result: ghostResult },
+            `id=eq.${action.id}`
+          );
+          await supabase.insert('activity_log', {
+            user_id: supabase.userId,
+            campaign_lead_id: action.campaign_lead_id,
+            action: 'check_profile_quality_completed',
+            details: { result: ghostResult },
+          });
+        } catch (err) {
+          console.warn('[QueueProcessor] Failed to persist ghost result:', err.message);
+        }
+        return { ...ghostResult, skip_report: true, reason: 'ghost_profile' };
       }
     }
 
@@ -874,99 +1036,6 @@ const queueProcessor = {
         });
         if (results && results[0] && results[0].result) {
           console.log('[QueueProcessor] Direct check result:', JSON.stringify(results[0].result));
-          return results[0].result;
-        }
-        throw new Error('No result from direct execution');
-      } catch (err) {
-        console.error('[QueueProcessor] Direct execution failed:', err.message);
-        throw err;
-      }
-    }
-
-    if (action.action_type === 'check_profile_quality') {
-      console.log('[QueueProcessor] Using direct execution for check_profile_quality');
-      try {
-        const results = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => {
-            const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            const debugInfo = { url: window.location.href };
-
-            const bodyText = normalize(document.body?.innerText || '');
-            const unavailablePhrases = [
-              'profile not found',
-              "this profile doesn't exist",
-              'this page doesn\'t exist',
-              'profile unavailable',
-              'this profile is unavailable',
-              'member only',
-              'private member',
-              'linkedin member',
-              'linkedin user',
-              'membro do linkedin',
-              'miembro de linkedin',
-              'membre linkedin',
-              'perfil indisponível',
-              'perfil no disponible',
-              'perfil non disponibile',
-              'não encontramos',
-              'no encontramos',
-              'page not found'
-            ];
-
-            if (unavailablePhrases.some(p => bodyText.includes(p))) {
-              return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'profile_unavailable', confidence: 'strong', debug: debugInfo };
-            }
-
-            const h1 = document.querySelector('main h1');
-            const name = normalize(h1?.textContent || '');
-            debugInfo.name = name || null;
-            if (!name) {
-              return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'no_h1', confidence: 'weak', debug: debugInfo };
-            }
-
-            const placeholderNames = ['linkedin member', 'linkedin user', 'member only', 'private member', 'membro do linkedin', 'miembro de linkedin', 'membre linkedin'];
-            if (placeholderNames.some(p => name.includes(p))) {
-              return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'placeholder_name', confidence: 'strong', debug: debugInfo };
-            }
-
-            const headings = Array.from(document.querySelectorAll('main h2, main h3'));
-            const hasSection = (keywords, minChars) => {
-              const heading = headings.find(h => {
-                const txt = normalize(h.textContent || '');
-                return keywords.some(k => txt.includes(k));
-              });
-              if (!heading) return false;
-              const section = heading.closest('section') || heading.parentElement?.parentElement;
-              const text = normalize(section?.innerText || '');
-              return text.length >= minChars;
-            };
-
-            const headlineEl = document.querySelector('main h2');
-            const headline = normalize(headlineEl?.textContent || '');
-            const hasHeadline = headline.length >= 4;
-
-            const hasAbout = hasSection(['about', 'sobre', 'acerca', 'à propos', 'informações', 'informacion', 'informazioni'], 40);
-            const hasExperience = hasSection(['experience', 'experiência', 'experiencia', 'experienze'], 40);
-            const hasEducation = hasSection(['education', 'educação', 'educacion', 'formação', 'formacion', 'istruzione'], 30);
-            const hasSkills = hasSection(['skills', 'competências', 'competencias', 'habilidades', 'competenze'], 20);
-
-            const signalCount = [hasHeadline, hasAbout, hasExperience, hasEducation, hasSkills].filter(Boolean).length;
-            debugInfo.signalCount = signalCount;
-
-            if (signalCount === 0) {
-              return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'no_profile_signals', confidence: 'strong', debug: debugInfo };
-            }
-
-            if (signalCount <= 1 && !hasHeadline) {
-              return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'minimal_profile_signals', confidence: 'weak', debug: debugInfo };
-            }
-
-            return { success: true, action: 'check_profile_quality', is_ghost: false, note: 'ok', confidence: 'strong', debug: debugInfo };
-          },
-        });
-        if (results && results[0] && results[0].result) {
-          console.log('[QueueProcessor] Direct quality result:', JSON.stringify(results[0].result));
           return results[0].result;
         }
         throw new Error('No result from direct execution');

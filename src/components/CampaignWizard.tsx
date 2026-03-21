@@ -239,9 +239,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     try {
       const batchSize = 200;
       let totalInserted = 0;
-      let queueIndex = 0;
       const totalRows = csvParsed.length;
 
+      const qualityCheckedAt = new Date().toISOString();
       for (let i = 0; i < csvParsed.length; i += batchSize) {
         const batch = csvParsed.slice(i, i + batchSize);
         const payload = batch.map(r => ({
@@ -256,7 +256,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           location: r.location || null,
           source: 'csv',
           status: 'imported',
-          profile_quality_status: 'pending',
+          profile_quality_status: 'ok',
+          profile_quality_checked_at: qualityCheckedAt,
+          profile_quality_note: 'csv_precheck',
         }));
 
         const { data: inserted, error } = await supabase
@@ -266,26 +268,12 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         if (error) throw error;
 
         const insertedRows = inserted || [];
-        if (insertedRows.length > 0) {
-          const now = new Date();
-          const queued = insertedRows.map((lead, index) => ({
-            user_id: user.id,
-            campaign_lead_id: lead.id,
-            action_type: 'check_profile_quality',
-            linkedin_url: lead.linkedin_url,
-            scheduled_for: new Date(now.getTime() + (queueIndex + index) * 15000).toISOString(),
-            priority: 1,
-          }));
-          queueIndex += insertedRows.length;
-          await supabase.from('action_queue').insert(queued);
-        }
-
         totalInserted += insertedRows.length;
         setImportedCount(totalInserted);
       }
 
       if (totalInserted > 0) {
-        toast.info(`Queued ${totalInserted} LinkedIn quality checks. Keep the extension open.`, { duration: 8000 });
+        toast.info('Ghosts were filtered using CSV pre-check. The extension will verify again only when it actually needs to act.', { duration: 8000 });
       }
       setCsvParsed([]);
       toast.success(`Imported ${totalInserted} of ${totalRows} leads — click Launch to start enrichment & outreach`);

@@ -57,9 +57,8 @@ export default function LeadSourcing() {
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
-      if (rows.length > leadsRemaining) {
-        toast.error(`Your CSV has ${rows.length} leads but you only have ${leadsRemaining} credits remaining. Please reduce your CSV.`);
-        return;
+      if (leadsRemaining <= 0) {
+        toast.warning('You have 0 lead credits remaining. Leads will be filtered by ICP but not counted until next cycle.');
       }
 
       setCsvParsed(rows);
@@ -87,8 +86,12 @@ export default function LeadSourcing() {
       }
 
       if (newLeads.length > 0) {
-        const { data: inserted, error } = await supabase.from('campaign_leads')
-          .insert(newLeads.map(r => ({
+        const batchSize = 200;
+        const qualityCheckedAt = new Date().toISOString();
+        let totalInserted = 0;
+        for (let i = 0; i < newLeads.length; i += batchSize) {
+          const batch = newLeads.slice(i, i + batchSize);
+          const payload = batch.map(r => ({
             user_id: user.id,
             campaign_profile_id: selectedCampaignId,
             first_name: r.first_name || null,
@@ -100,28 +103,25 @@ export default function LeadSourcing() {
             location: r.location || null,
             source: 'csv',
             status: 'new',
-            profile_quality_status: 'pending',
-          })))
-          .select('id, linkedin_url');
-        if (error) throw error;
+            profile_quality_status: 'ok',
+            profile_quality_checked_at: qualityCheckedAt,
+            profile_quality_note: 'csv_precheck',
+          }));
+
+          const { data: inserted, error } = await supabase
+            .from('campaign_leads')
+            .upsert(payload, { onConflict: 'user_id,linkedin_url', ignoreDuplicates: true })
+            .select('id');
+          if (error) throw error;
+          totalInserted += (inserted || []).length;
+        }
 
         queryClient.invalidateQueries({ queryKey: ['user_settings'] });
-
-        if (inserted && inserted.length > 0) {
-          const now = new Date();
-          const queued = inserted.map((lead, index) => ({
-            user_id: user.id,
-            campaign_lead_id: lead.id,
-            action_type: 'check_profile_quality',
-            linkedin_url: lead.linkedin_url,
-            scheduled_for: new Date(now.getTime() + index * 15000).toISOString(),
-            priority: 1,
-          }));
-          await supabase.from('action_queue').insert(queued);
-          toast.info(`Queued ${queued.length} LinkedIn quality checks. Keep the extension open.`, { duration: 8000 });
-        }
+        toast.success(`Imported ${totalInserted} of ${newLeads.length} leads. ${dupes} duplicates skipped.`);
+        toast.info('Ghosts were filtered using CSV pre-check. The extension will verify again only when it actually needs to act.', { duration: 8000 });
+      } else {
+        toast.success(`Imported 0 leads. ${dupes} duplicates skipped.`);
       }
-      toast.success(`Imported ${newLeads.length} leads. ${dupes} duplicates skipped.`);
       queryClient.invalidateQueries({ queryKey: ['campaign_leads'] });
       setCsvParsed([]);
       setCsvStats(null);
