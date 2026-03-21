@@ -69,6 +69,10 @@ serve(async (req) => {
       mode: "subscription",
       allow_promotion_codes: true,
       client_reference_id: user.id,
+      metadata: {
+        user_id: user.id,
+        plan: finalPlan,
+      },
       subscription_data: {
         metadata: {
           user_id: user.id,

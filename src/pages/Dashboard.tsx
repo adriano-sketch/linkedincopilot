@@ -49,6 +49,7 @@ export default function Dashboard() {
   const [verifying, setVerifying] = useState(false);
   const [resettingVerification, setResettingVerification] = useState(false);
   const launchOnce = useRef(false);
+  const checkoutStatus = searchParams.get('checkout');
 
   // Auto-select first active campaign
   useEffect(() => {
@@ -77,6 +78,25 @@ export default function Dashboard() {
       handleLaunchCampaign();
     }
   }, [searchParams, selectedCampaignId]);
+
+  useEffect(() => {
+    if (!checkoutStatus || !user) return;
+    if (checkoutStatus === 'success') {
+      supabase.functions.invoke('check-subscription')
+        .then(() => {
+          toast.success('Payment confirmed! Your plan will update shortly.');
+        })
+        .catch((error) => {
+          toast.error(`We could not verify your plan yet. ${error?.message || ''}`.trim());
+        })
+        .finally(() => {
+          navigate('/dashboard', { replace: true });
+        });
+    } else if (checkoutStatus === 'cancel') {
+      toast.message('Checkout canceled. You can try again anytime.');
+      navigate('/dashboard', { replace: true });
+    }
+  }, [checkoutStatus, user, navigate]);
 
   const handleLaunchCampaign = async () => {
     if (!selectedCampaignId) { toast.error('Select a campaign'); return; }

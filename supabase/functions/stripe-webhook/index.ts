@@ -48,11 +48,32 @@ serve(async (req) => {
     );
 
     const updateByUserId = async (userId: string, updates: Record<string, unknown>) => {
-      await supabase.from("user_settings").update(updates).eq("user_id", userId);
+      const { error } = await supabase
+        .from("user_settings")
+        .upsert({ user_id: userId, ...updates }, { onConflict: "user_id" });
+      if (error) throw error;
     };
 
     const updateByCustomerId = async (customerId: string, updates: Record<string, unknown>) => {
-      await supabase.from("user_settings").update(updates).eq("stripe_customer_id", customerId);
+      const { error } = await supabase
+        .from("user_settings")
+        .update(updates)
+        .eq("stripe_customer_id", customerId);
+      if (error) throw error;
+    };
+
+    const resolveUserIdFromCustomer = async (customerId?: string | null) => {
+      if (!customerId) return null;
+      try {
+        const customer = await stripe.customers.retrieve(customerId);
+        if (typeof customer === "object" && "metadata" in customer) {
+          const userId = (customer.metadata?.user_id || "") as string;
+          return userId || null;
+        }
+      } catch {
+        return null;
+      }
+      return null;
     };
 
     if (event.type === "checkout.session.completed") {
@@ -60,16 +81,17 @@ serve(async (req) => {
       const customerId = session.customer as string | null;
       const subscriptionId = session.subscription as string | null;
       const userId = (session.client_reference_id || session.metadata?.user_id) as string | undefined;
-      const plan = (session.metadata?.plan || "") as string;
+      const plan = ((session.metadata?.plan || "") as string).toLowerCase();
+      const resolvedUserId = userId || (await resolveUserIdFromCustomer(customerId));
 
-      if (userId) {
-        await updateByUserId(userId, {
+      if (resolvedUserId) {
+        await updateByUserId(resolvedUserId, {
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
         });
         if (plan) {
           const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
-          await updateByUserId(userId, {
+          await updateByUserId(resolvedUserId, {
             plan,
             max_leads_per_cycle: limits.max_leads_per_cycle,
             max_campaigns: limits.max_campaigns,
@@ -89,12 +111,13 @@ serve(async (req) => {
       const customerId = subscription.customer as string;
       const priceId = subscription.items.data[0]?.price?.id;
       const productId = subscription.items.data[0]?.price?.product as string | undefined;
-      const plan = resolvePlan(priceId, productId);
+      const metadataPlan = (subscription.metadata?.plan || "") as string;
+      const plan = metadataPlan ? metadataPlan.toLowerCase() : resolvePlan(priceId, productId);
       const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
       const cycleStart = new Date(subscription.current_period_start * 1000).toISOString().slice(0, 10);
       const cycleEnd = new Date(subscription.current_period_end * 1000).toISOString().slice(0, 10);
 
-      await updateByCustomerId(customerId, {
+      const updates = {
         plan,
         stripe_customer_id: customerId,
         stripe_subscription_id: subscription.id,
@@ -103,7 +126,18 @@ serve(async (req) => {
         linkedin_accounts_limit: limits.linkedin_accounts_limit,
         cycle_start_date: cycleStart,
         cycle_reset_date: cycleEnd,
-      });
+      };
+
+      const userId = (subscription.metadata?.user_id || "") as string;
+      if (userId) {
+        await updateByUserId(userId, updates);
+      } else {
+        await updateByCustomerId(customerId, updates);
+        const resolvedUserId = await resolveUserIdFromCustomer(customerId);
+        if (resolvedUserId) {
+          await updateByUserId(resolvedUserId, updates);
+        }
+      }
     }
 
     if (event.type === "customer.subscription.deleted") {
