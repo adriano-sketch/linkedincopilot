@@ -84,9 +84,14 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message, code: "checkout_failed" }), {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const isAuthError =
+      message.includes("Missing Authorization header") ||
+      message.includes("Auth failed") ||
+      message.includes("User not authenticated");
+    return new Response(JSON.stringify({ error: message, code: "checkout_failed" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
+      status: isAuthError ? 401 : 500,
     });
   }
 });
