@@ -87,9 +87,9 @@ export default function SettingsPage() {
       a.download = 'linkedin-copilot-extension.zip';
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Download iniciado!');
+      toast.success('Download started.');
     } catch {
-      toast.error('Falha ao baixar o ZIP');
+      toast.error('Failed to download the ZIP.');
     } finally {
       setDownloading(false);
     }

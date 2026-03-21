@@ -77,7 +77,7 @@ export default function MessagesTab({ campaignProfileId }: MessagesTabProps) {
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    toast.success('Copiado!');
+    toast.success('Copied!');
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -182,7 +182,7 @@ export default function MessagesTab({ campaignProfileId }: MessagesTabProps) {
                   <p className="text-xs font-medium text-muted-foreground uppercase">Mensagem Inicial</p>
                   {previewMessage.dm1 && (
                     <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => handleCopy(previewMessage.dm1!, previewMessage.id + '-dm-preview')}>
-                      {copiedId === previewMessage.id + '-dm-preview' ? <><Check className="w-3 h-3 mr-1" /> Copiado</> : <><Copy className="w-3 h-3 mr-1" /> Copiar</>}
+                      {copiedId === previewMessage.id + '-dm-preview' ? <><Check className="w-3 h-3 mr-1" /> Copied</> : <><Copy className="w-3 h-3 mr-1" /> Copy</>}
                     </Button>
                   )}
                 </div>
@@ -195,7 +195,7 @@ export default function MessagesTab({ campaignProfileId }: MessagesTabProps) {
                   <p className="text-xs font-medium text-muted-foreground uppercase">Follow-up (4 dias depois)</p>
                   {previewMessage.followup1 && (
                     <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => handleCopy(previewMessage.followup1!, previewMessage.id + '-fu-preview')}>
-                      {copiedId === previewMessage.id + '-fu-preview' ? <><Check className="w-3 h-3 mr-1" /> Copiado</> : <><Copy className="w-3 h-3 mr-1" /> Copiar</>}
+                      {copiedId === previewMessage.id + '-fu-preview' ? <><Check className="w-3 h-3 mr-1" /> Copied</> : <><Copy className="w-3 h-3 mr-1" /> Copy</>}
                     </Button>
                   )}
                 </div>
