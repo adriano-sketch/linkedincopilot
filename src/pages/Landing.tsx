@@ -61,23 +61,23 @@ export default function Landing() {
   const howSteps = [
     { num: '\u2460', title: 'Define Your Target', desc: 'Pick your industry, job titles, and location. Our vertical presets guide you to the right audience.' },
     { num: '\u2461', title: 'Import Your Leads', desc: 'Upload a CSV with LinkedIn URLs from any source — Sales Navigator, Instantly, or your own list. We handle the rest.' },
-    { num: '\u2462', title: 'AI Validates Your ICP', desc: 'Gemini 2.5 Pro cross-checks every lead against your ideal customer profile. Only qualified leads move forward.' },
+    { num: '\u2462', title: 'AI Validates Your ICP', desc: 'Claude Haiku cross-checks every lead against your ideal customer profile. Only qualified leads move forward.' },
     { num: '\u2463', title: 'Launch Campaign', desc: 'Our Chrome Extension visits profiles on autopilot.' },
-    { num: '\u2464', title: 'AI Writes Your DMs', desc: 'When they accept, GPT-5 reads their full profile and crafts a unique message. You approve, then send.' },
+    { num: '\u2464', title: 'AI Writes Your DMs', desc: 'When they accept, Claude Sonnet reads their full profile and crafts a unique message. You approve, then send.' },
   ];
 
   const painPoints = [
-    { emoji: '\uD83C\uDFAF', title: 'GENERIC MESSAGES', desc: '"Hi {firstName}, I\'d love to connect..." Sound familiar? Your prospects get 20 of these a day. Yours gets deleted with the rest. GPT-5 writes messages that reference their actual career, company, and background, so they know you actually looked.' },
-    { emoji: '\uD83E\uDD16', title: 'WRONG PEOPLE', desc: 'You\'re sending connection requests to people who will never buy from you. Generic titles like "CEO" match every industry. Our Gemini 2.5 Pro ICP check filters out mismatches before a single request is sent, so every connection counts.' },
+    { emoji: '\uD83C\uDFAF', title: 'GENERIC MESSAGES', desc: '"Hi {firstName}, I\'d love to connect..." Sound familiar? Your prospects get 20 of these a day. Yours gets deleted with the rest. Claude Sonnet writes messages that reference their actual career, company, and background, so they know you actually looked.' },
+    { emoji: '\uD83E\uDD16', title: 'WRONG PEOPLE', desc: 'You\'re sending connection requests to people who will never buy from you. Generic titles like "CEO" match every industry. Our Claude Haiku ICP check filters out mismatches before a single request is sent, so every connection counts.' },
     { emoji: '\uD83D\uDCC9', title: 'WASTED TIME', desc: 'Hours spent writing messages one by one, or blasting the same template to 1,000 people and wondering why nobody replies. LinkedIn Copilot automates the entire sequence while you focus on closing the replies that come back.' },
   ];
 
   const solutionFeatures = [
     { icon: Upload, title: 'Import From Anywhere', desc: 'Bring leads from any source — Sales Navigator, Instantly SuperSearch, Apollo, Lusha, or your own research. Just upload a CSV with LinkedIn URLs. Our AI agents handle enrichment, ICP validation, and personalization.' },
-    { icon: Bot, title: 'Profile-Based Messages', desc: 'Our AI agents capture full LinkedIn profile data, experience, education, skills, without touching your account. Then GPT-5 crafts a message that proves you did your homework.' },
-    { icon: Globe, title: '30+ Languages', desc: 'Your prospect speaks Portuguese? GPT-5 writes in Portuguese. French? German? Japanese? 30+ languages, automatically detected from their profile.' },
+    { icon: Bot, title: 'Profile-Based Messages', desc: 'Our AI agents capture full LinkedIn profile data, experience, education, skills, without touching your account. Then Claude Sonnet crafts a message that proves you did your homework.' },
+    { icon: Globe, title: '30+ Languages', desc: 'Your prospect speaks Portuguese? Claude Sonnet writes in Portuguese. French? German? Japanese? 30+ languages, automatically detected from their profile.' },
     { icon: RefreshCw, title: 'Automated Sequences', desc: 'Visit profile \u2192 follow \u2192 like a post \u2192 send connection request \u2192 DM \u2192 follow-up. The entire sequence runs on autopilot with human-like delays. Set it once, leads flow in daily.' },
-    { icon: Check, title: 'AI-Powered ICP Check', desc: 'Before any outreach starts, Gemini 2.5 Pro compares each lead against your ideal customer profile using real LinkedIn data. Mismatches get filtered out automatically.' },
+    { icon: Check, title: 'AI-Powered ICP Check', desc: 'Before any outreach starts, Claude Haiku compares each lead against your ideal customer profile using real LinkedIn data. Mismatches get filtered out automatically.' },
     { icon: Eye, title: 'Ghost Profile Detection', desc: 'Not everyone on LinkedIn is actually active. Our AI detects ghost profiles \u2014 accounts with minimal data, no skills, no about section, few connections \u2014 and automatically skips them. Zero credits wasted on people who will never see your message.' },
     { icon: BarChart3, title: 'One Dashboard', desc: 'Leads, messages, follow-ups, replies, your entire pipeline on one screen. Approve DMs one by one or in batch. Nothing sends without your say-so.' },
   ];
@@ -96,16 +96,16 @@ export default function Landing() {
   ];
 
   const faqs = [
-    { q: 'What is LinkedIn automation?', a: 'LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks such as sending connection requests, follow-ups, and direct messages. LinkedIn Copilot is an AI-powered LinkedIn automation tool that goes beyond simple templates \u2014 it reads each prospect\'s full profile and generates personalized messages using GPT-5, while validating leads against your Ideal Customer Profile using Gemini 2.5 Pro.' },
+    { q: 'What is LinkedIn automation?', a: 'LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks such as sending connection requests, follow-ups, and direct messages. LinkedIn Copilot is an AI-powered LinkedIn automation tool that goes beyond simple templates \u2014 it reads each prospect\'s full profile and generates personalized messages using Claude Sonnet, while validating leads against your Ideal Customer Profile using Claude Haiku.' },
     { q: 'Is LinkedIn automation safe? Will I get banned?', a: 'LinkedIn Copilot is designed with safety as the top priority. It runs as a Chrome Extension in your own browser (no cloud servers or proxy farms), enforces strict daily limits (80 profile visits, 40 connection requests), uses random human-like delays between actions, and includes automatic warm-up for new accounts. These measures keep your activity well within LinkedIn\'s safe thresholds.' },
-    { q: 'How does LinkedIn Copilot validate leads against my ICP?', a: 'LinkedIn Copilot uses Gemini 2.5 Pro to automatically enrich every lead with full LinkedIn profile data, then validates them against your Ideal Customer Profile using real headlines, titles, career history, and company data. Leads that don\'t match your ICP are filtered out before any outreach begins.' },
-    { q: 'How are the messages personalized?', a: 'Our AI agents capture full public LinkedIn profile data \u2014 experience, education, skills, about section \u2014 without using your account. GPT-5 then writes a unique message for each prospect, referencing their actual background. No templates, no {firstName} placeholders.' },
+    { q: 'How does LinkedIn Copilot validate leads against my ICP?', a: 'LinkedIn Copilot uses Claude Haiku to automatically enrich every lead with full LinkedIn profile data, then validates them against your Ideal Customer Profile using real headlines, titles, career history, and company data. Leads that don\'t match your ICP are filtered out before any outreach begins.' },
+    { q: 'How are the messages personalized?', a: 'Our AI agents capture full public LinkedIn profile data \u2014 experience, education, skills, about section \u2014 without using your account. Claude Sonnet then writes a unique message for each prospect, referencing their actual background. No templates, no {firstName} placeholders.' },
     { q: 'How many connection requests can I send per day?', a: 'LinkedIn Copilot enforces a maximum of 40 connection requests and 80 profile visits per day. These limits are well within LinkedIn\'s safe thresholds and cannot be overridden. New accounts start with lower limits that gradually ramp up over weeks.' },
     { q: 'Where do I get leads?', a: 'LinkedIn Copilot works with leads from any source. Export from Sales Navigator, Instantly SuperSearch, Apollo, Lusha, or build your own list. Just upload a CSV with LinkedIn profile URLs and we handle the rest \u2014 enrichment, ICP validation, and personalized messaging.' },
-    { q: 'What\'s the difference between LinkedIn Copilot and other automation tools?', a: 'Most LinkedIn automation tools use simple templates with {firstName} and {companyName} placeholders. LinkedIn Copilot reads the full LinkedIn profile \u2014 about section, career history, education, skills \u2014 and generates truly personalized messages using GPT-5. It also includes AI-powered ICP validation, which filters out bad-fit leads before any outreach begins.' },
+    { q: 'What\'s the difference between LinkedIn Copilot and other automation tools?', a: 'Most LinkedIn automation tools use simple templates with {firstName} and {companyName} placeholders. LinkedIn Copilot reads the full LinkedIn profile \u2014 about section, career history, education, skills \u2014 and generates truly personalized messages using Claude Sonnet. It also includes AI-powered ICP validation, which filters out bad-fit leads before any outreach begins.' },
     { q: 'How long does it take to set up a campaign?', a: 'You can go from zero to personalized LinkedIn conversations in under 10 minutes. Upload a CSV with LinkedIn URLs, define your ICP criteria, set your message tone, and launch. The Chrome Extension handles everything automatically.' },
     { q: 'What happens after the free 50 outreach credits?', a: 'Your existing leads continue processing through the full outreach sequence. You just can\'t add new leads until you upgrade to Pro ($147/month for 1,000 outreach credits). No data is lost.' },
-    { q: 'Can I run campaigns in other languages?', a: 'Yes. GPT-5 detects your prospect\'s language from their LinkedIn profile and writes in that language automatically. Over 30 languages are supported, including Portuguese, French, German, Spanish, and Japanese.' },
+    { q: 'Can I run campaigns in other languages?', a: 'Yes. Claude Sonnet detects your prospect\'s language from their LinkedIn profile and writes in that language automatically. Over 30 languages are supported, including Portuguese, French, German, Spanish, and Japanese.' },
     { q: 'Can I edit the AI messages before sending?', a: 'Always. You maintain full control \u2014 you can approve, edit, regenerate, or reject any message. Nothing is ever sent without your explicit approval. You can review messages one by one or use batch approval.' },
     { q: 'How does LinkedIn Copilot compare to manual outreach?', a: 'Manual LinkedIn outreach typically allows 15-20 personalized messages per day and takes 2-3 hours. LinkedIn Copilot automates the entire sequence \u2014 profile visits, follows, connection requests, and personalized DMs \u2014 processing up to 40 leads per day with AI-written messages that reference each prospect\'s actual background.' },
     { q: 'What are Ghost Profiles and why does LinkedIn Copilot skip them?', a: 'Ghost profiles are LinkedIn accounts with minimal activity \u2014 no about section, few skills, no education, barely any connections. These users rarely check LinkedIn and will never see your connection request or message. LinkedIn Copilot automatically detects and skips ghost profiles so you don\'t waste credits or daily limits on people who aren\'t actually active on the platform.' },
@@ -173,9 +173,9 @@ export default function Landing() {
     <div className="min-h-screen bg-background">
       {/* -- NAVBAR -- */}
       <nav className="fixed top-0 w-full z-50 glass">
-        <div className="container mx-auto flex items-center justify-between h-20 px-4">
+        <div className="container mx-auto flex items-center justify-between h-[72px] px-4">
           <div className="flex items-center">
-            <img src={logoImg} alt="LinkedIn Copilot \u2014 AI-powered LinkedIn automation tool for B2B outreach" className="h-16 w-auto" />
+            <img src={logoImg} alt="LinkedIn Copilot \u2014 AI-powered LinkedIn automation tool for B2B outreach" className="h-14 w-auto" />
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm font-display font-semibold uppercase tracking-wider text-sidebar-foreground">
             <button onClick={() => scrollTo(howRef)} className="hover:text-primary transition-colors">How it Works</button>
@@ -212,14 +212,14 @@ export default function Landing() {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, ease: 'easeOut' as const }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/[0.12] text-gold-light text-[11px] font-display font-bold uppercase tracking-[0.12em] mb-7 border border-primary/50"
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/[0.12] text-gold-light text-[10px] sm:text-[11px] font-display font-bold uppercase tracking-[0.18em] mb-6 border border-primary/50"
           >
             <span className="badge-dot" />
-            Powered by GPT-5 &middot; Gemini ICP Validation &middot; 30+ Languages
+            Powered by Claude Sonnet &middot; Haiku ICP Validation &middot; 30+ Languages
           </motion.div>
           <SplitFlapText
-            className="font-display uppercase tracking-tight mb-5 leading-[0.95] text-white"
-            style={{ fontSize: 'clamp(28px, 6.5vw, 86px)', fontWeight: 900, textShadow: '0 2px 40px rgba(0,0,0,0.8)' }}
+            className="font-display uppercase tracking-tight mb-5 leading-[0.96] text-white max-w-[860px] mx-auto"
+            style={{ fontSize: 'clamp(34px, 6.2vw, 84px)', fontWeight: 900, textShadow: '0 8px 36px rgba(0,0,0,0.55)' }}
             lines={[
               { text: 'Lock on Target.', className: 'block' },
               { text: 'Deploy Precision', className: 'text-primary block whitespace-nowrap' },
@@ -231,8 +231,8 @@ export default function Landing() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' as const }}
-            className="text-[15px] sm:text-[17px] leading-relaxed max-w-[640px] mx-auto mb-10 px-2"
-            style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 8px rgba(0,0,0,0.6)' }}
+            className="text-base sm:text-lg leading-relaxed max-w-[680px] mx-auto mb-9 px-2"
+            style={{ color: 'rgba(255,255,255,0.78)', textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}
           >
             An AI-powered LinkedIn automation tool that reads your prospect's actual profile and crafts B2B outreach messages they can't ignore. Not templates. Not spam. Precision.
           </motion.p>
@@ -245,7 +245,7 @@ export default function Landing() {
             <Button
               onClick={handleCTA}
               size="lg"
-              className="bg-primary text-primary-foreground hover:bg-gold-light px-8 sm:px-10 py-[18px] text-sm sm:text-base font-display font-extrabold uppercase tracking-[0.12em] rounded-lg transition-all shine-effect"
+              className="bg-primary text-primary-foreground hover:bg-gold-light px-8 sm:px-10 py-[16px] text-sm sm:text-base font-display font-extrabold uppercase tracking-[0.1em] rounded-lg transition-all shine-effect"
               style={{ boxShadow: '0 0 30px rgba(201,162,39,0.4), 0 4px 20px rgba(0,0,0,0.4)' }}
             >
               Start Free &mdash; 50 Outreach Credits
@@ -253,7 +253,7 @@ export default function Landing() {
             </Button>
             <button
               onClick={() => scrollTo(howRef)}
-              className="text-sm font-display font-semibold uppercase tracking-wider text-white/60 hover:text-white transition-colors flex items-center gap-1.5"
+              className="text-xs sm:text-sm font-display font-semibold uppercase tracking-wider text-white/60 hover:text-white transition-colors flex items-center gap-1.5"
             >
               See How It Works <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -262,7 +262,7 @@ export default function Landing() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.6 }}
-            className="text-xs mt-4"
+            className="text-[11px] mt-4"
             style={{ color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em' }}
           >
             No credit card required. Chrome Extension installs in 30 seconds.
@@ -283,7 +283,7 @@ export default function Landing() {
               What Is <span className="text-gradient-gold">LinkedIn Automation?</span>
             </h2>
             <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks &mdash; sending connection requests, follow-ups, and personalized direct messages at scale. Unlike basic tools that rely on {'{firstName}'} templates, <strong>LinkedIn Copilot</strong> is an AI-powered B2B LinkedIn automation platform that reads each prospect's full profile (about section, career history, education, skills) and generates truly personalized messages using GPT-5. Every lead is validated against your Ideal Customer Profile using Gemini 2.5 Pro before any outreach begins, ensuring you only connect with qualified prospects.
+              LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks &mdash; sending connection requests, follow-ups, and personalized direct messages at scale. Unlike basic tools that rely on {'{firstName}'} templates, <strong>LinkedIn Copilot</strong> is an AI-powered B2B LinkedIn automation platform that reads each prospect's full profile (about section, career history, education, skills) and generates truly personalized messages using Claude Sonnet. Every lead is validated against your Ideal Customer Profile using Claude Haiku before any outreach begins, ensuring you only connect with qualified prospects.
             </p>
           </motion.div>
         </div>
@@ -659,7 +659,7 @@ export default function Landing() {
                 <h3 className="text-xl font-bold mb-3">Why 1,000 outreach credits?</h3>
                 <div className="space-y-3 text-sm text-muted-foreground">
                   <p>Not every lead in your CSV is worth reaching out to. Some are ghost profiles with no real LinkedIn activity. Others don't match your ideal customer profile. Sending messages to these leads wastes your time and hurts your reply rates.</p>
-                  <p>That's why we built a smart filtering pipeline. Upload up to 3,000 leads per month — our system enriches each one, validates them against your ICP using Gemini 2.5 Pro, and automatically detects ghost profiles. Only the leads that pass every check become outreach-ready and count against your 1,000 credits.</p>
+                  <p>That's why we built a smart filtering pipeline. Upload up to 3,000 leads per month — our system enriches each one, validates them against your ICP using Claude Haiku, and automatically detects ghost profiles. Only the leads that pass every check become outreach-ready and count against your 1,000 credits.</p>
                   <p>The result: every message you send goes to a real, qualified prospect. Higher acceptance rates, better conversations, more deals.</p>
                 </div>
               </CardContent>
@@ -722,7 +722,7 @@ export default function Landing() {
                 Ready to Fly?
               </h2>
               <p className="text-slate-400 text-sm mb-8 max-w-lg mx-auto">
-                Stop sending LinkedIn messages that sound like everyone else's. Start sending ones that prove you actually looked, powered by GPT-5, validated by Gemini 2.5 Pro, delivered with military precision.
+                Stop sending LinkedIn messages that sound like everyone else's. Start sending ones that prove you actually looked, powered by Claude Sonnet, validated by Claude Haiku, delivered with military precision.
               </p>
               <Button
                 onClick={handleCTA}
@@ -733,7 +733,7 @@ export default function Landing() {
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <p className="text-slate-500 text-xs mt-4">
-                Free plan includes GPT-5 powered DMs, Gemini 2.5 Pro ICP validation, ghost profile detection, Chrome Extension, and 50 outreach credits with smart lead filtering.
+                Free plan includes Claude Sonnet powered DMs, Claude Haiku ICP validation, ghost profile detection, Chrome Extension, and 50 outreach credits with smart lead filtering.
               </p>
               <p className="text-gold-light text-xs font-display font-semibold uppercase tracking-widest mt-6 text-glow">
                 Lock On Target. Deploy Precision Messages. Close Deals.

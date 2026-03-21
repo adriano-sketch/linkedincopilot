@@ -272,17 +272,19 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    padding-top: 120px;
+    padding-bottom: 96px;
     background-image:
       linear-gradient(
         to bottom,
-        rgba(10, 15, 30, 0.25) 0%,
-        rgba(10, 15, 30, 0.40) 35%,
-        rgba(10, 15, 30, 0.75) 75%,
-        rgba(10, 15, 30, 1.00) 100%
+        rgba(10, 15, 30, 0.06) 0%,
+        rgba(10, 15, 30, 0.28) 35%,
+        rgba(10, 15, 30, 0.68) 72%,
+        rgba(10, 15, 30, 0.94) 100%
       ),
       url('/hero-bg.jpg');
     background-size: cover;
-    background-position: center 30%;
+    background-position: center 22%;
     background-repeat: no-repeat;
   }
 
@@ -342,6 +344,14 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  @media (max-width: 768px) {
+    .hero-topgun {
+      padding-top: 104px;
+      padding-bottom: 80px;
+      background-position: center 18%;
+    }
   }
 
   .scroll-arrow {
