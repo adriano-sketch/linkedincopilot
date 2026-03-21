@@ -96,9 +96,9 @@ async function followProfile() {
 async function sendConnectionRequest(noteText) {
   await sleep(1000 + Math.random() * 1500);
 
-  // Safety: truncate note if too long
-  if (noteText && noteText.length > 300) {
-    noteText = noteText.substring(0, 295) + '...';
+  // Safety: truncate note if too long (max 200 chars)
+  if (noteText && noteText.length > 200) {
+    noteText = noteText.substring(0, 197) + '...';
   }
 
   // ── STEP 1: Find and click the Connect button ──

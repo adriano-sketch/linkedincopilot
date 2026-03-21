@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutLink2 = document.getElementById('logout-link-2');
   const openLinkedinBtn = document.getElementById('open-linkedin-btn');
 
-  const DASHBOARD_URL = 'http://localhost:3000/dashboard';
+  const DASHBOARD_URL = 'https://linkedincopilot.vercel.app/dashboard';
 
   // Check current status on popup open
   chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {
@@ -173,9 +173,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const hour = nextWindow.getHours();
           const ampm = hour >= 12 ? 'PM' : 'AM';
           const displayHour = hour % 12 || 12;
-          statusText.textContent = `Off hours · Resumes ${day} ${displayHour}:00 ${ampm}`;
+          statusText.textContent = `Warmup running · Messaging resumes ${day} ${displayHour}:00 ${ampm}`;
         } else {
-          statusText.textContent = 'Passive actions running · Messaging paused';
+          statusText.textContent = 'Warmup running · Messaging paused';
         }
         pauseBtn.textContent = 'Pause Automation';
       } else {

@@ -75,23 +75,12 @@ export default function SettingsPage() {
   const handleDownloadExtension = async () => {
     setDownloading(true);
     try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
-      const folder = zip.folder('chrome-extension')!;
-      const files = [
-        'manifest.json', 'background.js', 'content.js',
-        'popup.html', 'popup.js', 'popup.css',
-      ];
-      const iconFiles = [
-        'icons/icon16.png', 'icons/icon24.png', 'icons/icon32.png',
-        'icons/icon48.png', 'icons/icon128.png',
-      ];
-      await Promise.all([...files, ...iconFiles].map(async (name) => {
-        const res = await fetch(`/chrome-extension/${name}`);
-        const blob = await res.blob();
-        folder.file(name, blob);
-      }));
-      const content = await zip.generateAsync({ type: 'blob' });
+      const directZip = '/linkedincopilot-extension.zip';
+      const res = await fetch(directZip);
+      if (!res.ok) {
+        throw new Error('zip_not_found');
+      }
+      const content = await res.blob();
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
@@ -100,7 +89,7 @@ export default function SettingsPage() {
       URL.revokeObjectURL(url);
       toast.success('Download iniciado!');
     } catch {
-      toast.error('Falha ao gerar o ZIP');
+      toast.error('Falha ao baixar o ZIP');
     } finally {
       setDownloading(false);
     }
