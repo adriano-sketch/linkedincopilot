@@ -37,6 +37,7 @@ export interface UserSettings {
   user_id: string;
   plan: PlanType;
   max_leads_per_cycle: number;
+  leads_processed_this_cycle?: number;
   leads_used_this_cycle: number;
   linkedin_accounts_limit: number;
   max_campaigns: number;

@@ -837,6 +837,7 @@ export type Database = {
           cycle_reset_date: string | null
           cycle_start_date: string
           id: string
+          leads_processed_this_cycle: number
           leads_used_this_cycle: number
           linkedin_accounts_limit: number
           max_campaigns: number
@@ -852,6 +853,7 @@ export type Database = {
           cycle_reset_date?: string | null
           cycle_start_date?: string
           id?: string
+          leads_processed_this_cycle?: number
           leads_used_this_cycle?: number
           linkedin_accounts_limit?: number
           max_campaigns?: number
@@ -867,6 +869,7 @@ export type Database = {
           cycle_reset_date?: string | null
           cycle_start_date?: string
           id?: string
+          leads_processed_this_cycle?: number
           leads_used_this_cycle?: number
           linkedin_accounts_limit?: number
           max_campaigns?: number

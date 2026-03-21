@@ -1,4 +1,4 @@
-// v2 - supports csv + search sources
+// v3 - ghost blacklist + processing limit (credit model v2)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -65,7 +65,37 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get un-enriched leads for this campaign (include Apollo data for pre-screening)
+    // ══════════════════════════════════════════════════════════
+    // PROCESSING LIMIT CHECK (Credit Model v2)
+    // Processing = every ScrapIn call. Limit = 3x outreach credits.
+    // ══════════════════════════════════════════════════════════
+    const { data: settings } = await supabase
+      .from("user_settings")
+      .select("leads_processed_this_cycle, max_leads_per_cycle")
+      .eq("user_id", effectiveUserId)
+      .maybeSingle();
+
+    const currentProcessed = settings?.leads_processed_this_cycle || 0;
+    const maxOutreach = settings?.max_leads_per_cycle || 0;
+    const maxProcessing = maxOutreach * 3;
+    let remainingProcessing = maxProcessing > 0 ? Math.max(0, maxProcessing - currentProcessed) : 0;
+    let processingCountToAdd = 0;
+
+    // If processing limit already hit, return early
+    if (maxProcessing > 0 && remainingProcessing <= 0) {
+      return new Response(JSON.stringify({
+        success: true,
+        enriched: 0,
+        remaining: 0,
+        done: true,
+        processing_limit_reached: true,
+        message: "Processing limit reached for this cycle. Upgrade plan or wait for next cycle.",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get un-enriched leads for this campaign
     const { data: leads, error: leadsError } = await supabase
       .from("campaign_leads")
       .select("id, linkedin_url, source, profile_enriched_at, full_name, first_name, last_name, title, company, industry, location, profile_quality_status")
@@ -79,8 +109,8 @@ serve(async (req) => {
 
     if (leadsError) throw leadsError;
     if (!leads || leads.length === 0) {
-      return new Response(JSON.stringify({ 
-        success: true, enriched: 0, remaining: 0, done: true 
+      return new Response(JSON.stringify({
+        success: true, enriched: 0, remaining: 0, done: true
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -108,7 +138,6 @@ serve(async (req) => {
       let linkedinUrl = lead.linkedin_url;
       if (linkedinUrl && !linkedinUrl.startsWith('http')) {
         linkedinUrl = `https://www.${linkedinUrl.replace(/^www\./, '')}`;
-        // Update the URL in the database
         await supabase.from("campaign_leads")
           .update({ linkedin_url: linkedinUrl, updated_at: now } as any)
           .eq("id", lead.id);
@@ -123,7 +152,7 @@ serve(async (req) => {
         continue;
       }
 
-      // ── Ghost blacklist check: skip known ghosts/404s without calling ScrapIn ──
+      // ── Ghost blacklist check: skip known ghosts (zero cost, zero processing) ──
       const { data: ghostEntry } = await supabase
         .from("ghost_profiles")
         .select("id, reason")
@@ -140,10 +169,10 @@ serve(async (req) => {
           profile_quality_status: "ghost",
         } as any).eq("id", lead.id);
         enrichedCount++;
-        continue;
+        continue; // NO processing count — no ScrapIn call
       }
 
-      // Check for existing snapshot first
+      // Check for existing snapshot first (also zero ScrapIn cost)
       const { data: existingSnapshot } = await supabase
         .from("profile_snapshots")
         .select("id, linkedin_url, headline, about, experience, raw_text")
@@ -161,17 +190,31 @@ serve(async (req) => {
         } as any).eq("id", lead.id);
         enrichedCount++;
 
-        // Fire-and-forget: generate messages so approval samples are ready
+        // Fire-and-forget: generate messages
         fetch(`${supabaseUrl}/functions/v1/generate-dm`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
           body: JSON.stringify({ campaign_lead_id: lead.id, user_id: effectiveUserId }),
         }).catch(err => console.error(`generate-dm fire-and-forget error for ${lead.id}:`, err));
 
+        continue; // NO processing count — no ScrapIn call
+      }
+
+      // ── Processing limit check before calling ScrapIn ──
+      if (maxProcessing > 0 && remainingProcessing <= 0) {
+        await supabase.from("campaign_leads").update({
+          updated_at: now,
+          status: "skipped",
+          error_message: "Processing limit reached for this cycle",
+        } as any).eq("id", lead.id);
+        enrichedCount++;
         continue;
       }
 
-      // Call Scrapin.io API
+      // ── Call Scrapin.io API (costs 1 processing unit) ──
+      processingCountToAdd += 1;
+      remainingProcessing -= 1;
+
       try {
         const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(lead.linkedin_url)}`;
         const controller = new AbortController();
@@ -183,9 +226,9 @@ serve(async (req) => {
         if (!res.ok) {
           const errText = await res.text();
           console.error(`Scrapin error [${res.status}] for ${lead.linkedin_url}:`, errText);
-          
+
           if (res.status === 404) {
-            // Profile not found — save to ghost blacklist and mark as skipped
+            // Profile not found — save to ghost blacklist
             await supabase.from("ghost_profiles").upsert({
               linkedin_url: lead.linkedin_url,
               reason: "404_not_found",
@@ -278,8 +321,7 @@ serve(async (req) => {
           p.location ? `Location: ${[p.location.city, p.location.state, p.location.country].filter(Boolean).join(", ")}` : "",
         ].filter(Boolean).join("\n\n");
 
-        // Ghost profile detection: skip profiles with minimal LinkedIn presence
-        // These are auto-created profiles where the person isn't truly active on LinkedIn
+        // Ghost profile detection
         const hasAbout = about.trim().length > 20;
         const hasSkills = Array.isArray(skills) && skills.length >= 2;
         const hasEducation = Array.isArray(educations) && educations.length > 0;
@@ -287,13 +329,13 @@ serve(async (req) => {
         const followerCount = p.followersCount || p.followerCount || 0;
         const connectionCount = p.connectionsCount || p.connectionCount || 0;
 
-        // A profile is considered a "ghost" if it lacks most engagement signals
         const signalCount = [hasAbout, hasSkills, hasEducation, hasMultiplePositions, followerCount > 10, connectionCount > 50].filter(Boolean).length;
 
         if (signalCount <= 1) {
           const reason = `Ghost profile (minimal data: ${!hasAbout ? 'no about' : ''}${!hasSkills ? ', no skills' : ''}${!hasEducation ? ', no education' : ''}${!hasMultiplePositions ? ', single/no position' : ''}${followerCount <= 10 ? ', few followers' : ''})`.replace('(minimal data: ,', '(minimal data: ');
 
           console.log(`Skipping ghost profile ${lead.linkedin_url}: ${reason}`);
+
           await supabase.from("ghost_profiles").upsert({
             linkedin_url: lead.linkedin_url,
             reason: "ghost_minimal_data",
@@ -358,7 +400,7 @@ serve(async (req) => {
         await supabase.from("campaign_leads").update(updateData).eq("id", lead.id);
         enrichedCount++;
 
-        // Fire-and-forget: generate messages so approval samples are ready
+        // Fire-and-forget: generate messages
         fetch(`${supabaseUrl}/functions/v1/generate-dm`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
@@ -377,6 +419,17 @@ serve(async (req) => {
       }
     }
 
+    // ══════════════════════════════════════════════════════════
+    // UPDATE PROCESSING COUNTER (Credit Model v2)
+    // Only processing count — enrich-leads-batch doesn't handle outreach credits
+    // ══════════════════════════════════════════════════════════
+    if (processingCountToAdd > 0) {
+      await supabase
+        .from("user_settings")
+        .update({ leads_processed_this_cycle: currentProcessed + processingCountToAdd })
+        .eq("user_id", effectiveUserId);
+    }
+
     const remaining = Math.max(0, (totalRemaining || 0) - enrichedCount);
 
     return new Response(JSON.stringify({
@@ -384,6 +437,7 @@ serve(async (req) => {
       enriched: enrichedCount,
       remaining,
       done: remaining === 0,
+      scrapin_calls: processingCountToAdd,
       errors: errors.length > 0 ? errors : undefined,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -124,7 +124,15 @@ serve(async (req) => {
     if (!leads || leads.length === 0) throw new Error("No leads found");
 
     const results = { processed: 0, icp_rejected: 0, enriched: 0, messages_generated: 0, errors: [] as string[] };
-    let refundCount = 0;
+
+    const { data: creditSettings } = await supabase
+      .from("user_settings")
+      .select("leads_used_this_cycle, max_leads_per_cycle")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    let currentUsed = creditSettings?.leads_used_this_cycle || 0;
+    const maxLeads = creditSettings?.max_leads_per_cycle || 0;
+    let creditsToAdd = 0;
 
     for (const lead of leads) {
       try {
@@ -142,7 +150,6 @@ serve(async (req) => {
               updated_at: new Date().toISOString(),
             } as any)
             .eq("id", lead.id);
-          refundCount += 1;
           results.processed++;
           continue;
         }
@@ -165,7 +172,6 @@ serve(async (req) => {
                 updated_at: new Date().toISOString(),
               } as any)
               .eq("id", lead.id);
-            refundCount += 1;
             results.processed++;
             continue;
           }
@@ -300,7 +306,6 @@ serve(async (req) => {
               updated_at: new Date().toISOString(),
             } as any).eq("id", lead.id);
 
-            refundCount += 1;
             results.processed++;
             continue;
           }
@@ -327,7 +332,6 @@ serve(async (req) => {
             } as any)
             .eq("id", lead.id);
 
-          refundCount += 1;
           results.processed++;
           continue;
         }
@@ -336,7 +340,22 @@ serve(async (req) => {
           .update(enrichUpdate)
           .eq("id", lead.id);
 
-        // Step 2: Generate messages with AI
+        // Step 2: Generate messages with AI (outreach credits are consumed only on success)
+        if (maxLeads > 0 && currentUsed >= maxLeads) {
+          await supabase.from("campaign_leads")
+            .update({
+              status: "icp_rejected",
+              icp_match: false,
+              icp_checked_at: new Date().toISOString(),
+              icp_match_reason: "Lead credits exhausted",
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq("id", lead.id);
+          results.icp_rejected++;
+          results.processed++;
+          continue;
+        }
+
         if (!LOVABLE_API_KEY) {
           await supabase.from("campaign_leads")
             .update({ status: "enriched", updated_at: new Date().toISOString() } as any)
@@ -449,6 +468,8 @@ Sign messages as "${senderFirstName}".`;
           });
 
           results.messages_generated++;
+          creditsToAdd += 1;
+          currentUsed += 1;
         } catch (aiError) {
           console.error(`AI generation failed for ${lead.id}:`, aiError);
           await supabase.from("campaign_leads")
@@ -494,21 +515,11 @@ Sign messages as "${senderFirstName}".`;
       }).catch(err => console.error("notify-approval-ready error:", err));
     }
 
-    if (refundCount > 0) {
-      const { data: settings } = await supabase
+    if (creditsToAdd > 0) {
+      await supabase
         .from("user_settings")
-        .select("leads_used_this_cycle")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const currentUsed = settings?.leads_used_this_cycle || 0;
-      const nextUsed = Math.max(0, currentUsed - refundCount);
-      if (nextUsed !== currentUsed) {
-        await supabase
-          .from("user_settings")
-          .update({ leads_used_this_cycle: nextUsed })
-          .eq("user_id", user.id);
-      }
+        .update({ leads_used_this_cycle: currentUsed })
+        .eq("user_id", user.id);
     }
 
     return new Response(JSON.stringify(results), {

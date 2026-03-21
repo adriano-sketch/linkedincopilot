@@ -62,6 +62,7 @@ serve(async (req) => {
         max_campaigns: limits.max_campaigns,
         linkedin_accounts_limit: limits.linkedin_accounts_limit,
         leads_used_this_cycle: 0,
+        leads_processed_this_cycle: 0,
         cycle_start_date: cycleStart,
         cycle_reset_date: cycleReset,
       })
