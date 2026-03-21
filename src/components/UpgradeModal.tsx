@@ -44,7 +44,8 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       if (!token) throw new Error('Your session expired. Please log in again.');
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
-      const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+      const supabaseAnonRaw = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+      const supabaseAnon = supabaseAnonRaw.replace(/\s+/g, '');
       if (!supabaseUrl || !supabaseAnon) {
         throw new Error('Supabase env vars missing. Please refresh and try again.');
       }
@@ -53,8 +54,8 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       } catch {
         throw new Error('Invalid Supabase URL. Check Vercel env vars.');
       }
-      if (/\s/.test(supabaseAnon)) {
-        throw new Error('Supabase anon key has whitespace. Re-save it without quotes or line breaks.');
+      if (/\s/.test(supabaseAnonRaw)) {
+        console.warn('Supabase anon key contains whitespace; normalized for request.');
       }
 
       const decodeJwt = (jwt: string) => {
