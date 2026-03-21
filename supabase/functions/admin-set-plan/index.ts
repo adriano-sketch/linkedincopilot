@@ -35,9 +35,19 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
-    const { data: user, error: userErr } = await supabase.auth.admin.getUserByEmail(email);
-    if (userErr) throw userErr;
-    if (!user?.user?.id) throw new Error("User not found");
+    // Use Auth Admin REST API to lookup user by email (works reliably in Edge runtime)
+    const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
+      headers: {
+        Authorization: `Bearer ${supabaseKey}`,
+        apikey: supabaseKey,
+      },
+    });
+    if (!adminRes.ok) {
+      throw new Error(`Auth admin lookup failed: ${adminRes.status}`);
+    }
+    const adminJson = await adminRes.json();
+    const matched = Array.isArray(adminJson?.users) ? adminJson.users[0] : adminJson?.user;
+    if (!matched?.id) throw new Error("User not found");
 
     const limits = PLAN_LIMITS[plan];
     const now = new Date();
@@ -55,9 +65,9 @@ serve(async (req) => {
         cycle_start_date: cycleStart,
         cycle_reset_date: cycleReset,
       })
-      .eq("user_id", user.user.id);
+      .eq("user_id", matched.id);
 
-    return new Response(JSON.stringify({ success: true, user_id: user.user.id, plan }), {
+    return new Response(JSON.stringify({ success: true, user_id: matched.id, plan }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
