@@ -90,15 +90,37 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       }
 
       const checkoutUrl = new URL('/functions/v1/create-checkout', supabaseUrl).toString();
-      const doRequest = async (accessToken: string) => fetch(checkoutUrl, {
-        method: 'POST',
-        headers: {
+      const isJwt = (value: string) => /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(value);
+      const doRequest = async (accessToken: string) => {
+        const headers: Record<string, string> = {
           Authorization: `Bearer ${accessToken}`,
-          apikey: supabaseAnon,
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ plan: planKey }),
-      });
+        };
+        if (isJwt(supabaseAnon)) {
+          headers.apikey = supabaseAnon;
+        }
+        try {
+          return await fetch(checkoutUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ plan: planKey }),
+          });
+        } catch (err: any) {
+          if (String(err?.message || '').includes('Invalid value')) {
+            // Retry without apikey header to isolate invalid header value
+            const retryHeaders: Record<string, string> = {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            };
+            return await fetch(checkoutUrl, {
+              method: 'POST',
+              headers: retryHeaders,
+              body: JSON.stringify({ plan: planKey }),
+            });
+          }
+          throw err;
+        }
+      };
 
       let resp = await doRequest(token);
       if (resp.status === 401) {
