@@ -83,7 +83,11 @@ export default function Dashboard() {
     if (!checkoutStatus || !user) return;
     if (checkoutStatus === 'success') {
       supabase.functions.invoke('check-subscription')
-        .then(() => {
+        .then(({ error }) => {
+          if (error) {
+            const details = (error as any)?.context?.body?.error;
+            throw new Error(details || error.message);
+          }
           toast.success('Payment confirmed! Your plan will update shortly.');
         })
         .catch((error) => {

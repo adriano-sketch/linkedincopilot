@@ -180,7 +180,10 @@ export default function SettingsPage() {
     setSyncingPlan(true);
     try {
       const { error } = await supabase.functions.invoke('check-subscription');
-      if (error) throw error;
+      if (error) {
+        const details = (error as any)?.context?.body?.error;
+        throw new Error(details || error.message);
+      }
       await queryClient.invalidateQueries({ queryKey: ['user_settings', user?.id] });
       toast.success('Plan synced successfully');
     } catch (err) {
