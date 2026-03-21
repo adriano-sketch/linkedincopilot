@@ -104,7 +104,7 @@ export default function Landing() {
     { q: 'Where do I get leads?', a: 'LinkedIn Copilot works with leads from any source. Export from Sales Navigator, Instantly SuperSearch, Apollo, Lusha, or build your own list. Just upload a CSV with LinkedIn profile URLs and we handle the rest \u2014 enrichment, ICP validation, and personalized messaging.' },
     { q: 'What\'s the difference between LinkedIn Copilot and other automation tools?', a: 'Most LinkedIn automation tools use simple templates with {firstName} and {companyName} placeholders. LinkedIn Copilot reads the full LinkedIn profile \u2014 about section, career history, education, skills \u2014 and generates truly personalized messages using GPT-5. It also includes AI-powered ICP validation, which filters out bad-fit leads before any outreach begins.' },
     { q: 'How long does it take to set up a campaign?', a: 'You can go from zero to personalized LinkedIn conversations in under 10 minutes. Upload a CSV with LinkedIn URLs, define your ICP criteria, set your message tone, and launch. The Chrome Extension handles everything automatically.' },
-    { q: 'What happens after the free 50 leads?', a: 'Your existing leads continue processing through the full outreach sequence. You just can\'t add new leads until you upgrade to Pro ($97/month for 1,000 leads). No data is lost.' },
+    { q: 'What happens after the free 50 outreach credits?', a: 'Your existing leads continue processing through the full outreach sequence. You just can\'t add new leads until you upgrade to Pro ($97/month for 1,000 outreach credits). No data is lost.' },
     { q: 'Can I run campaigns in other languages?', a: 'Yes. GPT-5 detects your prospect\'s language from their LinkedIn profile and writes in that language automatically. Over 30 languages are supported, including Portuguese, French, German, Spanish, and Japanese.' },
     { q: 'Can I edit the AI messages before sending?', a: 'Always. You maintain full control \u2014 you can approve, edit, regenerate, or reject any message. Nothing is ever sent without your explicit approval. You can review messages one by one or use batch approval.' },
     { q: 'How does LinkedIn Copilot compare to manual outreach?', a: 'Manual LinkedIn outreach typically allows 15-20 personalized messages per day and takes 2-3 hours. LinkedIn Copilot automates the entire sequence \u2014 profile visits, follows, connection requests, and personalized DMs \u2014 processing up to 40 leads per day with AI-written messages that reference each prospect\'s actual background.' },
@@ -117,12 +117,14 @@ export default function Landing() {
       price: '$0',
       period: '/mo',
       subtitle: '',
-      leads: '50 leads total',
-      campaigns: '1 campaign',
+      leads: '50 outreach credits',
+      campaigns: 'Process up to 150 leads',
+      campaignsAlt: '1 campaign',
       features: [
         'AI-powered personalized DMs',
-        'CSV import',
-        'Lead enrichment included',
+        'CSV import (up to 150 leads)',
+        'Smart filtering: ghost detection + ICP validation',
+        'Only outreach-ready leads count as credits',
         'Chrome extension included',
         'Full automation sequence',
         'Manual DM approval only',
@@ -136,12 +138,14 @@ export default function Landing() {
       price: '$97',
       period: '/mo',
       subtitle: 'per LinkedIn account',
-      leads: '1,000 leads/month',
-      campaigns: 'Unlimited campaigns',
+      leads: '1,000 outreach credits/month',
+      campaigns: 'Process up to 3,000 leads',
+      campaignsAlt: 'Unlimited campaigns',
       features: [
         'AI-powered personalized DMs',
-        'Unlimited CSV imports',
-        'Lead enrichment included',
+        'Upload up to 3,000 leads/month',
+        'Smart filtering: ghost detection + ICP validation',
+        'Only outreach-ready leads count as credits',
         'Chrome extension with smart limits',
         'Batch DM approval',
         'Auto-capture LinkedIn profiles',
@@ -153,11 +157,13 @@ export default function Landing() {
     },
   ];
   const pricingCompare = [
-    { feature: 'Monthly leads', free: '50 total', pro: '1,000 / mo' },
+    { feature: 'Outreach credits', free: '50 total', pro: '1,000 / mo' },
+    { feature: 'Lead processing limit', free: '150 total', pro: '3,000 / mo' },
     { feature: 'Campaigns', free: '1', pro: 'Unlimited' },
     { feature: 'CSV imports', free: 'Basic', pro: 'Unlimited' },
     { feature: 'Lead enrichment', free: 'Included', pro: 'Included' },
     { feature: 'ICP validation', free: 'Included', pro: 'Included' },
+    { feature: 'Ghost profile detection', free: 'Included', pro: 'Included' },
     { feature: 'Approval flow', free: 'Manual only', pro: 'Batch + auto-run' },
     { feature: 'Chrome extension limits', free: 'Standard', pro: 'Smart limits' },
     { feature: 'Support', free: 'Community', pro: 'Priority' },
@@ -242,7 +248,7 @@ export default function Landing() {
               className="bg-primary text-primary-foreground hover:bg-gold-light px-8 sm:px-10 py-[18px] text-sm sm:text-base font-display font-extrabold uppercase tracking-[0.12em] rounded-lg transition-all shine-effect"
               style={{ boxShadow: '0 0 30px rgba(201,162,39,0.4), 0 4px 20px rgba(0,0,0,0.4)' }}
             >
-              Start Free &mdash; 50 Leads
+              Start Free &mdash; 50 Outreach Credits
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
             <button
@@ -540,6 +546,9 @@ export default function Landing() {
                     <div className="mt-4 mb-2 space-y-1 text-left">
                       <p className="font-semibold text-sm">{plan.leads}</p>
                       <p className="text-sm text-muted-foreground">{plan.campaigns}</p>
+                      {plan.campaignsAlt && (
+                        <p className="text-sm text-muted-foreground">{plan.campaignsAlt}</p>
+                      )}
                     </div>
 
                     <ul className="space-y-3 text-sm text-left flex-1 mt-4">
@@ -570,8 +579,9 @@ export default function Landing() {
                 <h3 className="font-bold text-sm mb-2">Everything included</h3>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> AI message generation (notes, DMs, follow-ups)</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> ICP filtering before outreach</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> Smart lead filtering: ICP validation + ghost detection</li>
                   <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> Extension-based, safe automation</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> You only spend credits on qualified leads</li>
                 </ul>
               </CardContent>
             </Card>
@@ -646,16 +656,11 @@ export default function Landing() {
           <div className="max-w-3xl mx-auto mt-8">
             <Card className="bg-white/90">
               <CardContent className="p-8 text-left">
-                <h3 className="text-xl font-bold mb-3">Why 1,000 leads per month?</h3>
+                <h3 className="text-xl font-bold mb-3">Why 1,000 outreach credits?</h3>
                 <div className="space-y-3 text-sm text-muted-foreground">
-                  <p>LinkedIn limits connection requests to ~40 per day to keep accounts safe. On business days, that's roughly 880 requests per month.</p>
-                  <p>We round up to 1,000 to give you a buffer for:</p>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li>higher acceptance on days you send fewer requests,</li>
-                    <li>short holidays and weekends,</li>
-                    <li>and natural variance in your sequence timing.</li>
-                  </ul>
-                  <p>We don't sell more leads than you can safely use.</p>
+                  <p>Not every lead in your CSV is worth reaching out to. Some are ghost profiles with no real LinkedIn activity. Others don't match your ideal customer profile. Sending messages to these leads wastes your time and hurts your reply rates.</p>
+                  <p>That's why we built a smart filtering pipeline. Upload up to 3,000 leads per month — our system enriches each one, validates them against your ICP using Gemini 2.5 Pro, and automatically detects ghost profiles. Only the leads that pass every check become outreach-ready and count against your 1,000 credits.</p>
+                  <p>The result: every message you send goes to a real, qualified prospect. Higher acceptance rates, better conversations, more deals.</p>
                 </div>
               </CardContent>
             </Card>
@@ -724,11 +729,11 @@ export default function Landing() {
                 size="lg"
                 className="bg-primary text-primary-foreground hover:bg-gold-light px-8 py-6 text-sm sm:text-base font-display font-bold uppercase tracking-wider rounded-lg animate-pulse-glow shine-effect"
               >
-                Start Free &mdash; 50 Leads
+                Start Free &mdash; 50 Outreach Credits
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <p className="text-slate-500 text-xs mt-4">
-                Free plan includes GPT-5 powered DMs, Gemini 2.5 Pro ICP validation, Chrome Extension, and one full campaign. No credit card required.
+                Free plan includes GPT-5 powered DMs, Gemini 2.5 Pro ICP validation, ghost profile detection, Chrome Extension, and 50 outreach credits with smart lead filtering.
               </p>
               <p className="text-gold-light text-xs font-display font-semibold uppercase tracking-widest mt-6 text-glow">
                 Lock On Target. Deploy Precision Messages. Close Deals.
