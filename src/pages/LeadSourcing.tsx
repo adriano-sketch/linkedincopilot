@@ -82,10 +82,8 @@ export default function LeadSourcing() {
       const newLeads = csvParsed.filter(r => !existingUrls.has(r.linkedin_url));
       const dupes = csvParsed.length - newLeads.length;
 
-      if (newLeads.length > leadsRemaining) {
-        toast.error(`You only have ${leadsRemaining} credits remaining. Please reduce your import.`);
-        setCsvImporting(false);
-        return;
+      if (leadsRemaining <= 0) {
+        toast.warning('You have 0 lead credits remaining. Leads will be filtered by ICP but not counted until next cycle.');
       }
 
       if (newLeads.length > 0) {
@@ -107,7 +105,6 @@ export default function LeadSourcing() {
           .select('id, linkedin_url');
         if (error) throw error;
 
-        await supabase.functions.invoke('increment-leads-used', { body: { count: newLeads.length } });
         queryClient.invalidateQueries({ queryKey: ['user_settings'] });
 
         if (inserted && inserted.length > 0) {
@@ -295,7 +292,7 @@ export default function LeadSourcing() {
                         </tbody>
                       </table>
                     </div>
-                    <Button onClick={importCsv} disabled={csvImporting || isExhausted}>
+                    <Button onClick={importCsv} disabled={csvImporting}>
                       {csvImporting ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Importing...</> : `Import ${csvParsed.length} leads`}
                     </Button>
                   </>

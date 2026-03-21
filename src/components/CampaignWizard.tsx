@@ -212,13 +212,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
       }
 
       let usableRows = rows;
-      let trimmed = 0;
+      const trimmed = 0;
       if (leadsRemaining <= 0) {
-        toast.error('You have no leads remaining in this cycle.');
-        usableRows = [];
-      } else if (rows.length > leadsRemaining) {
-        trimmed = rows.length - leadsRemaining;
-        usableRows = rows.slice(0, leadsRemaining);
+        toast.warning('You have 0 lead credits remaining. Leads will be filtered by ICP but not counted until next cycle.');
       }
 
       setCsvParsed(usableRows);
@@ -231,15 +227,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         trimmed,
       });
 
-      if (usableRows.length === 0) {
-        toast.error('No importable leads remaining.');
-        return;
-      }
-      if (trimmed > 0) {
-        toast.warning(`Imported ${usableRows.length} leads. ${trimmed} were skipped due to plan limits.`);
-      } else {
-        toast.success(`${usableRows.length} leads ready to import`);
-      }
+      toast.success(`${usableRows.length} leads ready to import`);
     };
     reader.readAsText(file);
   };
@@ -247,7 +235,6 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   const importCsv = async () => {
     if (!createdCampaignId || !user) { toast.error('Campaign not created yet'); return; }
     if (csvParsed.length === 0) { toast.error('No leads ready to import'); return; }
-    if (leadsRemaining <= 0) { toast.error('You have no leads remaining in this cycle.'); return; }
     setCsvImporting(true);
     try {
       const { data: inserted, error } = await supabase.from('campaign_leads')
@@ -267,7 +254,6 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         })))
         .select('id, linkedin_url');
       if (error) throw error;
-      await supabase.functions.invoke('increment-leads-used', { body: { count: csvParsed.length } });
       if (inserted && inserted.length > 0) {
         const now = new Date();
         const queued = inserted.map((lead, index) => ({
@@ -524,8 +510,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                     <p className="text-sm font-semibold">{csvStats.ghost}</p>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Trimmed</p>
-                    <p className="text-sm font-semibold">{csvStats.trimmed}</p>
+                    <p className="text-[10px] uppercase text-muted-foreground">Credits left</p>
+                    <p className="text-sm font-semibold">{leadsRemaining}</p>
                   </div>
                 </div>
               )}

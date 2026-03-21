@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
+import { useEffect, useRef } from 'react';
 
 export const PLAN_LIMITS = {
   free: {
@@ -47,6 +48,8 @@ export interface UserSettings {
 
 export function useUserPlan() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const syncedRef = useRef(false);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['user_settings', user?.id],
@@ -69,6 +72,18 @@ export function useUserPlan() {
   const leadsLimit = settings?.max_leads_per_cycle || limits.max_leads_per_cycle;
   const leadsRemaining = Math.max(0, leadsLimit - leadsUsed);
   const cycleResetDate = settings?.cycle_reset_date;
+
+  useEffect(() => {
+    if (!user || !settings || syncedRef.current) return;
+    if (settings.plan === 'free' || (settings.max_leads_per_cycle || 0) <= 50) {
+      syncedRef.current = true;
+      supabase.functions.invoke('check-subscription')
+        .then(() => queryClient.invalidateQueries({ queryKey: ['user_settings', user.id] }))
+        .catch(() => {
+          syncedRef.current = false;
+        });
+    }
+  }, [user, settings, queryClient]);
 
   return {
     settings,

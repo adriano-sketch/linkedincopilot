@@ -125,6 +125,17 @@ serve(async (req) => {
 
     const results = { processed: 0, icp_rejected: 0, enriched: 0, messages_generated: 0, errors: [] as string[] };
 
+    // Lead credit accounting: count only ICP-passed leads
+    const { data: settings } = await supabase
+      .from("user_settings")
+      .select("leads_used_this_cycle, max_leads_per_cycle")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const currentUsed = settings?.leads_used_this_cycle || 0;
+    const maxLeads = settings?.max_leads_per_cycle || 0;
+    let remainingCredits = maxLeads > 0 ? Math.max(0, maxLeads - currentUsed) : 0;
+    let creditsToAdd = 0;
+
     for (const lead of leads) {
       try {
         if (lead.profile_quality_status === "pending") {
@@ -168,6 +179,20 @@ serve(async (req) => {
           continue;
         }
 
+        if (remainingCredits <= 0) {
+          await supabase.from("campaign_leads")
+            .update({
+              status: "icp_rejected",
+              icp_match: false,
+              icp_match_reason: "Lead credits exhausted",
+              icp_checked_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq("id", lead.id);
+          results.icp_rejected++;
+          continue;
+        }
+
         await supabase.from("campaign_leads")
           .update({
             icp_match: true,
@@ -176,6 +201,9 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           } as any)
           .eq("id", lead.id);
+
+        remainingCredits -= 1;
+        creditsToAdd += 1;
 
         // Step 1: Enrich via Scrapin.io
         let profileData: any = null;
@@ -419,6 +447,13 @@ serve(async (req) => {
           type: "connection_notes_ready",
         }),
       }).catch(err => console.error("notify-approval-ready error:", err));
+    }
+
+    if (creditsToAdd > 0) {
+      await supabase
+        .from("user_settings")
+        .update({ leads_used_this_cycle: currentUsed + creditsToAdd })
+        .eq("user_id", user.id);
     }
 
     return new Response(JSON.stringify(results), {
