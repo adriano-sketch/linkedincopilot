@@ -42,8 +42,17 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       };
       let token = await getAccessToken();
       if (!token) throw new Error('Your session expired. Please log in again.');
+      const tokenRaw = token;
+      token = token.replace(/\s+/g, '');
+      if (tokenRaw !== token) {
+        console.warn('Access token contained whitespace; normalized for request.');
+      }
+      if (token.split('.').length !== 3) {
+        throw new Error('Session token is invalid. Please log out and log in again.');
+      }
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+      const supabaseUrlRaw = import.meta.env.VITE_SUPABASE_URL || '';
+      const supabaseUrl = supabaseUrlRaw.trim().replace(/^['"]|['"]$/g, '');
       const supabaseAnonRaw = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
       const supabaseAnon = supabaseAnonRaw.replace(/\s+/g, '');
       if (!supabaseUrl || !supabaseAnon) {
@@ -56,6 +65,12 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       }
       if (/\s/.test(supabaseAnonRaw)) {
         console.warn('Supabase anon key contains whitespace; normalized for request.');
+      }
+      if (!supabaseUrl.startsWith('https://')) {
+        throw new Error('Supabase URL must start with https://');
+      }
+      if (supabaseAnon.split('.').length !== 3) {
+        throw new Error('Supabase anon key looks invalid. Use the anon public JWT.');
       }
 
       const decodeJwt = (jwt: string) => {
@@ -74,7 +89,8 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
         throw new Error('Supabase URL/ANON do not match the session token. Check Vercel env vars.');
       }
 
-      const doRequest = async (accessToken: string) => fetch(`${supabaseUrl}/functions/v1/create-checkout`, {
+      const checkoutUrl = new URL('/functions/v1/create-checkout', supabaseUrl).toString();
+      const doRequest = async (accessToken: string) => fetch(checkoutUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
