@@ -71,7 +71,9 @@ type PromptInputs = {
   } | null;
 };
 
-export function buildMessagePrompts(inputs: PromptInputs) {
+type PromptMode = "all" | "note" | "dm_followup";
+
+export function buildMessagePrompts(inputs: PromptInputs, mode: PromptMode = "all") {
   const messageLanguage = inputs.campaign.messageLanguage || "English";
   const senderFirstName = (inputs.sender.name || "").split(" ")[0] || "Unknown";
   const leadFullName =
@@ -83,18 +85,29 @@ export function buildMessagePrompts(inputs: PromptInputs) {
   const objective = inputs.campaign.objective || "start_conversation";
   const objectiveGuide = OBJECTIVE_DESCRIPTIONS[objective] || OBJECTIVE_DESCRIPTIONS.start_conversation;
 
-  const systemPrompt = `You are a world-class LinkedIn outreach strategist in 2026. Your job is to generate 3 hyper-personalized messages for B2B LinkedIn outreach: a connection note, a first DM, and a follow-up DM.
+  const includeNote = mode === "all" || mode === "note";
+  const includeDm = mode === "all" || mode === "dm_followup";
+  const includeFollowup = mode === "all" || mode === "dm_followup";
+  const outputJson = mode === "note"
+    ? `{"connection_note": "..."}`
+    : mode === "dm_followup"
+      ? `{"custom_dm": "...", "custom_followup": "..."}`
+      : `{"connection_note": "...", "custom_dm": "...", "custom_followup": "..."}`;
 
-CRITICAL REQUIREMENTS (2026 BEST PRACTICES):
+  const systemParts = [
+    `You are a world-class LinkedIn outreach strategist in 2026. Your job is to generate ${mode === "note" ? "a single connection note" : mode === "dm_followup" ? "a first DM and a follow-up DM" : "3 hyper-personalized messages"} for B2B LinkedIn outreach.`,
+    `CRITICAL REQUIREMENTS (2026 BEST PRACTICES):
 - Use ONLY the data provided in the lead profile/enrichment. Do not invent facts or fabricate achievements.
 - Prioritize enrichment data (about/summary, experience, company details, education, skills). If it is missing, fall back to title/company/industry.
 - The messages must feel written by a real person who actually read the profile.
 - Avoid 2024-era clichés and automation fingerprints.
 - Keep messages short, specific, and easy to reply to.
-- Return ONLY valid JSON: {"connection_note": "...", "custom_dm": "...", "custom_followup": "..."} (no markdown, no extra text).
-- Write ALL messages entirely in ${messageLanguage}. Do not mix languages.
+- Return ONLY valid JSON: ${outputJson} (no markdown, no extra text).
+- Write ALL messages entirely in ${messageLanguage}. Do not mix languages.`,
+  ];
 
-═══════════════════════════════════════════════════════
+  if (includeNote) {
+    systemParts.push(`═══════════════════════════════════════════════════════
 MESSAGE 1: CONNECTION NOTE (connection_note)
 ═══════════════════════════════════════════════════════
 Purpose: Get the connection accepted. Zero selling.
@@ -104,10 +117,12 @@ Rules:
 3) Explain WHY you want to connect (shared domain, adjacent work, or genuine curiosity).
 4) No pitch, no CTA, no links, no "I'd love to connect".
 5) Do NOT start with "Hi [Name]" (wastes characters).
-6) End naturally. No question, no push.
+6) End naturally. No question, no push.`);
+  }
 
-═══════════════════════════════════════════════════════
-MESSAGE 2: FIRST DM (custom_dm)
+  if (includeDm) {
+    systemParts.push(`═══════════════════════════════════════════════════════
+MESSAGE ${includeNote ? "2" : "1"}: FIRST DM (custom_dm)
 ═══════════════════════════════════════════════════════
 Purpose: Start a conversation aligned to campaign objective.
 Rules:
@@ -117,10 +132,12 @@ Rules:
 4) End with a low-friction question or observation.
 5) No links, no attachments, no buzzwords.
 6) Sign with sender’s FIRST NAME only.
-7) Must address at least ONE campaign pain point using the campaign angle.
+7) Must address at least ONE campaign pain point using the campaign angle.`);
+  }
 
-═══════════════════════════════════════════════════════
-MESSAGE 3: FOLLOW-UP (custom_followup)
+  if (includeFollowup) {
+    systemParts.push(`═══════════════════════════════════════════════════════
+MESSAGE ${includeNote ? "3" : "2"}: FOLLOW-UP (custom_followup)
 ═══════════════════════════════════════════════════════
 Purpose: Re-engage with a NEW angle. Zero pressure.
 Rules:
@@ -128,14 +145,16 @@ Rules:
 2) Completely different angle from DM1.
 3) NEVER say “following up”, “circling back”, “bumping”, “just checking”.
 4) No guilt, no apology.
-5) Sign with sender’s FIRST NAME only.
+5) Sign with sender’s FIRST NAME only.`);
+  }
 
-ANTI-SPAM / ANTI-AI:
+  systemParts.push(`ANTI-SPAM / ANTI-AI:
 - Avoid: “I noticed…”, “I came across…”, “I was impressed…”.
 - No emoji unless the tone is casual and it reads natural.
 - Vary sentence length. Write natural, human sentences.
-- If the message could be sent to anyone by swapping name/company, it’s too generic — rewrite.
-`;
+- If the message could be sent to anyone by swapping name/company, it’s too generic — rewrite.`);
+
+  const systemPrompt = systemParts.join("\n\n");
 
   let verticalPromptSection = "";
   if (inputs.vertical) {
@@ -151,7 +170,7 @@ Do NOT mention compliance frameworks directly; translate into business impact.
 `;
   }
 
-  const userPrompt = `Generate 3 LinkedIn messages for this lead.
+  const userPrompt = `Generate ${mode === "note" ? "a LinkedIn connection note" : mode === "dm_followup" ? "a LinkedIn DM and follow-up" : "3 LinkedIn messages"} for this lead.
 
 ══════ SENDER (WIZARD DATA) ══════
 Name: ${inputs.sender.name || "Unknown"}
@@ -204,12 +223,17 @@ Full profile text (extra context): ${truncateText(inputs.lead.fullProfileText ||
 ${objectiveGuide}
 
 ══════ OUTPUT INSTRUCTIONS ══════
-1) Return ONLY valid JSON (no markdown).
-2) connection_note <= 200 chars.
-3) custom_dm 200–300 chars (max 350).
-4) custom_followup 150–250 chars (max 280).
-5) Use DIFFERENT personalization hooks across the 3 messages.
-6) Sign DMs with just "${senderFirstName}".
+${(() => {
+    const lines: string[] = [];
+    let step = 1;
+    lines.push(`${step++}) Return ONLY valid JSON (no markdown).`);
+    if (includeNote) lines.push(`${step++}) connection_note <= 200 chars.`);
+    if (includeDm) lines.push(`${step++}) custom_dm 200–300 chars (max 350).`);
+    if (includeFollowup) lines.push(`${step++}) custom_followup 150–250 chars (max 280).`);
+    lines.push(`${step++}) ${mode === "all" ? "Use DIFFERENT personalization hooks across the 3 messages." : "Use distinct personalization hooks for each message you generate."}`);
+    if (includeDm || includeFollowup) lines.push(`${step++}) Sign DMs with just "${senderFirstName}".`);
+    return lines.join("\n");
+  })()}
 `;
 
   return {

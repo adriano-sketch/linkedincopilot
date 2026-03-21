@@ -21,7 +21,11 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL_DM")
+    const ANTHROPIC_MODEL_NOTE = Deno.env.get("ANTHROPIC_MODEL_NOTE")
+      || Deno.env.get("ANTHROPIC_MODEL_ICP")
+      || Deno.env.get("ANTHROPIC_MODEL")
+      || "claude-haiku-4-5";
+    const ANTHROPIC_MODEL_DM = Deno.env.get("ANTHROPIC_MODEL_DM")
       || Deno.env.get("ANTHROPIC_MODEL")
       || "claude-sonnet-4-6";
     if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
@@ -162,7 +166,7 @@ serve(async (req) => {
     const educationDegree = firstEducation?.degreeName || firstEducation?.degree || "N/A";
     const educationField = firstEducation?.fieldOfStudy || firstEducation?.field || "N/A";
 
-    const { systemPrompt, userPrompt } = buildMessagePrompts({
+    const promptInputs = {
       sender: {
         name: masterProfile.sender_name || "Unknown",
         title: masterProfile.sender_title || "",
@@ -202,55 +206,73 @@ serve(async (req) => {
         fullProfileText,
       },
       vertical: verticalContext,
-    });
+    };
 
+    const { systemPrompt: noteSystem, userPrompt: noteUser } = buildMessagePrompts(promptInputs, "note");
+    const { systemPrompt: dmSystem, userPrompt: dmUser } = buildMessagePrompts(promptInputs, "dm_followup");
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 800,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
+    const callAnthropic = async (model: string, system: string, user: string) => {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 800,
+          temperature: 0.7,
+          system,
+          messages: [
+            { role: "user", content: user },
+          ],
+        }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Anthropic error:", response.status, errorText);
-      throw new Error(`Anthropic API error: ${response.status}`);
-    }
-
-    const aiData = await response.json();
-    const contentBlocks = Array.isArray(aiData.content) ? aiData.content : [];
-    const content = contentBlocks
-      .filter((b: any) => b && b.type === "text")
-      .map((b: any) => b.text || "")
-      .join("")
-      .trim();
-    if (!content) throw new Error("No text in AI response");
-
-    let jsonStr = content.trim();
-    if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-    }
-    if (!jsonStr.startsWith("{")) {
-      const start = jsonStr.indexOf("{");
-      const end = jsonStr.lastIndexOf("}");
-      if (start !== -1 && end !== -1) {
-        jsonStr = jsonStr.slice(start, end + 1);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Anthropic error:", response.status, errorText);
+        throw new Error(`Anthropic API error: ${response.status}`);
       }
+
+      const aiData = await response.json();
+      const contentBlocks = Array.isArray(aiData.content) ? aiData.content : [];
+      const content = contentBlocks
+        .filter((b: any) => b && b.type === "text")
+        .map((b: any) => b.text || "")
+        .join("")
+        .trim();
+      if (!content) throw new Error("No text in AI response");
+
+      let jsonStr = content.trim();
+      if (jsonStr.startsWith("```")) {
+        jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      }
+      if (!jsonStr.startsWith("{")) {
+        const start = jsonStr.indexOf("{");
+        const end = jsonStr.lastIndexOf("}");
+        if (start !== -1 && end !== -1) {
+          jsonStr = jsonStr.slice(start, end + 1);
+        }
+      }
+      if (!jsonStr.startsWith("{")) throw new Error("No JSON in AI response");
+      return JSON.parse(jsonStr);
+    };
+
+    const noteArgs = await callAnthropic(ANTHROPIC_MODEL_NOTE, noteSystem, noteUser);
+    const dmArgs = await callAnthropic(ANTHROPIC_MODEL_DM, dmSystem, dmUser);
+
+    const args = {
+      connection_note: noteArgs.connection_note,
+      custom_dm: dmArgs.custom_dm,
+      custom_followup: dmArgs.custom_followup,
+      personalization_hook: dmArgs.personalization_hook || noteArgs.personalization_hook,
+      reasoning: dmArgs.reasoning || noteArgs.reasoning,
+    };
+    if (!args.connection_note || !args.custom_dm || !args.custom_followup) {
+      throw new Error("AI response missing required fields");
     }
-    if (!jsonStr.startsWith("{")) throw new Error("No JSON in AI response");
-    const args = JSON.parse(jsonStr);
 
     // Validation — log warnings but don't block
     const noteLen = (args.connection_note || "").length;
