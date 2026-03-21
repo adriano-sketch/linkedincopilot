@@ -183,8 +183,9 @@ export default function SettingsPage() {
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ['user_settings', user?.id] });
       toast.success('Plan synced successfully');
-    } catch {
-      toast.error('Failed to sync plan. Try again in a moment.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Try again in a moment.';
+      toast.error(`Failed to sync plan. ${message}`.trim());
     } finally {
       setSyncingPlan(false);
     }
