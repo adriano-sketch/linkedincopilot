@@ -112,7 +112,10 @@ serve(async (req) => {
       const priceId = subscription.items.data[0]?.price?.id;
       const productId = subscription.items.data[0]?.price?.product as string | undefined;
       const metadataPlan = (subscription.metadata?.plan || "") as string;
-      const plan = metadataPlan ? metadataPlan.toLowerCase() : resolvePlan(priceId, productId);
+      let plan = metadataPlan ? metadataPlan.toLowerCase() : resolvePlan(priceId, productId);
+      if (plan === "free") {
+        plan = "pro";
+      }
       const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
       const cycleStart = new Date(subscription.current_period_start * 1000).toISOString().slice(0, 10);
       const cycleEnd = new Date(subscription.current_period_end * 1000).toISOString().slice(0, 10);
