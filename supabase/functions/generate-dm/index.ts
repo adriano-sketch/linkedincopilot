@@ -35,6 +35,14 @@ serve(async (req) => {
 
     if (leadError || !lead) throw new Error("Campaign lead not found");
 
+    const { data: creditSettings } = await supabase
+      .from("user_settings")
+      .select("leads_used_this_cycle, max_leads_per_cycle")
+      .eq("user_id", user_id)
+      .maybeSingle();
+    const currentUsed = creditSettings?.leads_used_this_cycle || 0;
+    const maxLeads = creditSettings?.max_leads_per_cycle || 0;
+
     const leadName = lead.full_name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "Unknown";
     const leadTitle = lead.title || lead.profile_current_title || "N/A";
     const leadCompany = lead.company || lead.profile_current_company || "N/A";
@@ -110,6 +118,24 @@ serve(async (req) => {
         dm_tone: oldProfile.dm_tone || "professional_warm",
         dm_example: oldProfile.dm_example || "",
       };
+    }
+
+    if (maxLeads > 0 && currentUsed >= maxLeads) {
+      await supabase
+        .from("campaign_leads")
+        .update({
+          status: "icp_rejected",
+          icp_match: false,
+          icp_checked_at: new Date().toISOString(),
+          icp_match_reason: "Lead credits exhausted",
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq("id", campaign_lead_id);
+
+      return new Response(JSON.stringify({ error: "Lead credits exhausted" }), {
+        status: 402,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Fetch vertical context if available
@@ -258,6 +284,11 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       } as any)
       .eq("id", campaign_lead_id);
+
+    await supabase
+      .from("user_settings")
+      .update({ leads_used_this_cycle: currentUsed + 1 })
+      .eq("user_id", user_id);
 
     return new Response(JSON.stringify({
       success: true,
