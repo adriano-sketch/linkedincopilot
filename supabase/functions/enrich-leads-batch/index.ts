@@ -123,6 +123,26 @@ serve(async (req) => {
         continue;
       }
 
+      // ── Ghost blacklist check: skip known ghosts/404s without calling ScrapIn ──
+      const { data: ghostEntry } = await supabase
+        .from("ghost_profiles")
+        .select("id, reason")
+        .eq("linkedin_url", lead.linkedin_url)
+        .maybeSingle();
+
+      if (ghostEntry) {
+        console.log(`Skipping blacklisted ghost ${lead.linkedin_url}: ${ghostEntry.reason}`);
+        await supabase.from("campaign_leads").update({
+          profile_enriched_at: now,
+          updated_at: now,
+          status: "skipped",
+          error_message: `Blacklisted: ${ghostEntry.reason}`,
+          profile_quality_status: "ghost",
+        } as any).eq("id", lead.id);
+        enrichedCount++;
+        continue;
+      }
+
       // Check for existing snapshot first
       const { data: existingSnapshot } = await supabase
         .from("profile_snapshots")
@@ -165,10 +185,20 @@ serve(async (req) => {
           console.error(`Scrapin error [${res.status}] for ${lead.linkedin_url}:`, errText);
           
           if (res.status === 404) {
-            // Profile not found — mark as enriched with error to avoid loops
+            // Profile not found — save to ghost blacklist and mark as skipped
+            await supabase.from("ghost_profiles").upsert({
+              linkedin_url: lead.linkedin_url,
+              reason: "404_not_found",
+              signal_count: 0,
+              source: "enrich-leads-batch",
+              detected_at: now,
+            }, { onConflict: "linkedin_url" }).select().maybeSingle();
+
             await supabase.from("campaign_leads").update({
               profile_enriched_at: now, updated_at: now,
-              error_message: "Profile not found on LinkedIn",
+              status: "skipped",
+              error_message: "Profile not found on LinkedIn (404)",
+              profile_quality_status: "ghost",
             } as any).eq("id", lead.id);
             enrichedCount++;
           } else {
@@ -180,9 +210,19 @@ serve(async (req) => {
         const data = await res.json();
         if (!data.success || !data.person) {
           console.error("Scrapin returned no person for:", lead.linkedin_url);
+          await supabase.from("ghost_profiles").upsert({
+            linkedin_url: lead.linkedin_url,
+            reason: "no_data_returned",
+            signal_count: 0,
+            source: "enrich-leads-batch",
+            detected_at: now,
+          }, { onConflict: "linkedin_url" }).select().maybeSingle();
+
           await supabase.from("campaign_leads").update({
             profile_enriched_at: now, updated_at: now,
+            status: "skipped",
             error_message: "No profile data returned",
+            profile_quality_status: "ghost",
           } as any).eq("id", lead.id);
           enrichedCount++;
           continue;
@@ -254,6 +294,20 @@ serve(async (req) => {
           const reason = `Ghost profile (minimal data: ${!hasAbout ? 'no about' : ''}${!hasSkills ? ', no skills' : ''}${!hasEducation ? ', no education' : ''}${!hasMultiplePositions ? ', single/no position' : ''}${followerCount <= 10 ? ', few followers' : ''})`.replace('(minimal data: ,', '(minimal data: ');
 
           console.log(`Skipping ghost profile ${lead.linkedin_url}: ${reason}`);
+          await supabase.from("ghost_profiles").upsert({
+            linkedin_url: lead.linkedin_url,
+            reason: "ghost_minimal_data",
+            signal_count: signalCount,
+            source: "enrich-leads-batch",
+            detected_at: now,
+            raw_data: {
+              hasAbout, hasSkills, hasEducation, hasMultiplePositions,
+              followerCount, connectionCount,
+              headline: headline?.substring(0, 100),
+              name: fullName,
+            },
+          }, { onConflict: "linkedin_url" }).select().maybeSingle();
+
           await supabase.from("campaign_leads").update({
             profile_enriched_at: now,
             updated_at: now,
@@ -264,6 +318,7 @@ serve(async (req) => {
             first_name: firstName || null,
             last_name: lastName || null,
             full_name: fullName || null,
+            profile_quality_status: "ghost",
           } as any).eq("id", lead.id);
           enrichedCount++;
           continue;

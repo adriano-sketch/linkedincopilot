@@ -1,11 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildMessagePrompts } from "../_shared/ai-prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+// Detect if a "name" is actually a company/organization name
+function detectCompanyName(name: string): boolean {
+  if (!name) return false;
+  const companyIndicators = [
+    /\b(solutions|consulting|services|technologies|group|inc|llc|ltd|corp|agency|partners|associates|holdings|enterprises|healthcare|capital|ventures|labs|studio|media|digital|systems|network|global|international|foundation|institute)\b/i,
+    /\b(co\.|company|gmbh|s\.a\.|s\.r\.l|pvt|pty)\b/i,
+  ];
+  return companyIndicators.some(regex => regex.test(name));
+}
 
 function validateICP(lead: any, campaign: any): { pass: boolean; reasons: string[] } {
   const failures: string[] = [];
@@ -59,7 +68,10 @@ function validateICP(lead: any, campaign: any): { pass: boolean; reasons: string
   return { pass: true, reasons: [] };
 }
 
-// Prompt building lives in _shared/ai-prompts.ts
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength).trim() + "...";
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -68,8 +80,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const SCRAPIN_API_KEY = Deno.env.get("SCRAPIN_API_KEY");
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") || "claude-3-5-sonnet-20240620";
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     const authHeader = req.headers.get("authorization");
     if (!authHeader) throw new Error("Missing authorization header");
@@ -94,17 +105,6 @@ serve(async (req) => {
 
     if (!campaign) throw new Error("Campaign not found");
 
-    // Fetch vertical context if available (for better personalization)
-    let verticalContext: any = null;
-    if (campaign.vertical_id) {
-      const { data: vertical } = await supabase
-        .from("verticals")
-        .select("name, primary_compliance, fear_trigger, default_pain_points")
-        .eq("id", campaign.vertical_id)
-        .single();
-      verticalContext = vertical;
-    }
-
     // Get sender profile
     const { data: profile } = await supabase
       .from("profiles")
@@ -124,17 +124,7 @@ serve(async (req) => {
     if (!leads || leads.length === 0) throw new Error("No leads found");
 
     const results = { processed: 0, icp_rejected: 0, enriched: 0, messages_generated: 0, errors: [] as string[] };
-
-    // Lead credit accounting: count only ICP-passed leads
-    const { data: settings } = await supabase
-      .from("user_settings")
-      .select("leads_used_this_cycle, max_leads_per_cycle")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const currentUsed = settings?.leads_used_this_cycle || 0;
-    const maxLeads = settings?.max_leads_per_cycle || 0;
-    let remainingCredits = maxLeads > 0 ? Math.max(0, maxLeads - currentUsed) : 0;
-    let creditsToAdd = 0;
+    let refundCount = 0;
 
     for (const lead of leads) {
       try {
@@ -148,11 +138,37 @@ serve(async (req) => {
               status: "skipped",
               profile_enriched_at: new Date().toISOString(),
               error_message: "Ghost profile (LinkedIn)",
+              profile_quality_status: "ghost",
               updated_at: new Date().toISOString(),
             } as any)
             .eq("id", lead.id);
+          refundCount += 1;
           results.processed++;
           continue;
+        }
+
+        // ── Ghost blacklist check: skip known ghosts without calling ScrapIn ──
+        if (lead.linkedin_url) {
+          const { data: ghostEntry } = await supabase
+            .from("ghost_profiles")
+            .select("id, reason")
+            .eq("linkedin_url", lead.linkedin_url)
+            .maybeSingle();
+
+          if (ghostEntry) {
+            await supabase.from("campaign_leads")
+              .update({
+                status: "skipped",
+                profile_enriched_at: new Date().toISOString(),
+                error_message: `Blacklisted: ${ghostEntry.reason}`,
+                profile_quality_status: "ghost",
+                updated_at: new Date().toISOString(),
+              } as any)
+              .eq("id", lead.id);
+            refundCount += 1;
+            results.processed++;
+            continue;
+          }
         }
 
         // Step 0: ICP Validation
@@ -179,20 +195,6 @@ serve(async (req) => {
           continue;
         }
 
-        if (remainingCredits <= 0) {
-          await supabase.from("campaign_leads")
-            .update({
-              status: "icp_rejected",
-              icp_match: false,
-              icp_match_reason: "Lead credits exhausted",
-              icp_checked_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            } as any)
-            .eq("id", lead.id);
-          results.icp_rejected++;
-          continue;
-        }
-
         await supabase.from("campaign_leads")
           .update({
             icp_match: true,
@@ -202,11 +204,9 @@ serve(async (req) => {
           } as any)
           .eq("id", lead.id);
 
-        remainingCredits -= 1;
-        creditsToAdd += 1;
-
         // Step 1: Enrich via Scrapin.io
         let profileData: any = null;
+        let scrapinFailureReason: string | null = null;
         if (SCRAPIN_API_KEY && lead.linkedin_url) {
           try {
             const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(lead.linkedin_url)}`;
@@ -221,9 +221,11 @@ serve(async (req) => {
               }
             } else {
               await scrapinResponse.text();
+              scrapinFailureReason = scrapinResponse.status === 404 ? "404_not_found" : "scrapin_no_data";
             }
           } catch (e) {
             console.error(`Scrapin enrichment failed for ${lead.id}:`, e);
+            scrapinFailureReason = "scrapin_no_data";
           }
         }
 
@@ -260,9 +262,74 @@ serve(async (req) => {
             enrichUpdate.last_name = profileData.lastName || null;
           }
 
+          // ── Ghost detection: minimal LinkedIn presence ──
+          const about = profileData.summary || profileData.about || "";
+          const hasAbout = about.trim().length > 20;
+          const hasSkills = Array.isArray(skills) && skills.length >= 2;
+          const hasEducation = Array.isArray(educations) && educations.length > 0;
+          const hasMultiplePositions = Array.isArray(positions) && positions.length > 1;
+          const followerCount = profileData.followersCount || profileData.followerCount || 0;
+          const connectionCount = profileData.connectionsCount || profileData.connectionCount || 0;
+
+          const signalCount = [hasAbout, hasSkills, hasEducation, hasMultiplePositions, followerCount > 10, connectionCount > 50].filter(Boolean).length;
+
+          if (signalCount <= 1) {
+            const ghostReason = `Ghost profile (signals: ${signalCount}/6)`;
+
+            await supabase.from("ghost_profiles").upsert({
+              linkedin_url: lead.linkedin_url,
+              reason: "ghost_minimal_data",
+              signal_count: signalCount,
+              source: "process-new-lead",
+              detected_at: new Date().toISOString(),
+              raw_data: {
+                hasAbout, hasSkills, hasEducation, hasMultiplePositions,
+                followerCount, connectionCount,
+                headline: (profileData.headline || "").substring(0, 100),
+                name: fullName,
+              },
+            }, { onConflict: "linkedin_url" }).select().maybeSingle();
+
+            await supabase.from("campaign_leads").update({
+              status: "skipped",
+              profile_enriched_at: new Date().toISOString(),
+              error_message: ghostReason,
+              profile_quality_status: "ghost",
+              profile_headline: profileData.headline || null,
+              profile_about: about || null,
+              updated_at: new Date().toISOString(),
+            } as any).eq("id", lead.id);
+
+            refundCount += 1;
+            results.processed++;
+            continue;
+          }
+
           results.enriched++;
         } else {
-          enrichUpdate.status = "enriched"; // Continue even without enrichment
+          if (lead.linkedin_url) {
+            await supabase.from("ghost_profiles").upsert({
+              linkedin_url: lead.linkedin_url,
+              reason: scrapinFailureReason || "scrapin_no_data",
+              signal_count: 0,
+              source: "process-new-lead",
+              detected_at: new Date().toISOString(),
+            }, { onConflict: "linkedin_url" }).select().maybeSingle();
+          }
+
+          await supabase.from("campaign_leads")
+            .update({
+              status: "skipped",
+              profile_enriched_at: new Date().toISOString(),
+              error_message: "No profile data available",
+              profile_quality_status: "ghost",
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq("id", lead.id);
+
+          refundCount += 1;
+          results.processed++;
+          continue;
         }
 
         await supabase.from("campaign_leads")
@@ -270,7 +337,7 @@ serve(async (req) => {
           .eq("id", lead.id);
 
         // Step 2: Generate messages with AI
-        if (!ANTHROPIC_API_KEY) {
+        if (!LOVABLE_API_KEY) {
           await supabase.from("campaign_leads")
             .update({ status: "enriched", updated_at: new Date().toISOString() } as any)
             .eq("id", lead.id);
@@ -282,97 +349,75 @@ serve(async (req) => {
           .update({ status: "generating_messages", updated_at: new Date().toISOString() } as any)
           .eq("id", lead.id);
 
+        const senderFirstName = (profile.sender_name || "").split(" ")[0] || "Unknown";
         const fullName = lead.full_name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim();
+        const isCompanyName = detectCompanyName(fullName);
+        const leadFirstName = isCompanyName ? "" : (lead.first_name || fullName.split(" ")[0] || "Unknown");
 
-        const { systemPrompt, userPrompt } = buildMessagePrompts({
-          sender: {
-            name: profile.sender_name || "Unknown",
-            title: profile.sender_title || "",
-            company: profile.company_name || "",
-            companyDescription: profile.company_description || "",
-          },
-          campaign: {
-            name: campaign.name,
-            objective: campaign.campaign_objective || "start_conversation",
-            tone: campaign.dm_tone || "professional_warm",
-            angle: campaign.campaign_angle,
-            painPoints: Array.isArray(campaign.pain_points) ? campaign.pain_points : [],
-            valueProposition: campaign.value_proposition || profile.value_proposition || "",
-            proofPoints: campaign.proof_points || "",
-            icpDescription: campaign.icp_description || "",
-            icpTitles: Array.isArray(campaign.icp_titles) ? campaign.icp_titles : [],
-            dmExample: campaign.dm_example || "",
-            messageLanguage: campaign.message_language || "English",
-          },
-          lead: {
-            fullName: fullName,
-            firstName: lead.first_name || "",
-            lastName: lead.last_name || "",
-            title: enrichUpdate.profile_current_title || lead.title || "N/A",
-            company: enrichUpdate.profile_current_company || lead.company || "N/A",
-            headline: enrichUpdate.profile_headline || lead.profile_headline || "N/A",
-            about: enrichUpdate.profile_about || lead.profile_about || "",
-            industry: lead.industry || "N/A",
-            location: lead.location || "N/A",
-            currentTitle: enrichUpdate.profile_current_title || lead.profile_current_title || lead.title || "N/A",
-            currentCompany: enrichUpdate.profile_current_company || lead.profile_current_company || lead.company || "N/A",
-            previousTitle: enrichUpdate.profile_previous_title || lead.profile_previous_title || "N/A",
-            previousCompany: enrichUpdate.profile_previous_company || lead.profile_previous_company || "N/A",
-            educationSchool: lead.profile_education || "N/A",
-            educationDegree: "",
-            educationField: "",
-            skills: Array.isArray(enrichUpdate.profile_skills) ? enrichUpdate.profile_skills.join(", ") : (Array.isArray(lead.profile_skills) ? lead.profile_skills.join(", ") : "N/A"),
-            fullProfileText: `${enrichUpdate.profile_headline || ""} | ${enrichUpdate.profile_about || ""} | ${enrichUpdate.profile_current_title || ""} | ${enrichUpdate.profile_current_company || ""}`.trim(),
-          },
-          vertical: verticalContext,
-        });
+        const messageLanguage = campaign.message_language || 'English';
+        const systemPrompt = `You are a world-class LinkedIn outreach strategist. Generate 3 hyper-personalized messages.
+You MUST write ALL messages entirely in ${messageLanguage}. Every word must be native ${messageLanguage} — no mixing languages.
+Return ONLY valid JSON: {"connection_note": "...", "custom_dm": "...", "custom_followup": "..."}
+
+RULES:
+- connection_note: MAX 200 chars. Reference ONE specific thing from their profile. Zero selling. Don't start with "Hi [Name]".
+- custom_dm: 200-350 chars. Different hook than connection note. MUST address one of the listed pain points using the campaign angle. Use first name once (if available — skip name if it's a company). End with low-friction question. Sign with sender's first name only.
+- custom_followup: 150-280 chars. Completely different angle from DM. Never say "following up". Sign with sender's first name only.
+- ALL messages MUST be written in native ${messageLanguage}. Use natural, culturally appropriate expressions for ${messageLanguage}.
+- CRITICAL: The custom_dm must make the recipient think "this person understands MY specific challenge." Generic industry observations are NOT acceptable. If a DM example is provided, study its APPROACH (how it raises a pain point) and write something with the same strategic intent but different words.
+
+Tone: ${campaign.dm_tone || "professional_warm"}
+Objective: ${campaign.campaign_objective || "start_conversation"}`;
+
+        const userPrompt = `Generate 3 LinkedIn messages for this lead.
+
+SENDER: ${profile.sender_name || "Unknown"}, ${profile.sender_title || ""} at ${profile.company_name || ""}
+Value prop: ${campaign.value_proposition || profile.value_proposition || ""}
+Pain points (MUST address at least ONE in the DM): ${Array.isArray(campaign.pain_points) ? campaign.pain_points.join(", ") : ""}
+${campaign.campaign_angle ? `Campaign angle (CORE STRATEGY — DM must align): ${campaign.campaign_angle}` : ""}
+${campaign.dm_example ? `Example DM (study APPROACH, don't copy): ${campaign.dm_example}` : ""}
+
+LEAD:
+Name: ${fullName || "Unknown"}${isCompanyName ? " ⚠️ This is a COMPANY name, NOT a person. Do NOT use it as a personal name greeting." : ""}
+Title: ${enrichUpdate.profile_current_title || lead.title || "N/A"}
+Company: ${enrichUpdate.profile_current_company || lead.company || "N/A"}
+Headline: ${enrichUpdate.profile_headline || "N/A"}
+About: ${truncateText(enrichUpdate.profile_about || "", 600)}
+Industry: ${lead.industry || "N/A"}
+Location: ${lead.location || "N/A"}
+
+Sign messages as "${senderFirstName}".`;
 
         try {
-          const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: {
-              "x-api-key": ANTHROPIC_API_KEY,
-              "anthropic-version": "2023-06-01",
-              "content-type": "application/json",
+              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: ANTHROPIC_MODEL,
-              max_tokens: 700,
-              temperature: 0.75,
-              system: systemPrompt,
+              model: "openai/gpt-5-mini",
               messages: [
+                { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },
               ],
+              temperature: 0.75,
             }),
           });
 
           if (!aiResponse.ok) {
             const errText = await aiResponse.text();
-            throw new Error(`Anthropic API error: ${aiResponse.status} ${errText}`);
+            throw new Error(`AI API error: ${aiResponse.status} ${errText}`);
           }
 
           const aiData = await aiResponse.json();
-          const contentBlocks = Array.isArray(aiData.content) ? aiData.content : [];
-          const content = contentBlocks
-            .filter((b: any) => b && b.type === "text")
-            .map((b: any) => b.text || "")
-            .join("")
-            .trim();
+          const content = aiData.choices?.[0]?.message?.content || "";
 
           // Parse JSON from response
-          let jsonStr = content.trim();
-          if (jsonStr.startsWith("```")) {
-            jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-          }
-          if (!jsonStr.startsWith("{")) {
-            const start = jsonStr.indexOf("{");
-            const end = jsonStr.lastIndexOf("}");
-            if (start !== -1 && end !== -1) {
-              jsonStr = jsonStr.slice(start, end + 1);
-            }
-          }
-          if (!jsonStr.startsWith("{")) throw new Error("No JSON in AI response");
-          const messages = JSON.parse(jsonStr);
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error("No JSON in AI response");
+
+          const messages = JSON.parse(jsonMatch[0]);
 
           // Validate lengths
           let connectionNote = messages.connection_note || "";
@@ -449,11 +494,21 @@ serve(async (req) => {
       }).catch(err => console.error("notify-approval-ready error:", err));
     }
 
-    if (creditsToAdd > 0) {
-      await supabase
+    if (refundCount > 0) {
+      const { data: settings } = await supabase
         .from("user_settings")
-        .update({ leads_used_this_cycle: currentUsed + creditsToAdd })
-        .eq("user_id", user.id);
+        .select("leads_used_this_cycle")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const currentUsed = settings?.leads_used_this_cycle || 0;
+      const nextUsed = Math.max(0, currentUsed - refundCount);
+      if (nextUsed !== currentUsed) {
+        await supabase
+          .from("user_settings")
+          .update({ leads_used_this_cycle: nextUsed })
+          .eq("user_id", user.id);
+      }
     }
 
     return new Response(JSON.stringify(results), {
