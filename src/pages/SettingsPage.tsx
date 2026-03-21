@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
@@ -46,6 +47,7 @@ export default function SettingsPage() {
   const { plan, leadsLimit, isFree, isAgency } = useUserPlan();
   const { campaigns, templates, updateCampaign, deleteCampaign, duplicateCampaign, saveAsTemplate } = useCampaignProfiles();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [masterForm, setMasterForm] = useState({
     sender_name: '', sender_title: '', company_name: '', company_description: '',
@@ -68,6 +70,7 @@ export default function SettingsPage() {
   const [downloading, setDownloading] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [syncingPlan, setSyncingPlan] = useState(false);
 
   const handleDownloadExtension = async () => {
     setDownloading(true);
@@ -173,6 +176,20 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSyncPlan = async () => {
+    setSyncingPlan(true);
+    try {
+      const { error } = await supabase.functions.invoke('check-subscription');
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ['user_settings', user?.id] });
+      toast.success('Plan synced successfully');
+    } catch {
+      toast.error('Failed to sync plan. Try again in a moment.');
+    } finally {
+      setSyncingPlan(false);
+    }
+  };
+
   if (isLoading) return null;
 
   const SectionHeader = ({ id, icon: Icon, title }: { id: string; icon: React.ElementType; title: string }) => (
@@ -238,6 +255,9 @@ export default function SettingsPage() {
                       {billingLoading ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Loading...</> : 'Manage Billing'}
                     </Button>
                   )}
+                  <Button size="sm" variant="outline" onClick={handleSyncPlan} disabled={syncingPlan}>
+                    {syncingPlan ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Syncing...</> : 'Sync Plan'}
+                  </Button>
                 </div>
               </CardContent>
             </CollapsibleContent>
