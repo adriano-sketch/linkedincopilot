@@ -36,7 +36,9 @@ interface Campaign {
 
 async function checkLeadsWithAI(leads: Lead[], campaign: Campaign, verticalName: string | null): Promise<{ id: string; pass: boolean; reason: string }[]> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  const model = Deno.env.get("ANTHROPIC_MODEL") || "claude-3-5-sonnet-20240620";
+  const model = Deno.env.get("ANTHROPIC_MODEL_ICP")
+    || Deno.env.get("ANTHROPIC_MODEL")
+    || "claude-haiku-4-5";
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
 
   // Build lead summaries for the prompt
