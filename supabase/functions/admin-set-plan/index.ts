@@ -35,13 +35,9 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
-    const { data: user, error: userErr } = await supabase
-      .from("auth.users")
-      .select("id, email")
-      .ilike("email", email)
-      .maybeSingle();
+    const { data: user, error: userErr } = await supabase.auth.admin.getUserByEmail(email);
     if (userErr) throw userErr;
-    if (!user?.id) throw new Error("User not found");
+    if (!user?.user?.id) throw new Error("User not found");
 
     const limits = PLAN_LIMITS[plan];
     const now = new Date();
@@ -59,13 +55,15 @@ serve(async (req) => {
         cycle_start_date: cycleStart,
         cycle_reset_date: cycleReset,
       })
-      .eq("user_id", user.id);
+      .eq("user_id", user.user.id);
 
-    return new Response(JSON.stringify({ success: true, user_id: user.id, plan }), {
+    return new Response(JSON.stringify({ success: true, user_id: user.user.id, plan }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    console.error("admin-set-plan error:", e);
+    const message = e instanceof Error ? e.message : (typeof e === "string" ? e : "Unknown error");
+    return new Response(JSON.stringify({ error: message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
     });
