@@ -6,6 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function parseJwtPayload(token: string): Record<string, any> | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
 interface Lead {
   id: string;
   title?: string | null;
@@ -165,14 +177,17 @@ serve(async (req) => {
 
     let userId: string;
     const internalKey = req.headers.get("x-internal-key");
-    if (internalKey === supabaseKey && cronUserId) {
-      // Called from enrichment-cron with service role
+    const token = authHeader.replace("Bearer ", "").trim();
+    const jwtPayload = parseJwtPayload(token);
+    const isServiceRole = jwtPayload?.role === "service_role";
+    if ((internalKey === supabaseKey || isServiceRole) && cronUserId) {
+      // Called from cron or service-role
       userId = cronUserId;
-      console.log("ICP check called from cron for user:", userId);
+      console.log("ICP check called from cron/service-role for user:", userId);
     } else {
       // Called from frontend with user auth
       const supabaseUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-      const { data: { user }, error: userError } = await supabaseUser.auth.getUser(authHeader.replace("Bearer ", ""));
+      const { data: { user }, error: userError } = await supabaseUser.auth.getUser(token);
       if (userError || !user) throw new Error("Unauthorized");
       userId = user.id;
     }
