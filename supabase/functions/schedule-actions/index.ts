@@ -298,18 +298,24 @@ serve(async (req) => {
       // so we can spread scheduled_for across remaining business hours
       const userScheduleSlots = new Map<string, number>();
 
-      // ── Per-user caps: separate cap for lightweight checks vs other actions
+      // ── Per-user caps: separate caps for checks vs warm-up vs other actions
       const LIGHTWEIGHT_ACTIONS = new Set(["check_connection_status", "check_reply_status"]);
-      const MAX_PENDING_CHECKS = 40;  // Lightweight: just visiting a profile page
+      const WARMUP_ACTIONS = new Set(["visit_profile", "follow_profile"]);
+      const ALWAYS_ON_ACTIONS = new Set(["check_connection_status", "check_reply_status", "visit_profile", "follow_profile"]);
+      const MAX_PENDING_CHECKS = 40;  // Lightweight checks
+      const MAX_PENDING_WARMUP = 40;  // Warm-up actions (visit/follow)
       const MAX_PENDING_OTHER = 20;   // Heavier: sending messages, connections
 
       // Count existing pending by category
       const pendingChecksPerUser = new Map<string, number>();
+      const pendingWarmupPerUser = new Map<string, number>();
       const pendingOtherPerUser = new Map<string, number>();
       for (const a of todayActions || []) {
         if (a.status === "pending" || a.status === "in_progress") {
           if (LIGHTWEIGHT_ACTIONS.has(a.action_type)) {
             pendingChecksPerUser.set(a.user_id, (pendingChecksPerUser.get(a.user_id) || 0) + 1);
+          } else if (WARMUP_ACTIONS.has(a.action_type)) {
+            pendingWarmupPerUser.set(a.user_id, (pendingWarmupPerUser.get(a.user_id) || 0) + 1);
           } else {
             pendingOtherPerUser.set(a.user_id, (pendingOtherPerUser.get(a.user_id) || 0) + 1);
           }
@@ -327,6 +333,9 @@ serve(async (req) => {
         if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
           const userChecks = pendingChecksPerUser.get(lead.user_id) || 0;
           if (userChecks >= MAX_PENDING_CHECKS) continue;
+        } else if (WARMUP_ACTIONS.has(actionType)) {
+          const userWarmup = pendingWarmupPerUser.get(lead.user_id) || 0;
+          if (userWarmup >= MAX_PENDING_WARMUP) continue;
         } else {
           const userOther = pendingOtherPerUser.get(lead.user_id) || 0;
           if (userOther >= MAX_PENDING_OTHER) continue;
@@ -448,14 +457,16 @@ serve(async (req) => {
         const slotIndex = userScheduleSlots.get(slotKey) || 0;
         userScheduleSlots.set(slotKey, slotIndex + 1);
 
-        // Lightweight/passive checks run 24/7 (no business-hour restriction)
+        // Warm-up + lightweight checks run 24/7 (no business-hour restriction)
         // Messaging actions are restricted to business hours
         let scheduledFor: string;
-        if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
-          // Schedule from NOW with short gaps (3-8 min), ignoring business hours
+        if (ALWAYS_ON_ACTIONS.has(actionType)) {
+          // Schedule from NOW with short gaps, ignoring business hours
           const now = new Date();
           const initialDelayMs = (2 + Math.floor(Math.random() * 3)) * 60 * 1000;
-          const perSlotGapMs = slotIndex * (3 + Math.floor(Math.random() * 5)) * 60 * 1000;
+          const gapMin = WARMUP_ACTIONS.has(actionType) ? 8 : 3;
+          const gapRange = WARMUP_ACTIONS.has(actionType) ? 8 : 5;
+          const perSlotGapMs = slotIndex * (gapMin + Math.floor(Math.random() * gapRange)) * 60 * 1000;
           const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);
           const scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
           scheduledFor = scheduled.toISOString();
@@ -482,6 +493,8 @@ serve(async (req) => {
           scheduled++;
           if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
             pendingChecksPerUser.set(lead.user_id, (pendingChecksPerUser.get(lead.user_id) || 0) + 1);
+          } else if (WARMUP_ACTIONS.has(actionType)) {
+            pendingWarmupPerUser.set(lead.user_id, (pendingWarmupPerUser.get(lead.user_id) || 0) + 1);
           } else {
             pendingOtherPerUser.set(lead.user_id, (pendingOtherPerUser.get(lead.user_id) || 0) + 1);
           }
