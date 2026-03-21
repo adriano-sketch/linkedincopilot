@@ -85,6 +85,12 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
 
       const expectedHost = new URL(supabaseUrl).host;
       const payload = token ? decodeJwt(token) : null;
+      console.info('checkout debug:', {
+        supabaseHost: expectedHost,
+        tokenPrefix: token.slice(0, 12),
+        tokenLength: token.length,
+        tokenIss: payload?.iss,
+      });
       if (payload?.iss && !String(payload.iss).includes(expectedHost)) {
         throw new Error('Supabase URL/ANON do not match the session token. Check Vercel env vars.');
       }
