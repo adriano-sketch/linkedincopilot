@@ -104,7 +104,7 @@ export default function Landing() {
     { q: 'Where do I get leads?', a: 'LinkedIn Copilot works with leads from any source. Export from Sales Navigator, Instantly SuperSearch, Apollo, Lusha, or build your own list. Just upload a CSV with LinkedIn profile URLs and we handle the rest \u2014 enrichment, ICP validation, and personalized messaging.' },
     { q: 'What\'s the difference between LinkedIn Copilot and other automation tools?', a: 'Most LinkedIn automation tools use simple templates with {firstName} and {companyName} placeholders. LinkedIn Copilot reads the full LinkedIn profile \u2014 about section, career history, education, skills \u2014 and generates truly personalized messages using GPT-5. It also includes AI-powered ICP validation, which filters out bad-fit leads before any outreach begins.' },
     { q: 'How long does it take to set up a campaign?', a: 'You can go from zero to personalized LinkedIn conversations in under 10 minutes. Upload a CSV with LinkedIn URLs, define your ICP criteria, set your message tone, and launch. The Chrome Extension handles everything automatically.' },
-    { q: 'What happens after the free 50 outreach credits?', a: 'Your existing leads continue processing through the full outreach sequence. You just can\'t add new leads until you upgrade to Pro ($97/month for 1,000 outreach credits). No data is lost.' },
+    { q: 'What happens after the free 50 outreach credits?', a: 'Your existing leads continue processing through the full outreach sequence. You just can\'t add new leads until you upgrade to Pro ($147/month for 1,000 outreach credits). No data is lost.' },
     { q: 'Can I run campaigns in other languages?', a: 'Yes. GPT-5 detects your prospect\'s language from their LinkedIn profile and writes in that language automatically. Over 30 languages are supported, including Portuguese, French, German, Spanish, and Japanese.' },
     { q: 'Can I edit the AI messages before sending?', a: 'Always. You maintain full control \u2014 you can approve, edit, regenerate, or reject any message. Nothing is ever sent without your explicit approval. You can review messages one by one or use batch approval.' },
     { q: 'How does LinkedIn Copilot compare to manual outreach?', a: 'Manual LinkedIn outreach typically allows 15-20 personalized messages per day and takes 2-3 hours. LinkedIn Copilot automates the entire sequence \u2014 profile visits, follows, connection requests, and personalized DMs \u2014 processing up to 40 leads per day with AI-written messages that reference each prospect\'s actual background.' },
@@ -135,7 +135,7 @@ export default function Landing() {
     },
     {
       name: 'Pro',
-      price: '$97',
+      price: '$147',
       period: '/mo',
       subtitle: 'per LinkedIn account',
       leads: '1,000 outreach credits/month',

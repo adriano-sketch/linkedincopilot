@@ -10,7 +10,7 @@ const PLANS = [
   {
     key: 'pro',
     name: 'Pro',
-    price: '$97',
+    price: '$147',
     period: '/mo',
     subtitle: 'per LinkedIn account',
     features: [
