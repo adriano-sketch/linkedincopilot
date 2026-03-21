@@ -28,11 +28,11 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
   const errors = leads.filter(l => !!l.error_message).length;
   const processed = enriched + errors;
   const enrichable = total - errors;
-  const qualityPending = leads.filter(l => l.profile_quality_status === 'pending').length;
-  const qualityChecked = leads.filter(l => l.profile_quality_status === 'ok' || l.profile_quality_status === 'ghost').length;
-  const qualityTotal = qualityPending + qualityChecked;
-  const qualityDone = qualityTotal === 0 ? true : qualityPending === 0;
-  const qualityPct = qualityTotal > 0 ? Math.round((qualityChecked / qualityTotal) * 100) : 100;
+  const ghostCount = leads.filter(l => l.profile_quality_status === 'ghost').length;
+  const qualityChecked = total > 0 ? total : 0;
+  const qualityTotal = total;
+  const qualityDone = true;
+  const qualityPct = total > 0 ? 100 : 0;
   const icpChecked = leads.filter(l => l.icp_checked_at).length;
   const icpMatched = leads.filter(l => l.icp_match === true).length;
   const icpRejected = leads.filter(l => l.icp_match === false).length;
@@ -76,7 +76,7 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
     nowMs - latestIcpAtMs > ICP_STALL_MS;
 
   const isStuck = enrichmentStuck || icpStuck;
-  const canActEnrichment = !retrying && !!campaignProfileId && !!onRetryEnrichment && qualityDone && (enrichmentStuck || notStarted);
+  const canActEnrichment = !retrying && !!campaignProfileId && !!onRetryEnrichment && (enrichmentStuck || notStarted);
   const canActIcp = !retrying && !!campaignProfileId && !!onRetryIcpCheck && icpStuck;
   const canAct = canActEnrichment || canActIcp;
 
@@ -101,7 +101,6 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
       campaignProfileId &&
       onRetryEnrichment &&
       !retrying &&
-      qualityDone &&
       autoStartedRef.current !== campaignProfileId
     ) {
       autoStartedRef.current = campaignProfileId;
@@ -110,7 +109,7 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [notStarted, campaignProfileId, handleRetry, qualityDone]);
+  }, [notStarted, campaignProfileId, handleRetry]);
 
   if (total === 0) return null;
 
@@ -186,24 +185,23 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
           )}
         </div>
 
-        {/* Quality Scan */}
+        {/* CSV Pre-check */}
         {qualityTotal > 0 && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-1.5">
-                {qualityDone ? (
-                  <CheckCircle2 className="w-4 h-4 text-primary" />
-                ) : (
-                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                )}
+                <CheckCircle2 className="w-4 h-4 text-primary" />
                 <UserCheck className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium">LinkedIn Quality Scan</span>
+                <span className="font-medium">CSV Pre-check (instant)</span>
               </span>
               <span className="text-xs text-muted-foreground">
                 {qualityChecked} / {qualityTotal}
               </span>
             </div>
             <Progress value={qualityPct} className="h-2" />
+            <p className="text-[11px] text-muted-foreground">
+              Ghost check runs just-in-time in the extension · {ghostCount} blocked so far.
+            </p>
           </div>
         )}
 
@@ -259,11 +257,6 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
         {retrying && (
           <p className="text-[11px] text-muted-foreground">
             Enriching profiles via our magic AI agents — processing 3 leads per batch…
-          </p>
-        )}
-        {!retrying && notStarted && !qualityDone && (
-          <p className="text-[11px] text-amber-600">
-            Waiting for LinkedIn quality scan (extension must be open).
           </p>
         )}
         {!retrying && notStarted && qualityDone && (
