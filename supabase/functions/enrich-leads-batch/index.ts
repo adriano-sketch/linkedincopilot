@@ -279,7 +279,7 @@ serve(async (req) => {
         const about = p.summary || p.about || "";
 
         // Position history
-        const positions = p.positionHistory || p.positions || [];
+        const positions = p.positions?.positionHistory || p.positionHistory || [];
         const currentPos = Array.isArray(positions) && positions.length > 0 ? positions[0] : null;
         const experienceText = (Array.isArray(positions) ? positions : [])
           .map((pos: any) => {
@@ -294,7 +294,7 @@ serve(async (req) => {
           .join("\n");
 
         // Education history
-        const educations = p.educationHistory || p.educations || [];
+        const educations = p.schools?.educationHistory || p.educationHistory || [];
         const educationText = (Array.isArray(educations) ? educations : [])
           .map((edu: any) => {
             const school = edu.schoolName || edu.school || "";
@@ -325,14 +325,14 @@ serve(async (req) => {
         const hasAbout = about.trim().length > 20;
         const hasSkills = Array.isArray(skills) && skills.length >= 2;
         const hasEducation = Array.isArray(educations) && educations.length > 0;
-        const hasMultiplePositions = Array.isArray(positions) && positions.length > 1;
+        const hasPosition = Array.isArray(positions) && positions.length >= 1;
         const followerCount = p.followersCount || p.followerCount || 0;
         const connectionCount = p.connectionsCount || p.connectionCount || 0;
 
-        const signalCount = [hasAbout, hasSkills, hasEducation, hasMultiplePositions, followerCount > 10, connectionCount > 50].filter(Boolean).length;
+        const signalCount = [hasAbout, hasSkills, hasEducation, hasPosition, followerCount > 10, connectionCount > 50].filter(Boolean).length;
 
         if (signalCount <= 1) {
-          const reason = `Ghost profile (minimal data: ${!hasAbout ? 'no about' : ''}${!hasSkills ? ', no skills' : ''}${!hasEducation ? ', no education' : ''}${!hasMultiplePositions ? ', single/no position' : ''}${followerCount <= 10 ? ', few followers' : ''})`.replace('(minimal data: ,', '(minimal data: ');
+          const reason = `Ghost profile (minimal data: ${!hasAbout ? 'no about' : ''}${!hasSkills ? ', no skills' : ''}${!hasEducation ? ', no education' : ''}${!hasPosition ? ', no position' : ''}${followerCount <= 10 ? ', few followers' : ''})`.replace('(minimal data: ,', '(minimal data: ');
 
           console.log(`Skipping ghost profile ${lead.linkedin_url}: ${reason}`);
 
@@ -343,7 +343,7 @@ serve(async (req) => {
             source: "enrich-leads-batch",
             detected_at: now,
             raw_data: {
-              hasAbout, hasSkills, hasEducation, hasMultiplePositions,
+              hasAbout, hasSkills, hasEducation, hasPosition,
               followerCount, connectionCount,
               headline: headline?.substring(0, 100),
               name: fullName,
