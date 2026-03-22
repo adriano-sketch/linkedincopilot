@@ -34,6 +34,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
   const [editingLead, setEditingLead] = useState<CampaignLead | null>(null);
   const [editField, setEditField] = useState<'connection_note' | 'dm' | 'followup'>('connection_note');
   const [editText, setEditText] = useState('');
+  const [confirmRegenerateOpen, setConfirmRegenerateOpen] = useState(false);
 
   const connApproved = stageFlags?.stage_connection_approved ?? false;
   const dmApproved = stageFlags?.stage_dm_approved ?? false;
@@ -228,7 +229,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
           <Button
             size="sm"
             variant="outline"
-            onClick={handleRegenerateAllNotes}
+            onClick={() => setConfirmRegenerateOpen(true)}
             disabled={approving}
             className="gap-1"
           >
@@ -322,6 +323,35 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
       </div>
     );
   };
+
+  const renderRegenerateConfirm = (
+    <Dialog open={confirmRegenerateOpen} onOpenChange={setConfirmRegenerateOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Regenerate all connection notes?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm text-muted-foreground">
+          <p>This will delete all current connection notes and regenerate them using the latest prompt.</p>
+          <p>Only notes in the Connection Notes stage are affected. DMs and follow-ups are unchanged.</p>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={() => setConfirmRegenerateOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={async () => {
+              setConfirmRegenerateOpen(false);
+              await handleRegenerateAllNotes();
+            }}
+            disabled={approving}
+          >
+            {approving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            Regenerate notes
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   const renderEmptyState = (isApproved: boolean, label: string) => (
     <div className="py-12 text-center text-muted-foreground">
@@ -493,6 +523,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
           </div>
         </DialogContent>
       </Dialog>
+      {renderRegenerateConfirm}
     </>
   );
 }
