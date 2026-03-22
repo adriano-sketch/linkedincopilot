@@ -1,4 +1,52 @@
 project_id = "gdwpkojugtggozyofpmw"
 
-[functions]
+[functions.action-completed]
+verify_jwt = false
+[functions.admin-set-plan]
+verify_jwt = false
+[functions.approve-dms]
+verify_jwt = false
+[functions.capture-profile-scrapin]
+verify_jwt = false
+[functions.check-subscription]
+verify_jwt = false
+[functions.create-checkout]
+verify_jwt = false
+[functions.customer-portal]
+verify_jwt = false
+[functions.enrich-leads-batch]
+verify_jwt = false
+[functions.enrichment-cron]
+verify_jwt = false
+[functions.extension-heartbeat]
+verify_jwt = false
+[functions.generate-dm]
+verify_jwt = false
+[functions.generate-dm-cron]
+verify_jwt = false
+[functions.gmail-auth-url]
+verify_jwt = false
+[functions.gmail-callback]
+verify_jwt = false
+[functions.health-check]
+verify_jwt = false
+[functions.icp-check]
+verify_jwt = false
+[functions.increment-leads-used]
+verify_jwt = false
+[functions.location-typeahead]
+verify_jwt = false
+[functions.notify-approval-ready]
+verify_jwt = false
+[functions.process-new-lead]
+verify_jwt = false
+[functions.scan-gmail]
+verify_jwt = false
+[functions.schedule-actions]
+verify_jwt = false
+[functions.snapshot]
+verify_jwt = false
+[functions.stripe-webhook]
+verify_jwt = false
+[functions.watchdog]
 verify_jwt = false
