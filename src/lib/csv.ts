@@ -67,6 +67,14 @@ export function normalizeLinkedInUrl(rawUrl: string): string | null {
   let url = rawUrl.trim();
   if (!url) return null;
   url = url.replace(/^<|>$/g, '');
+
+  // If the raw string contains a public /in/ profile, extract it first
+  const inMatch = url.match(/https?:\/\/[^\s]*linkedin\.com\/in\/[^\s?#]+/i)
+    || url.match(/linkedin\.com\/in\/[^\s?#]+/i);
+  if (inMatch && inMatch[0]) {
+    url = inMatch[0];
+  }
+
   if (url.startsWith('www.')) url = `https://${url}`;
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
 
@@ -86,13 +94,37 @@ export function normalizeLinkedInUrl(rawUrl: string): string | null {
   }
 }
 
+function pickLinkedInColumn(rawHeaders: string[]): number | null {
+  let bestIdx: number | null = null;
+  let bestScore = -1;
+  rawHeaders.forEach((h, i) => {
+    const key = h.trim().toLowerCase();
+    if (!key) return;
+    const hasLinkedin = key.includes('linkedin') || key.includes('linked in');
+    if (!hasLinkedin) return;
+    let score = 0;
+    if (hasLinkedin) score += 1;
+    if (key.includes('person') || key.includes('contact')) score += 3;
+    if (key.includes('profile')) score += 2;
+    if (key.includes('url')) score += 1;
+    if (key.includes('company')) score -= 2;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  });
+  return bestIdx;
+}
+
 export function parseLeadCsv(text: string) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) {
     return { rows: [], invalidRows: 0, duplicateRows: 0, totalRows: 0, headers: [] as string[] };
   }
 
-  const headers = parseCsvLine(lines[0]).map(normalizeHeader);
+  const rawHeaders = parseCsvLine(lines[0]);
+  const headers = rawHeaders.map(normalizeHeader);
+  const linkedinIdx = pickLinkedInColumn(rawHeaders);
   const rows: CsvRow[] = [];
   const seenUrls = new Set<string>();
   let invalidRows = 0;
@@ -104,6 +136,10 @@ export function parseLeadCsv(text: string) {
     headers.forEach((header, index) => {
       row[header] = (values[index] || '').trim();
     });
+
+    if (linkedinIdx !== null && linkedinIdx >= 0 && linkedinIdx < values.length) {
+      row.linkedin_url = (values[linkedinIdx] || '').trim();
+    }
 
     if (!row.linkedin_url) {
       invalidRows++;
