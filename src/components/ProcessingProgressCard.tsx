@@ -185,14 +185,14 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
           )}
         </div>
 
-        {/* CSV Pre-check */}
+        {/* CSV Validation */}
         {qualityTotal > 0 && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-primary" />
                 <UserCheck className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium">CSV Pre-check (instant)</span>
+                <span className="font-medium">CSV Validation (instant)</span>
               </span>
               <span className="text-xs text-muted-foreground">
                 {qualityChecked} / {qualityTotal}
@@ -200,7 +200,7 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
             </div>
             <Progress value={qualityPct} className="h-2" />
             <p className="text-[11px] text-muted-foreground">
-              Ghost check runs just-in-time in the extension · {ghostCount} blocked so far.
+              Ghost detection happens during enrichment/extension · {ghostCount} blocked so far.
             </p>
           </div>
         )}

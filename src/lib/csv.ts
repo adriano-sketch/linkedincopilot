@@ -97,7 +97,6 @@ export function parseLeadCsv(text: string) {
   const seenUrls = new Set<string>();
   let invalidRows = 0;
   let duplicateRows = 0;
-  let ghostRows = 0;
 
   for (const line of lines.slice(1)) {
     const values = parseCsvLine(line);
@@ -123,34 +122,9 @@ export function parseLeadCsv(text: string) {
     }
 
     row.linkedin_url = normalizedUrl;
-    if (isGhostCandidate(row)) {
-      ghostRows++;
-      continue;
-    }
     rows.push(row);
     seenUrls.add(normalizedUrl);
   }
 
-  return { rows, invalidRows, duplicateRows, ghostRows, totalRows: lines.length - 1, headers };
-}
-
-function isGhostCandidate(row: CsvRow): boolean {
-  const rawName = (row.full_name || `${row.first_name || ''} ${row.last_name || ''}` || '').trim();
-  const name = rawName.replace(/\s+/g, ' ').trim();
-  const title = (row.title || '').trim();
-  const company = (row.company || '').trim();
-
-  const hasTitle = title.length >= 3;
-  const hasCompany = company.length >= 2;
-  const nameLetters = name.replace(/[^a-z]/gi, '');
-  const hasNameSignal = nameLetters.length >= 3;
-  const placeholderName = /linkedin\s+member|linkedin\s+user|member\s+private|private\s+member|anonymous|unknown/i.test(name);
-  const tooShortName = name.length > 0 && name.length < 3;
-
-  // If there's no title/company, and the name looks placeholder/empty, treat as ghost.
-  if (!hasTitle && !hasCompany) {
-    if (!hasNameSignal || placeholderName || tooShortName) return true;
-  }
-
-  return false;
+  return { rows, invalidRows, duplicateRows, totalRows: lines.length - 1, headers };
 }

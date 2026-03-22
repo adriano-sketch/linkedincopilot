@@ -97,7 +97,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   // Lead import state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [csvParsed, setCsvParsed] = useState<any[]>([]);
-  const [csvStats, setCsvStats] = useState({ total: 0, valid: 0, invalid: 0, duplicate: 0, ghost: 0, trimmed: 0 });
+  const [csvStats, setCsvStats] = useState({ total: 0, valid: 0, invalid: 0, duplicate: 0, trimmed: 0 });
   const [csvImporting, setCsvImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
   const [launching, setLaunching] = useState(false);
@@ -200,7 +200,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const { rows, invalidRows, duplicateRows, ghostRows, totalRows } = parseLeadCsv(text);
+      const { rows, invalidRows, duplicateRows, totalRows } = parseLeadCsv(text);
       if (totalRows === 0) {
         toast.error('CSV is empty');
         return;
@@ -223,7 +223,6 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         valid: usableRows.length,
         invalid: invalidRows,
         duplicate: duplicateRows,
-        ghost: ghostRows,
         trimmed,
       });
 
@@ -241,7 +240,6 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
       let totalInserted = 0;
       const totalRows = csvParsed.length;
 
-      const qualityCheckedAt = new Date().toISOString();
       for (let i = 0; i < csvParsed.length; i += batchSize) {
         const batch = csvParsed.slice(i, i + batchSize);
         const payload = batch.map(r => ({
@@ -256,9 +254,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           location: r.location || null,
           source: 'csv',
           status: 'imported',
-          profile_quality_status: 'ok',
-          profile_quality_checked_at: qualityCheckedAt,
-          profile_quality_note: 'csv_precheck',
+          profile_quality_status: null,
+          profile_quality_checked_at: null,
+          profile_quality_note: null,
         }));
 
         const { data: inserted, error } = await supabase
@@ -273,7 +271,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
       }
 
       if (totalInserted > 0) {
-        toast.info('Ghosts were filtered using CSV pre-check. The extension will verify again only when it actually needs to act.', { duration: 8000 });
+        toast.info('Leads imported. Enrichment will validate profiles and skip ghosts as needed.', { duration: 8000 });
       }
       setCsvParsed([]);
       toast.success(`Imported ${totalInserted} of ${totalRows} leads — click Launch to start enrichment & outreach`);
@@ -502,7 +500,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
               )}
 
               {csvParsed.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
                     <p className="text-[10px] uppercase text-muted-foreground">Valid leads</p>
                     <p className="text-sm font-semibold">{csvStats.valid}</p>
@@ -514,10 +512,6 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                   <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
                     <p className="text-[10px] uppercase text-muted-foreground">Duplicates</p>
                     <p className="text-sm font-semibold">{csvStats.duplicate}</p>
-                  </div>
-                  <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Ghosts</p>
-                    <p className="text-sm font-semibold">{csvStats.ghost}</p>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
                     <p className="text-[10px] uppercase text-muted-foreground">Credits left</p>

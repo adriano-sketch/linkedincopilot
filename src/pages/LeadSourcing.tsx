@@ -34,7 +34,7 @@ export default function LeadSourcing() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [csvParsed, setCsvParsed] = useState<any[]>([]);
   const [csvImporting, setCsvImporting] = useState(false);
-  const [csvStats, setCsvStats] = useState<{ invalidRows: number; duplicateRows: number; ghostRows: number; totalRows: number } | null>(null);
+  const [csvStats, setCsvStats] = useState<{ invalidRows: number; duplicateRows: number; totalRows: number } | null>(null);
 
   const { leads } = useCampaignLeads(selectedCampaignId || undefined);
   const campaign = campaigns.find(c => c.id === selectedCampaignId);
@@ -46,7 +46,7 @@ export default function LeadSourcing() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const { rows, invalidRows, duplicateRows, ghostRows, totalRows, headers } = parseLeadCsv(text);
+      const { rows, invalidRows, duplicateRows, totalRows, headers } = parseLeadCsv(text);
       if (!headers.includes('linkedin_url')) {
         toast.error('CSV must include a linkedin_url column (or similar)');
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -62,9 +62,9 @@ export default function LeadSourcing() {
       }
 
       setCsvParsed(rows);
-      setCsvStats({ invalidRows, duplicateRows, ghostRows, totalRows });
-      const extra = invalidRows > 0 || duplicateRows > 0 || ghostRows > 0
-        ? ` (${invalidRows} invalid, ${duplicateRows} duplicates, ${ghostRows} ghosts skipped)`
+      setCsvStats({ invalidRows, duplicateRows, totalRows });
+      const extra = invalidRows > 0 || duplicateRows > 0
+        ? ` (${invalidRows} invalid, ${duplicateRows} duplicates)`
         : '';
       toast.success(`Parsed ${rows.length} leads from CSV${extra}`);
     };
@@ -87,7 +87,6 @@ export default function LeadSourcing() {
 
       if (newLeads.length > 0) {
         const batchSize = 200;
-        const qualityCheckedAt = new Date().toISOString();
         let totalInserted = 0;
         for (let i = 0; i < newLeads.length; i += batchSize) {
           const batch = newLeads.slice(i, i + batchSize);
@@ -103,9 +102,9 @@ export default function LeadSourcing() {
             location: r.location || null,
             source: 'csv',
             status: 'new',
-            profile_quality_status: 'ok',
-            profile_quality_checked_at: qualityCheckedAt,
-            profile_quality_note: 'csv_precheck',
+            profile_quality_status: null,
+            profile_quality_checked_at: null,
+            profile_quality_note: null,
           }));
 
           const { data: inserted, error } = await supabase
@@ -118,7 +117,7 @@ export default function LeadSourcing() {
 
         queryClient.invalidateQueries({ queryKey: ['user_settings'] });
         toast.success(`Imported ${totalInserted} of ${newLeads.length} leads. ${dupes} duplicates skipped.`);
-        toast.info('Ghosts were filtered using CSV pre-check. The extension will verify again only when it actually needs to act.', { duration: 8000 });
+        toast.info('Leads imported. Enrichment will validate profiles and skip ghosts as needed.', { duration: 8000 });
       } else {
         toast.success(`Imported 0 leads. ${dupes} duplicates skipped.`);
       }
@@ -253,7 +252,7 @@ export default function LeadSourcing() {
                 <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCsvFile} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground file:font-medium file:cursor-pointer" />
 
                 {csvStats && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                     <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
                       <p className="text-[10px] uppercase text-muted-foreground">Total rows</p>
                       <p className="text-sm font-semibold">{csvStats.totalRows}</p>
@@ -265,10 +264,6 @@ export default function LeadSourcing() {
                     <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
                       <p className="text-[10px] uppercase text-muted-foreground">Duplicates</p>
                       <p className="text-sm font-semibold">{csvStats.duplicateRows}</p>
-                    </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
-                      <p className="text-[10px] uppercase text-muted-foreground">Ghosts</p>
-                      <p className="text-sm font-semibold">{csvStats.ghostRows}</p>
                     </div>
                   </div>
                 )}
