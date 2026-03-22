@@ -272,7 +272,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding-top: 120px;
+    padding-top: 88px;
     padding-bottom: 96px;
     background-image:
       linear-gradient(
@@ -302,6 +302,19 @@
     );
     pointer-events: none;
     z-index: 1;
+  }
+
+  .hero-topgun::after {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    background: radial-gradient(circle at 20% 20%, rgba(255, 200, 120, 0.12), transparent 45%),
+                radial-gradient(circle at 80% 30%, rgba(120, 180, 255, 0.12), transparent 50%),
+                radial-gradient(circle at 50% 80%, rgba(255, 180, 80, 0.08), transparent 45%);
+    opacity: 0.6;
+    animation: hero-glow 14s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
   }
 
   .hero-topgun .animate-float,
@@ -348,10 +361,15 @@
 
   @media (max-width: 768px) {
     .hero-topgun {
-      padding-top: 104px;
+      padding-top: 80px;
       padding-bottom: 80px;
       background-position: center 18%;
     }
+  }
+
+  @keyframes hero-glow {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(2%, -2%, 0) scale(1.03); }
   }
 
   .scroll-arrow {

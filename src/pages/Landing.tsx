@@ -218,8 +218,8 @@ export default function Landing() {
             Powered by Claude Sonnet &middot; Haiku ICP Validation &middot; 30+ Languages
           </motion.div>
           <SplitFlapText
-            className="font-display uppercase tracking-tight mb-5 leading-[0.96] text-white max-w-[860px] mx-auto"
-            style={{ fontSize: 'clamp(34px, 6.2vw, 84px)', fontWeight: 900, textShadow: '0 8px 36px rgba(0,0,0,0.55)' }}
+            className="font-display uppercase tracking-tight mb-5 leading-tight text-white max-w-[900px] mx-auto"
+            style={{ fontSize: 'clamp(40px, 6.8vw, 96px)', fontWeight: 900, textShadow: '0 8px 36px rgba(0,0,0,0.55)' }}
             lines={[
               { text: 'Lock on Target.', className: 'block' },
               { text: 'Deploy Precision', className: 'text-primary block whitespace-nowrap' },
@@ -245,7 +245,7 @@ export default function Landing() {
             <Button
               onClick={handleCTA}
               size="lg"
-              className="bg-primary text-primary-foreground hover:bg-gold-light px-8 sm:px-10 py-[16px] text-sm sm:text-base font-display font-extrabold uppercase tracking-[0.1em] rounded-lg transition-all shine-effect"
+              className="bg-primary text-primary-foreground hover:bg-gold-light px-8 sm:px-10 py-[16px] text-sm sm:text-base font-display font-extrabold uppercase tracking-[0.1em] rounded-xl transition-all shine-effect shadow-hero"
               style={{ boxShadow: '0 0 30px rgba(201,162,39,0.4), 0 4px 20px rgba(0,0,0,0.4)' }}
             >
               Start Free &mdash; 50 Outreach Credits
@@ -276,13 +276,13 @@ export default function Landing() {
       </section>
 
       {/* SECTION: WHAT IS LINKEDIN AUTOMATION? (AEO) */}
-      <section className="py-16 px-4 section-cream section-textured relative">
+      <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-3xl relative z-10">
           <motion.div {...fadeUp} className="text-center">
-            <h2 className="font-display font-bold text-2xl md:text-3xl uppercase tracking-tight mb-6">
+            <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight mb-6">
               What Is <span className="text-gradient-gold">LinkedIn Automation?</span>
             </h2>
-            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+            <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
               LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks &mdash; sending connection requests, follow-ups, and personalized direct messages at scale. Unlike basic tools that rely on {'{firstName}'} templates, <strong>LinkedIn Copilot</strong> is an AI-powered B2B LinkedIn automation platform that reads each prospect's full profile (about section, career history, education, skills) and generates truly personalized messages using Claude Sonnet. Every lead is validated against your Ideal Customer Profile using Claude Haiku before any outreach begins, ensuring you only connect with qualified prospects.
             </p>
           </motion.div>
@@ -290,26 +290,26 @@ export default function Landing() {
       </section>
 
       {/* SECTION 2: HOW IT WORKS (light) */}
-      <section ref={howRef} className="py-24 px-4 section-white section-textured relative">
+      <section ref={howRef} className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-16">
             <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight">
               How It <span className="text-gradient-gold">Works</span>
             </h2>
-            <p className="text-muted-foreground mt-2 text-sm md:text-base">5 steps. 10 minutes to set up. Then it runs on autopilot.</p>
+            <p className="text-lg text-gray-600 mt-3 max-w-2xl mx-auto">5 steps. 10 minutes to set up. Then it runs on autopilot.</p>
           </motion.div>
 
           {/* Desktop: horizontal */}
           <div className="hidden md:block">
-            <div className="grid grid-cols-5 gap-6 relative">
+            <div className="grid grid-cols-5 gap-8 relative">
               <div className="absolute top-[40px] left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-primary/20 via-primary/60 to-primary/20 z-0" />
               {howSteps.map((s, i) => (
                 <motion.div key={i} {...stagger(i)} className="flex flex-col items-center text-center relative z-10">
-                  <div className="w-20 h-20 rounded-full bg-gold-bg border-2 border-primary flex items-center justify-center text-2xl font-display font-extrabold text-primary mb-4">
+                  <div className="w-20 h-20 rounded-full bg-gold-bg border-2 border-primary flex items-center justify-center text-2xl font-display font-extrabold text-primary mb-4 shadow-soft">
                     {s.num}
                   </div>
                   <h3 className="font-display font-bold text-xs uppercase tracking-wider mb-1.5">{s.title}</h3>
-                  <p className="text-xs text-muted-foreground leading-snug max-w-[150px]">{s.desc}</p>
+                  <p className="text-xs text-muted-foreground leading-snug max-w-[160px]">{s.desc}</p>
                 </motion.div>
               ))}
             </div>
@@ -338,23 +338,23 @@ export default function Landing() {
       </section>
 
       {/* SECTION 3: PAIN POINTS (light) */}
-      <section className="py-24 px-4 section-cream section-textured relative">
+      <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
               Your LinkedIn Outreach Is Broken.
             </h2>
             <p className="text-lg sm:text-xl font-display font-semibold uppercase tracking-wide text-muted-foreground">Here's Why.</p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-3 gap-8">
             {painPoints.map((p, i) => (
               <motion.div key={i} {...stagger(i)}>
-                <Card className="hover-float h-full border-border">
+                <Card className="hover-float h-full border-amber-200 bg-amber-50 rounded-2xl shadow-sm border-l-4 border-l-amber-400">
                   <CardContent className="p-6 sm:p-8 text-center">
-                    <span className="text-5xl mb-5 block">{p.emoji}</span>
+                    <span className="text-5xl mb-5 block text-amber-600">{p.emoji}</span>
                     <h3 className="font-display font-bold uppercase tracking-wide mb-3 text-base sm:text-lg">{p.title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{p.desc}</p>
+                    <p className="text-sm text-gray-600 leading-relaxed">{p.desc}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -364,20 +364,20 @@ export default function Landing() {
       </section>
 
       {/* SECTION 4: SOLUTION + FEATURES (dark) */}
-      <section ref={featuresRef} className="py-24 px-4 bg-navy relative overflow-hidden">
+      <section ref={featuresRef} className="py-20 md:py-28 px-4 bg-navy relative overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[200px] pointer-events-none" />
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-white mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-white mb-2">
               This Is How Precision Outreach <span className="text-gradient-gold text-glow">Works.</span>
             </h2>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-3 gap-8">
             {solutionFeatures.map((f, i) => (
               <motion.div key={i} {...stagger(i)}>
-                <Card className="bg-navy-light border-border/30 hover-float h-full">
-                  <CardContent className="p-6 sm:p-7">
+                <Card className="bg-navy-light border-border/30 hover-float h-full rounded-2xl shadow-sm">
+                  <CardContent className="p-6 sm:p-8">
                     <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center mb-4 border border-primary/30">
                       <f.icon className="w-5 h-5 text-primary" />
                     </div>
@@ -391,11 +391,76 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* SECTION: COMPETITOR COMPARISON */}
+      <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
+        <div className="container mx-auto max-w-5xl relative z-10">
+          <motion.div {...fadeUp} className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-3">
+              Not Another <span className="text-gradient-gold">Template Tool</span>
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Real personalization beats merge tags every time. Here’s the difference.
+            </p>
+          </motion.div>
+
+          <Card className="bg-white/95 border-border rounded-2xl shadow-sm">
+            <CardContent className="p-6 md:p-8">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/60">
+                      <th className="py-3 pr-3 font-semibold">Feature</th>
+                      <th className="py-3 px-3 font-semibold">Dripify / Expandi / Waalaxy</th>
+                      <th className="py-3 pl-3 font-semibold bg-amber-50/60 rounded-tr-xl">LinkedIn Copilot</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    <tr>
+                      <td className="py-3 pr-3 text-muted-foreground">Message Personalization</td>
+                      <td className="py-3 px-3">Template with {'{firstName}'} merge tags</td>
+                      <td className="py-3 pl-3 bg-amber-50/60">AI reads full profile, writes unique message per lead</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 pr-3 text-muted-foreground">ICP Filtering</td>
+                      <td className="py-3 px-3">Manual list building, filter by title only</td>
+                      <td className="py-3 pl-3 bg-amber-50/60">AI analyzes employer company to validate fit</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 pr-3 text-muted-foreground">Campaign Setup</td>
+                      <td className="py-3 px-3">Complex sequence builder with 10+ steps</td>
+                      <td className="py-3 pl-3 bg-amber-50/60">Simple wizard — set ICP, tone, and go</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 pr-3 text-muted-foreground">Warm-up</td>
+                      <td className="py-3 px-3">Basic or none</td>
+                      <td className="py-3 pl-3 bg-amber-50/60">3-day warm-up: visit → follow → personalized note</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 pr-3 text-muted-foreground">Message Quality</td>
+                      <td className="py-3 px-3">"Hi {'{firstName}'}, I noticed you work at {'{company}'}..."</td>
+                      <td className="py-3 pl-3 bg-amber-50/60">Mentions specific details from their profile, role, and company context</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 pr-3 text-muted-foreground">Pricing</td>
+                      <td className="py-3 px-3">$59-$99/mo for templates</td>
+                      <td className="py-3 pl-3 bg-amber-50/60">Similar price, real AI personalization included</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground mt-4">
+                We don't just automate — we make every message worth reading.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
       {/* SECTION 5: CAMPAIGN SEQUENCE (light) */}
-      <section className="py-24 px-4 section-white section-textured relative">
+      <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
               The Sequence That Gets You <span className="text-gradient-gold">Accepted.</span>
             </h2>
           </motion.div>
@@ -452,30 +517,30 @@ export default function Landing() {
             </div>
           </motion.div>
 
-          <motion.p {...fadeUp} className="text-center text-sm text-muted-foreground mt-10 max-w-lg mx-auto">
+          <motion.p {...fadeUp} className="text-center text-base text-gray-600 mt-10 max-w-lg mx-auto">
             Every action is spaced with random delays, simulating natural human behavior. Max 80 profile visits and 40 connection requests per day, well within LinkedIn's safe thresholds.
           </motion.p>
         </div>
       </section>
 
       {/* SECTION 6: SAFETY & TRUST (dark) */}
-      <section className="py-24 px-4 bg-navy relative overflow-hidden">
+      <section className="py-20 md:py-28 px-4 bg-navy relative overflow-hidden">
         <div className="absolute bottom-0 right-10 w-80 h-80 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-white mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-white mb-2">
               Your Account Is Safe. <span className="text-gradient-gold text-glow">Period.</span>
             </h2>
-            <p className="text-sm text-slate-400 mt-2 max-w-2xl mx-auto">
+            <p className="text-base text-slate-300 mt-3 max-w-2xl mx-auto">
               LinkedIn Copilot uses browser-based automation with human-like behavior patterns, strict daily limits, and automatic warm-up. Your account stays safe because we follow the same rules a careful human would.
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {trustCards.map((card, i) => (
               <motion.div key={i} {...stagger(i)}>
-                <Card className="bg-navy-light border-border/30 hover-float h-full">
-                  <CardContent className="p-4 sm:p-6 text-center">
+                <Card className="bg-navy-light border-border/30 hover-float h-full rounded-2xl shadow-sm">
+                  <CardContent className="p-5 sm:p-6 text-center">
                     <span className="text-3xl sm:text-4xl mb-3 sm:mb-4 block">{card.emoji}</span>
                     <h3 className="font-display font-bold uppercase tracking-wide mb-2 text-white text-xs sm:text-sm">{card.title}</h3>
                     <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">{card.desc}</p>
@@ -492,22 +557,22 @@ export default function Landing() {
       </section>
 
       {/* SECTION: TESTIMONIALS / SOCIAL PROOF */}
-      <section className="py-24 px-4 section-white section-textured relative">
+      <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
               What Sales Teams <span className="text-gradient-gold">Say</span>
             </h2>
-            <p className="text-muted-foreground text-sm">Real feedback from B2B professionals using LinkedIn Copilot.</p>
+            <p className="text-lg text-gray-600">Real feedback from B2B professionals using LinkedIn Copilot.</p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-3 gap-8">
             {testimonials.map((t, i) => (
               <motion.div key={i} {...stagger(i)}>
-                <Card className="hover-float h-full border-border">
+                <Card className="hover-float h-full border-border rounded-2xl shadow-sm">
                   <CardContent className="p-6 sm:p-8 flex flex-col h-full">
                     <Quote className="w-8 h-8 text-primary/30 mb-4" />
-                    <p className="text-sm text-muted-foreground leading-relaxed flex-1 italic">"{t.quote}"</p>
+                    <p className="text-sm text-gray-600 leading-relaxed flex-1 italic">"{t.quote}"</p>
                     <div className="mt-5 pt-4 border-t border-border">
                       <p className="font-display font-bold text-sm">{t.name}</p>
                       <p className="text-xs text-muted-foreground">{t.role}, {t.company}</p>
@@ -521,24 +586,24 @@ export default function Landing() {
       </section>
 
       {/* SECTION 7: PRICING (light) */}
-      <section ref={pricingRef} className="py-24 px-4 section-cream section-textured relative">
+      <section ref={pricingRef} className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl text-center relative z-10">
-          <motion.h2 {...fadeUp} className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">Pricing built for real outreach.</motion.h2>
-          <motion.p {...fadeUp} className="text-muted-foreground mb-12">Start free, validate results, then scale with confidence.</motion.p>
+          <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">Pricing built for real outreach.</motion.h2>
+          <motion.p {...fadeUp} className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">Start free, validate results, then scale with confidence.</motion.p>
 
-          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
             {pricing.map((plan, i) => (
               <motion.div key={plan.name} {...stagger(i)}>
-                <Card className={`relative hover-float h-full ${plan.highlighted ? 'border-primary border-2 shadow-gold glow-subtle ring-2 ring-primary/20 bg-white/95' : 'bg-white/80'}`}>
+                <Card className={`relative hover-float h-full rounded-2xl shadow-sm ${plan.highlighted ? 'border-2 border-amber-400 bg-amber-50/40 ring-2 ring-amber-200/40' : 'bg-white/85 border border-gray-100'}`}>
                   {plan.highlighted && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-display font-bold uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1">
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-black text-xs font-display font-bold uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1">
                       <Star className="w-3 h-3" /> Most Popular
                     </div>
                   )}
-                  <CardContent className="p-6 pt-8 flex flex-col h-full">
+                  <CardContent className="p-6 md:p-8 pt-10 flex flex-col h-full">
                     <h3 className="text-lg font-display font-bold uppercase tracking-wide">{plan.name}</h3>
                     <div className="mt-2">
-                      <span className="text-4xl font-numbers font-bold">{plan.price}</span>
+                      <span className="text-5xl font-numbers font-extrabold">{plan.price}</span>
                       <span className="text-muted-foreground text-sm">{plan.period}</span>
                     </div>
                     {plan.subtitle && <p className="text-xs text-muted-foreground mt-1">{plan.subtitle}</p>}
@@ -554,14 +619,14 @@ export default function Landing() {
                     <ul className="space-y-3 text-sm text-left flex-1 mt-4">
                       {plan.features.map((f) => (
                         <li key={f} className="flex items-start gap-2">
-                          <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                          <Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                           <span>{f}</span>
                         </li>
                       ))}
                     </ul>
                     <Button
                       onClick={handleCTA}
-                      className={`mt-6 w-full font-display font-bold uppercase tracking-wider rounded-md shine-effect ${plan.highlighted ? 'bg-primary text-primary-foreground hover:bg-gold-light' : ''}`}
+                      className={`mt-6 w-full font-display font-bold uppercase tracking-wider rounded-xl shine-effect ${plan.highlighted ? 'bg-amber-500 text-black hover:bg-amber-400' : ''}`}
                       variant={plan.highlighted ? 'default' : 'outline'}
                     >
                       {plan.cta}
@@ -573,20 +638,20 @@ export default function Landing() {
             ))}
           </div>
 
-          <div className="max-w-5xl mx-auto mt-10 grid md:grid-cols-3 gap-6 text-left">
-            <Card className="bg-white/90">
-              <CardContent className="p-6">
+          <div className="max-w-5xl mx-auto mt-10 grid md:grid-cols-3 gap-8 text-left">
+            <Card className="bg-white/90 rounded-2xl shadow-sm border border-gray-100">
+              <CardContent className="p-6 md:p-8">
                 <h3 className="font-bold text-sm mb-2">Everything included</h3>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> AI message generation (notes, DMs, follow-ups)</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> Smart lead filtering: ICP validation + ghost detection</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> Extension-based, safe automation</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> You only spend credits on qualified leads</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> AI message generation (notes, DMs, follow-ups)</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> Smart lead filtering: ICP validation + ghost detection</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> Extension-based, safe automation</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> You only spend credits on qualified leads</li>
                 </ul>
               </CardContent>
             </Card>
-            <Card className="bg-white/90">
-              <CardContent className="p-6">
+            <Card className="bg-white/90 rounded-2xl shadow-sm border border-gray-100">
+              <CardContent className="p-6 md:p-8">
                 <h3 className="font-bold text-sm mb-2">Safety limits</h3>
                 <p className="text-sm text-muted-foreground">Hard caps are enforced to keep accounts safe. New accounts ramp up automatically.</p>
                 <div className="mt-3 text-sm text-muted-foreground space-y-1">
@@ -595,8 +660,8 @@ export default function Landing() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="bg-white/90">
-              <CardContent className="p-6">
+            <Card className="bg-white/90 rounded-2xl shadow-sm border border-gray-100">
+              <CardContent className="p-6 md:p-8">
                 <h3 className="font-bold text-sm mb-2">Team-ready</h3>
                 <p className="text-sm text-muted-foreground">Run multiple campaigns, validate messages once, then switch to auto-run.</p>
                 <p className="text-xs text-muted-foreground mt-3">Custom plans available for agencies and large teams.</p>
@@ -605,8 +670,8 @@ export default function Landing() {
           </div>
 
           <div className="max-w-4xl mx-auto mt-10">
-            <Card className="bg-white/95 border-border">
-              <CardContent className="p-6">
+            <Card className="bg-white/95 border-border rounded-2xl shadow-sm">
+              <CardContent className="p-6 md:p-8">
                 <h3 className="text-lg font-bold mb-4 text-left">Plan comparison</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm border-collapse">
@@ -633,8 +698,8 @@ export default function Landing() {
           </div>
 
           <div className="max-w-3xl mx-auto mt-8">
-            <Card className="border-dashed border-2 border-border bg-white/80">
-              <CardContent className="p-6 flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
+            <Card className="border-dashed border-2 border-border bg-white/80 rounded-2xl shadow-sm">
+              <CardContent className="p-6 md:p-8 flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Zap className="w-6 h-6 text-primary" />
                 </div>
@@ -654,7 +719,7 @@ export default function Landing() {
           </div>
 
           <div className="max-w-3xl mx-auto mt-8">
-            <Card className="bg-white/90">
+            <Card className="bg-white/90 rounded-2xl shadow-sm border border-gray-100">
               <CardContent className="p-8 text-left">
                 <h3 className="text-xl font-bold mb-3">Why 1,000 outreach credits?</h3>
                 <div className="space-y-3 text-sm text-muted-foreground">
@@ -669,20 +734,24 @@ export default function Landing() {
       </section>
 
       {/* SECTION 8: FAQ (light) */}
-      <section className="py-24 px-4 section-white section-textured relative">
+      <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-2xl relative z-10">
-          <motion.h2 {...fadeUp} className="text-2xl sm:text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-center mb-4">
+          <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-center mb-4">
             Frequently Asked <span className="text-gradient-gold">Questions</span>
           </motion.h2>
-          <motion.p {...fadeUp} className="text-center text-muted-foreground text-sm mb-10">
+          <motion.p {...fadeUp} className="text-center text-lg text-gray-600 mb-10">
             Everything you need to know about LinkedIn automation and LinkedIn Copilot.
           </motion.p>
           <motion.div {...fadeUp}>
             <Accordion type="single" collapsible className="space-y-2">
               {faqs.map((faq, i) => (
-                <AccordionItem key={i} value={`faq-${i}`} className="bg-card border rounded-lg px-4 hover-lift">
-                  <AccordionTrigger className="text-sm font-medium text-left">{faq.q}</AccordionTrigger>
-                  <AccordionContent className="text-sm text-muted-foreground">{faq.a}</AccordionContent>
+                <AccordionItem
+                  key={i}
+                  value={`faq-${i}`}
+                  className="bg-white/90 border border-border/60 rounded-xl px-4 hover-lift transition-all duration-300 data-[state=open]:bg-muted/40"
+                >
+                  <AccordionTrigger className="text-base font-semibold text-left">{faq.q}</AccordionTrigger>
+                  <AccordionContent className="text-sm text-gray-600 transition-all duration-300">{faq.a}</AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>
@@ -691,16 +760,16 @@ export default function Landing() {
       </section>
 
       {/* SECTION: ABOUT / E-E-A-T */}
-      <section className="py-20 px-4 section-cream section-textured relative">
+      <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-3xl relative z-10">
           <motion.div {...fadeUp} className="text-center">
-            <h2 className="font-display font-bold text-2xl md:text-3xl uppercase tracking-tight mb-6">
+            <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight mb-6">
               Built by a <span className="text-gradient-gold">Practitioner</span>
             </h2>
-            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-4">
+            <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto mb-4">
               LinkedIn Copilot was created by a B2B sales professional who sends over 1,000 personalized LinkedIn messages every month. After testing every major LinkedIn automation tool on the market, the gaps were clear: generic templates, no ICP validation, and messages that sounded like bots.
             </p>
-            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+            <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
               So we built the tool we wanted to use ourselves &mdash; one that reads full profiles, writes messages that prove you actually looked, and only reaches out to people who match your ideal customer profile. LinkedIn Copilot is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-gold-light transition-colors font-semibold">scan<em>to</em>sell.io</a>, a B2B sales technology company focused on AI-powered outreach and lead generation.
             </p>
           </motion.div>
@@ -708,11 +777,12 @@ export default function Landing() {
       </section>
 
       {/* SECTION 9: FINAL CTA (dark) */}
-      <section className="py-20 px-4">
-        <div className="container mx-auto max-w-3xl text-center">
+      <section className="py-20 md:py-28 px-4 bg-navy relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0b1325] via-[#0a1020] to-[#060a16] opacity-90" />
+        <div className="container mx-auto max-w-4xl text-center relative z-10">
           <motion.div
             {...fadeUp}
-            className="bg-navy rounded-2xl p-8 sm:p-12 md:p-16 relative overflow-hidden"
+            className="rounded-2xl p-8 sm:p-12 md:p-16 relative overflow-hidden border border-white/10 shadow-deep"
           >
             <div className="absolute top-0 right-0 w-48 h-48 bg-primary/15 rounded-full blur-[80px] pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
@@ -721,17 +791,27 @@ export default function Landing() {
               <h2 className="text-2xl sm:text-3xl md:text-5xl font-display font-extrabold uppercase tracking-tight text-white mb-4">
                 Ready to Fly?
               </h2>
-              <p className="text-slate-400 text-sm mb-8 max-w-lg mx-auto">
+              <p className="text-slate-300 text-sm mb-8 max-w-lg mx-auto">
                 Stop sending LinkedIn messages that sound like everyone else's. Start sending ones that prove you actually looked, powered by Claude Sonnet, validated by Claude Haiku, delivered with military precision.
               </p>
-              <Button
-                onClick={handleCTA}
-                size="lg"
-                className="bg-primary text-primary-foreground hover:bg-gold-light px-8 py-6 text-sm sm:text-base font-display font-bold uppercase tracking-wider rounded-lg animate-pulse-glow shine-effect"
-              >
-                Start Free &mdash; 50 Outreach Credits
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Button
+                  onClick={handleCTA}
+                  size="lg"
+                  className="bg-amber-500 text-black hover:bg-amber-400 px-8 py-6 text-sm sm:text-base font-display font-bold uppercase tracking-wider rounded-xl shine-effect"
+                >
+                  Start Free &mdash; 50 Outreach Credits
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => scrollTo(featuresRef)}
+                  className="border-white/30 text-white hover:bg-white/10 px-8 py-6 text-sm sm:text-base font-display font-bold uppercase tracking-wider rounded-xl"
+                >
+                  See Demo
+                </Button>
+              </div>
               <p className="text-slate-500 text-xs mt-4">
                 Free plan includes Claude Sonnet powered DMs, Claude Haiku ICP validation, ghost profile detection, Chrome Extension, and 50 outreach credits with smart lead filtering.
               </p>
@@ -744,43 +824,43 @@ export default function Landing() {
       </section>
 
       {/* -- FOOTER -- */}
-      <footer className="bg-navy py-16 px-4">
+      <footer className="bg-navy py-16 px-4 border-t border-white/5">
         <div className="container mx-auto max-w-5xl">
           <div className="flex flex-col md:flex-row gap-12">
             <div className="md:w-2/5">
               <img src={logoImg} alt="LinkedIn Copilot \u2014 AI-powered B2B LinkedIn automation platform" className="h-20 w-auto mb-5" />
-              <p className="text-sm text-sidebar-foreground/70 leading-relaxed max-w-xs">LinkedIn Copilot: AI-powered LinkedIn automation built by a practitioner who sends 1,000+ personalized messages a month. Safe, profile-based B2B outreach at scale.</p>
+              <p className="text-sm text-gray-400 leading-relaxed max-w-xs">LinkedIn Copilot: AI-powered LinkedIn automation built by a practitioner who sends 1,000+ personalized messages a month. Safe, profile-based B2B outreach at scale.</p>
             </div>
             <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-8">
               <div>
                 <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-gold-light mb-4">Product</h4>
-                <ul className="space-y-2.5 text-sm text-sidebar-foreground">
-                  <li><button onClick={() => scrollTo(howRef)} className="hover:text-gold-light transition-colors">How it Works</button></li>
-                  <li><button onClick={() => scrollTo(featuresRef)} className="hover:text-gold-light transition-colors">Features</button></li>
-                  <li><button onClick={() => scrollTo(pricingRef)} className="hover:text-gold-light transition-colors">Pricing</button></li>
+                <ul className="space-y-2.5 text-sm text-gray-400">
+                  <li><button onClick={() => scrollTo(howRef)} className="hover:text-white transition-colors">How it Works</button></li>
+                  <li><button onClick={() => scrollTo(featuresRef)} className="hover:text-white transition-colors">Features</button></li>
+                  <li><button onClick={() => scrollTo(pricingRef)} className="hover:text-white transition-colors">Pricing</button></li>
                 </ul>
               </div>
               <div>
                 <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-gold-light mb-4">Resources</h4>
-                <ul className="space-y-2.5 text-sm text-sidebar-foreground">
-                  <li><Link to="/help" className="hover:text-gold-light transition-colors">Help Center</Link></li>
-                  <li><Link to="/setup-guide" className="hover:text-gold-light transition-colors">Setup Guide</Link></li>
+                <ul className="space-y-2.5 text-sm text-gray-400">
+                  <li><Link to="/help" className="hover:text-white transition-colors">Help Center</Link></li>
+                  <li><Link to="/setup-guide" className="hover:text-white transition-colors">Setup Guide</Link></li>
                 </ul>
               </div>
               <div>
                 <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-gold-light mb-4">Legal</h4>
-                <ul className="space-y-2.5 text-sm text-sidebar-foreground">
+                <ul className="space-y-2.5 text-sm text-gray-400">
                   <li><span className="cursor-default">Privacy Policy</span></li>
                   <li><span className="cursor-default">Terms of Service</span></li>
                 </ul>
               </div>
             </div>
           </div>
-          <div className="border-t border-primary mt-10 pt-6 text-center">
-            <p className="text-sm text-sidebar-foreground/50 mb-2">
+          <div className="border-t border-white/10 mt-10 pt-6 text-center">
+            <p className="text-sm text-gray-500 mb-2">
               LinkedIn Copilot is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-gold-light hover:text-primary transition-colors font-medium">scan<em>to</em>sell.io</a>
             </p>
-            <p className="text-xs text-muted-foreground">&copy; 2026 scan<em>to</em>sell.io &middot; All rights reserved.</p>
+            <p className="text-xs text-gray-500">&copy; 2026 scan<em>to</em>sell.io &middot; All rights reserved.</p>
           </div>
         </div>
       </footer>
