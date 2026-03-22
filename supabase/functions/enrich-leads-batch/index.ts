@@ -9,6 +9,28 @@ const corsHeaders = {
 
 const MAX_LEADS_PER_CALL = 3;
 
+function normalizeLinkedInUrl(rawUrl: string | null | undefined): string | null {
+  if (!rawUrl) return null;
+  let url = String(rawUrl).trim();
+  if (!url) return null;
+  url = url.replace(/^<|>$/g, "");
+  if (url.startsWith("www.")) url = `https://${url}`;
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().includes("linkedin.com")) return null;
+    parsed.protocol = "https:";
+    if (!parsed.hostname.toLowerCase().startsWith("www.")) {
+      parsed.hostname = `www.${parsed.hostname}`;
+    }
+    parsed.hash = "";
+    parsed.search = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
 function parseJwtPayload(token: string): Record<string, any> | null {
   try {
     const payload = token.split(".")[1];
@@ -134,33 +156,30 @@ serve(async (req) => {
     for (const lead of leads) {
       const now = new Date().toISOString();
 
-      // Normalize URL if missing protocol
-      let linkedinUrl = lead.linkedin_url;
-      if (linkedinUrl && !linkedinUrl.startsWith('http')) {
-        linkedinUrl = `https://www.${linkedinUrl.replace(/^www\./, '')}`;
-        await supabase.from("campaign_leads")
-          .update({ linkedin_url: linkedinUrl, updated_at: now } as any)
-          .eq("id", lead.id);
-      }
-
-      // Validate URL
-      if (!linkedinUrlPattern.test(linkedinUrl)) {
+      // Normalize URL (force https, strip params)
+      const linkedinUrl = normalizeLinkedInUrl(lead.linkedin_url);
+      if (!linkedinUrl || !linkedinUrlPattern.test(linkedinUrl)) {
         await supabase.from("campaign_leads")
           .update({ profile_enriched_at: now, updated_at: now, error_message: "Invalid LinkedIn URL" } as any)
           .eq("id", lead.id);
         enrichedCount++;
         continue;
       }
+      if (linkedinUrl !== lead.linkedin_url) {
+        await supabase.from("campaign_leads")
+          .update({ linkedin_url: linkedinUrl, updated_at: now } as any)
+          .eq("id", lead.id);
+      }
 
       // ── Ghost blacklist check: skip known ghosts (zero cost, zero processing) ──
       const { data: ghostEntry } = await supabase
         .from("ghost_profiles")
         .select("id, reason")
-        .eq("linkedin_url", lead.linkedin_url)
+        .eq("linkedin_url", linkedinUrl)
         .maybeSingle();
 
       if (ghostEntry) {
-        console.log(`Skipping blacklisted ghost ${lead.linkedin_url}: ${ghostEntry.reason}`);
+        console.log(`Skipping blacklisted ghost ${linkedinUrl}: ${ghostEntry.reason}`);
         await supabase.from("campaign_leads").update({
           profile_enriched_at: now,
           updated_at: now,
@@ -176,7 +195,7 @@ serve(async (req) => {
       const { data: existingSnapshot } = await supabase
         .from("profile_snapshots")
         .select("id, linkedin_url, headline, about, experience, raw_text")
-        .eq("linkedin_url", lead.linkedin_url)
+        .eq("linkedin_url", linkedinUrl)
         .limit(1)
         .maybeSingle();
 
@@ -216,7 +235,7 @@ serve(async (req) => {
       remainingProcessing -= 1;
 
       try {
-        const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(lead.linkedin_url)}`;
+        const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(linkedinUrl)}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 25000);
 
@@ -225,12 +244,12 @@ serve(async (req) => {
 
         if (!res.ok) {
           const errText = await res.text();
-          console.error(`Scrapin error [${res.status}] for ${lead.linkedin_url}:`, errText);
+          console.error(`Scrapin error [${res.status}] for ${linkedinUrl}:`, errText);
 
           if (res.status === 404) {
             // Profile not found — save to ghost blacklist
             await supabase.from("ghost_profiles").upsert({
-              linkedin_url: lead.linkedin_url,
+              linkedin_url: linkedinUrl,
               reason: "404_not_found",
               signal_count: 0,
               source: "enrich-leads-batch",
@@ -252,9 +271,9 @@ serve(async (req) => {
 
         const data = await res.json();
         if (!data.success || !data.person) {
-          console.error("Scrapin returned no person for:", lead.linkedin_url);
+          console.error("Scrapin returned no person for:", linkedinUrl);
           await supabase.from("ghost_profiles").upsert({
-            linkedin_url: lead.linkedin_url,
+            linkedin_url: linkedinUrl,
             reason: "no_data_returned",
             signal_count: 0,
             source: "enrich-leads-batch",
@@ -334,10 +353,10 @@ serve(async (req) => {
         if (signalCount <= 1) {
           const reason = `Ghost profile (minimal data: ${!hasAbout ? 'no about' : ''}${!hasSkills ? ', no skills' : ''}${!hasEducation ? ', no education' : ''}${!hasPosition ? ', no position' : ''}${followerCount <= 10 ? ', few followers' : ''})`.replace('(minimal data: ,', '(minimal data: ');
 
-          console.log(`Skipping ghost profile ${lead.linkedin_url}: ${reason}`);
+          console.log(`Skipping ghost profile ${linkedinUrl}: ${reason}`);
 
           await supabase.from("ghost_profiles").upsert({
-            linkedin_url: lead.linkedin_url,
+            linkedin_url: linkedinUrl,
             reason: "ghost_minimal_data",
             signal_count: signalCount,
             source: "enrich-leads-batch",
@@ -371,7 +390,7 @@ serve(async (req) => {
           .from("profile_snapshots")
           .insert({
             user_id: effectiveUserId,
-            linkedin_url: lead.linkedin_url,
+            linkedin_url: linkedinUrl,
             headline,
             about,
             experience: experienceText || null,

@@ -73,6 +73,7 @@ export function normalizeLinkedInUrl(rawUrl: string): string | null {
   try {
     const parsed = new URL(url);
     if (!parsed.hostname.toLowerCase().includes('linkedin.com')) return null;
+    parsed.protocol = 'https:';
     if (!parsed.hostname.toLowerCase().startsWith('www.')) {
       parsed.hostname = `www.${parsed.hostname}`;
     }
