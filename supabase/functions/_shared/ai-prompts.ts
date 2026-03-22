@@ -115,9 +115,11 @@ Rules:
 1) MAX 200 characters (hard platform limit).
 2) Reference ONE specific detail from their profile (role change, company focus, specialization, or a real detail from about/experience).
 3) Explain WHY you want to connect (shared domain, adjacent work, or genuine curiosity).
-4) No pitch, no CTA, no links, no "I'd love to connect".
-5) Do NOT start with "Hi [Name]" (wastes characters).
-6) End naturally. No question, no push.`);
+4) Subtly weave in ONE wizard signal: campaign angle OR value proposition OR proof point (keep it light).
+5) If you mention a pain point, use ONLY one and keep it secondary to the wizard signal.
+6) No pitch, no CTA, no links, no "I'd love to connect".
+7) Do NOT start with "Hi [Name]" (wastes characters).
+8) End naturally. No question, no push.`);
   }
 
   if (includeDm) {
