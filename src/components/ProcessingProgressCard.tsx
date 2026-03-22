@@ -234,7 +234,7 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
             Enriching profiles via our magic AI agents — processing 3 leads per batch…
           </p>
         )}
-        {!retrying && notStarted && qualityDone && (
+        {!retrying && notStarted && (
           <p className="text-[11px] text-amber-600">
             Enrichment starting automatically…
           </p>
