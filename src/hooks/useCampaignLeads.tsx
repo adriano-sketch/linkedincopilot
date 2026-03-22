@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
@@ -68,6 +68,7 @@ export interface CampaignLead {
 export function useCampaignLeads(campaignProfileId?: string | null) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const lastInvalidateRef = useRef(0);
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ['campaign_leads', user?.id, campaignProfileId],
@@ -103,8 +104,8 @@ export function useCampaignLeads(campaignProfileId?: string | null) {
       return allLeads;
     },
     enabled: !!user,
-    refetchInterval: campaignProfileId ? 10000 : 20000,
-    refetchIntervalInBackground: true,
+    refetchInterval: campaignProfileId ? false : 30000,
+    refetchIntervalInBackground: false,
   });
 
   const updateLeadStatus = useMutation({
@@ -147,6 +148,12 @@ export function useCampaignLeads(campaignProfileId?: string | null) {
   // Realtime subscription for live updates (after all hooks)
   useEffect(() => {
     if (!user) return;
+    const filterParts = [`user_id=eq.${user.id}`];
+    if (campaignProfileId) {
+      filterParts.push(`campaign_profile_id=eq.${campaignProfileId}`);
+    }
+    const filter = filterParts.join(',');
+
     const channel = supabase
       .channel('campaign-leads-realtime')
       .on(
@@ -155,9 +162,12 @@ export function useCampaignLeads(campaignProfileId?: string | null) {
           event: '*',
           schema: 'public',
           table: 'campaign_leads',
-          filter: `user_id=eq.${user.id}`,
+          filter,
         },
         () => {
+          const now = Date.now();
+          if (now - lastInvalidateRef.current < 1500) return;
+          lastInvalidateRef.current = now;
           queryClient.invalidateQueries({ queryKey: ['campaign_leads', user.id] });
         }
       )
@@ -166,7 +176,7 @@ export function useCampaignLeads(campaignProfileId?: string | null) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, queryClient]);
+  }, [user?.id, campaignProfileId, queryClient]);
 
   const pipelineCounts = {
     new: 0,
