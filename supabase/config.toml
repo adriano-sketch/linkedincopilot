@@ -1,4 +1,4 @@
 project_id = "gdwpkojugtggozyofpmw"
 
-[functions.enrich-leads-batch]
+[functions]
 verify_jwt = false
