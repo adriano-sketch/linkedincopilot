@@ -28,11 +28,6 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
   const errors = leads.filter(l => !!l.error_message).length;
   const processed = enriched + errors;
   const enrichable = total - errors;
-  const ghostCount = leads.filter(l => l.profile_quality_status === 'ghost').length;
-  const qualityChecked = total > 0 ? total : 0;
-  const qualityTotal = total;
-  const qualityDone = true;
-  const qualityPct = total > 0 ? 100 : 0;
   const icpChecked = leads.filter(l => l.icp_checked_at).length;
   const icpMatched = leads.filter(l => l.icp_match === true).length;
   const icpRejected = leads.filter(l => l.icp_match === false).length;
@@ -184,26 +179,6 @@ export default function ProcessingProgressCard({ leads, campaignProfileId, onRet
             </span>
           )}
         </div>
-
-        {/* CSV Validation */}
-        {qualityTotal > 0 && (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-primary" />
-                <UserCheck className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium">CSV Validation (instant)</span>
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {qualityChecked} / {qualityTotal}
-              </span>
-            </div>
-            <Progress value={qualityPct} className="h-2" />
-            <p className="text-[11px] text-muted-foreground">
-              Ghost detection happens during enrichment/extension · {ghostCount} blocked so far.
-            </p>
-          </div>
-        )}
 
         {/* Enrichment progress */}
         <div className="space-y-1.5">
