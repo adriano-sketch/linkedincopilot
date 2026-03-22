@@ -6,6 +6,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function normalizeLinkedInUrl(rawUrl: string | null | undefined): string | null {
+  if (!rawUrl) return null;
+  let url = String(rawUrl).trim();
+  if (!url) return null;
+  url = url.replace(/^<|>$/g, "");
+  const inMatch = url.match(/https?:\/\/[^\s]*linkedin\.com\/in\/[^\s?#]+/i)
+    || url.match(/linkedin\.com\/in\/[^\s?#]+/i);
+  if (inMatch && inMatch[0]) {
+    url = inMatch[0];
+  }
+  if (url.startsWith("www.")) url = `https://${url}`;
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().includes("linkedin.com")) return null;
+    parsed.protocol = "https:";
+    if (!parsed.hostname.toLowerCase().startsWith("www.")) {
+      parsed.hostname = `www.${parsed.hostname}`;
+    }
+    parsed.hash = "";
+    parsed.search = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
 // Detect if a "name" is actually a company/organization name
 function detectCompanyName(name: string): boolean {
   if (!name) return false;
@@ -136,6 +163,13 @@ serve(async (req) => {
 
     for (const lead of leads) {
       try {
+        const normalizedLinkedinUrl = normalizeLinkedInUrl(lead.linkedin_url);
+        if (lead.linkedin_url && normalizedLinkedinUrl && normalizedLinkedinUrl !== lead.linkedin_url) {
+          await supabase.from("campaign_leads")
+            .update({ linkedin_url: normalizedLinkedinUrl, updated_at: new Date().toISOString() } as any)
+            .eq("id", lead.id);
+        }
+
         if (lead.profile_quality_status === "pending") {
           results.errors.push(`${lead.first_name || "Unknown"}: quality scan pending`);
           continue;
@@ -155,11 +189,11 @@ serve(async (req) => {
         }
 
         // ── Ghost blacklist check: skip known ghosts without calling ScrapIn ──
-        if (lead.linkedin_url) {
+        if (normalizedLinkedinUrl) {
           const { data: ghostEntry } = await supabase
             .from("ghost_profiles")
             .select("id, reason")
-            .eq("linkedin_url", lead.linkedin_url)
+            .eq("linkedin_url", normalizedLinkedinUrl)
             .maybeSingle();
 
           if (ghostEntry) {
@@ -213,9 +247,9 @@ serve(async (req) => {
         // Step 1: Enrich via Scrapin.io
         let profileData: any = null;
         let scrapinFailureReason: string | null = null;
-        if (SCRAPIN_API_KEY && lead.linkedin_url) {
+        if (SCRAPIN_API_KEY && normalizedLinkedinUrl) {
           try {
-            const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(lead.linkedin_url)}`;
+            const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(normalizedLinkedinUrl)}`;
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 25000);
             const scrapinResponse = await fetch(scrapinUrl, { signal: controller.signal });
@@ -282,19 +316,22 @@ serve(async (req) => {
           if (signalCount <= 1) {
             const ghostReason = `Ghost profile (signals: ${signalCount}/6)`;
 
-            await supabase.from("ghost_profiles").upsert({
-              linkedin_url: lead.linkedin_url,
-              reason: "ghost_minimal_data",
-              signal_count: signalCount,
-              source: "process-new-lead",
-              detected_at: new Date().toISOString(),
-              raw_data: {
-                hasAbout, hasSkills, hasEducation, hasMultiplePositions,
-                followerCount, connectionCount,
-                headline: (profileData.headline || "").substring(0, 100),
-                name: fullName,
-              },
-            }, { onConflict: "linkedin_url" }).select().maybeSingle();
+            const ghostUrl = normalizedLinkedinUrl || lead.linkedin_url;
+            if (ghostUrl) {
+              await supabase.from("ghost_profiles").upsert({
+                linkedin_url: ghostUrl,
+                reason: "ghost_minimal_data",
+                signal_count: signalCount,
+                source: "process-new-lead",
+                detected_at: new Date().toISOString(),
+                raw_data: {
+                  hasAbout, hasSkills, hasEducation, hasMultiplePositions,
+                  followerCount, connectionCount,
+                  headline: (profileData.headline || "").substring(0, 100),
+                  name: fullName,
+                },
+              }, { onConflict: "linkedin_url" }).select().maybeSingle();
+            }
 
             await supabase.from("campaign_leads").update({
               status: "skipped",
@@ -312,9 +349,10 @@ serve(async (req) => {
 
           results.enriched++;
         } else {
-          if (lead.linkedin_url) {
+          const ghostUrl = normalizedLinkedinUrl || lead.linkedin_url;
+          if (ghostUrl) {
             await supabase.from("ghost_profiles").upsert({
-              linkedin_url: lead.linkedin_url,
+              linkedin_url: ghostUrl,
               reason: scrapinFailureReason || "scrapin_no_data",
               signal_count: 0,
               source: "process-new-lead",

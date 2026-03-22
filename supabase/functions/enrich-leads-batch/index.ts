@@ -14,6 +14,11 @@ function normalizeLinkedInUrl(rawUrl: string | null | undefined): string | null 
   let url = String(rawUrl).trim();
   if (!url) return null;
   url = url.replace(/^<|>$/g, "");
+  const inMatch = url.match(/https?:\/\/[^\s]*linkedin\.com\/in\/[^\s?#]+/i)
+    || url.match(/linkedin\.com\/in\/[^\s?#]+/i);
+  if (inMatch && inMatch[0]) {
+    url = inMatch[0];
+  }
   if (url.startsWith("www.")) url = `https://${url}`;
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
   try {
