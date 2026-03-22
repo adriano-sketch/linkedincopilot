@@ -112,6 +112,37 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
     }
   };
 
+  const handleRegenerateAllNotes = async () => {
+    if (!campaignProfileId) return;
+    setApproving(true);
+    try {
+      const notesToRegen = leads
+        .filter(l => l.connection_note && (l.status === 'pending_approval' || l.status === 'dm_ready' || l.status === 'ready_for_dm' || l.status === 'ready'))
+        .map(l => l.id);
+
+      if (notesToRegen.length === 0) {
+        toast.info('No connection notes to regenerate.');
+        return;
+      }
+
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < notesToRegen.length; i += BATCH_SIZE) {
+        const batch = notesToRegen.slice(i, i + BATCH_SIZE);
+        const { error } = await supabase.functions.invoke('approve-dms', {
+          body: { lead_ids: batch, action: 'reject' },
+        });
+        if (error) throw error;
+      }
+
+      toast.success(`Regenerating ${notesToRegen.length} connection notes...`);
+      onRefresh();
+    } catch (e) {
+      toast.error('Failed to regenerate notes: ' + (e instanceof Error ? e.message : 'Unknown'));
+    } finally {
+      setApproving(false);
+    }
+  };
+
   const handleApproveSingleDm = async (leadId: string) => {
     setActionLoading(leadId);
     try {
@@ -191,6 +222,18 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
             className="gap-1"
           >
             <Edit2 className="w-3 h-3" /> Edit Wizard
+          </Button>
+        )}
+        {stage === 'connection' && !isApproved && samples.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRegenerateAllNotes}
+            disabled={approving}
+            className="gap-1"
+          >
+            {approving ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            Regenerate all notes
           </Button>
         )}
         {!isApproved && samples.length > 0 && (
