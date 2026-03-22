@@ -1,4 +1,4 @@
-// v3 - ghost blacklist + processing limit (credit model v2)
+// v4 - fixed ScrapIn API: POST with includes param (was GET without includes, causing all profiles to return minimal data)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -92,10 +92,10 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ══════════════════════════════════════════════════════════
+    // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // PROCESSING LIMIT CHECK (Credit Model v2)
     // Processing = every ScrapIn call. Limit = 3x outreach credits.
-    // ══════════════════════════════════════════════════════════
+    // ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     const { data: settings } = await supabase
       .from("user_settings")
       .select("leads_processed_this_cycle, max_leads_per_cycle")
@@ -176,7 +176,7 @@ serve(async (req) => {
           .eq("id", lead.id);
       }
 
-      // ── Ghost blacklist check: skip known ghosts (zero cost, zero processing) ──
+      // ââ Ghost blacklist check: skip known ghosts (zero cost, zero processing) ââ
       const { data: ghostEntry } = await supabase
         .from("ghost_profiles")
         .select("id, reason")
@@ -193,7 +193,7 @@ serve(async (req) => {
           profile_quality_status: "ghost",
         } as any).eq("id", lead.id);
         enrichedCount++;
-        continue; // NO processing count — no ScrapIn call
+        continue; // NO processing count â no ScrapIn call
       }
 
       // Check for existing snapshot first (also zero ScrapIn cost)
@@ -221,10 +221,10 @@ serve(async (req) => {
           body: JSON.stringify({ campaign_lead_id: lead.id, user_id: effectiveUserId }),
         }).catch(err => console.error(`generate-dm fire-and-forget error for ${lead.id}:`, err));
 
-        continue; // NO processing count — no ScrapIn call
+        continue; // NO processing count â no ScrapIn call
       }
 
-      // ── Processing limit check before calling ScrapIn ──
+      // ââ Processing limit check before calling ScrapIn ââ
       if (maxProcessing > 0 && remainingProcessing <= 0) {
         await supabase.from("campaign_leads").update({
           updated_at: now,
@@ -235,242 +235,105 @@ serve(async (req) => {
         continue;
       }
 
-      // ── Call Scrapin.io API (costs 1 processing unit) ──
+      // ââ Call Scrapin.io API (costs 1 processing unit) ââ
       processingCountToAdd += 1;
       remainingProcessing -= 1;
 
       try {
-        const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(linkedinUrl)}`;
+        const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 25000);
 
-        const res = await fetch(scrapinUrl, { signal: controller.signal });
-        clearTimeout(timeout);
 
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`Scrapin error [${res.status}] for ${linkedinUrl}:`, errText);
+HOÛÛÛ\XÜ
 
-          if (res.status === 404) {
-            // Profile not found — save to ghost blacklist
-            await supabase.from("ghost_profiles").upsert({
-              linkedin_url: linkedinUrl,
-              reason: "404_not_found",
-              signal_count: 0,
-              source: "enrich-leads-batch",
-              detected_at: now,
-            }, { onConflict: "linkedin_url" }).select().maybeSingle();
+KL
+NÂÛÛÝ\ÈH]ØZ]]Ú
+ØÜ\[\ÂY]ÙÔÕXY\ÎÈÛÛ[U\H\XØ][ÛÚÛÛKÙNÓÓÝ[ÚYJÂ[ÙY[\[ÙY[\[ÛY\ÎÂ[ÛYPÛÛ\[NYK[ÛYTÝ[[X\NYK[ÛYTÚÚ[ÎYK[ÛYQ^\Y[ÙNYK[ÛYQYXØ][ÛYKKJKÚYÛ[ÛÛÛ\ÚYÛ[JNÂÛX\[Y[Ý]
+[Y[Ý]
+NÂY
+\\ËÚÊHÂÛÛÝ\^H]ØZ]\Ë^
 
-            await supabase.from("campaign_leads").update({
-              profile_enriched_at: now, updated_at: now,
-              status: "skipped",
-              error_message: "Profile not found on LinkedIn (404)",
-              profile_quality_status: "ghost",
-            } as any).eq("id", lead.id);
-            enrichedCount++;
-          } else {
-            errors.push(`Scrapin ${res.status} for ${lead.linkedin_url}`);
-          }
-          continue;
-        }
+NÂÛÛÛÛK\ÜØÜ\[\ÜÉÜ\ËÝ]\ßWHÜ	Û[ÙY[\N\^
+NÂY
+\ËÝ]\ÈOOH
+
 
-        const data = await res.json();
-        if (!data.success || !data.person) {
-          console.error("Scrapin returned no person for:", linkedinUrl);
-          await supabase.from("ghost_profiles").upsert({
-            linkedin_url: linkedinUrl,
-            reason: "no_data_returned",
-            signal_count: 0,
-            source: "enrich-leads-batch",
-            detected_at: now,
-          }, { onConflict: "linkedin_url" }).select().maybeSingle();
+HÂËÈÙ[HÝÝ[8 %Ø]HÈÚÜÝXÚÛ\Ý]ØZ]Ý\X\ÙKÛJÚÜÝÜÙ[\ÈK\Ù\
+Â[ÙY[Ý\[ÙY[\X\ÛÛ
+ÛÝÙÝ[ÚYÛ[ØÛÝ[ÛÝ\ÙN[XÚ[XYËX]Ú]XÝYØ]ÝËKÈÛÛÛXÝ[ÙY[Ý\JKÙ[XÝ
 
-          await supabase.from("campaign_leads").update({
-            profile_enriched_at: now, updated_at: now,
-            status: "skipped",
-            error_message: "No profile data returned",
-            profile_quality_status: "ghost",
-          } as any).eq("id", lead.id);
-          enrichedCount++;
-          continue;
-        }
+KX^XTÚ[ÛJ
+NÂ]ØZ]Ý\X\ÙKÛJØ[\ZYÛÛXYÈK\]JÂÙ[WÙ[XÚYØ]ÝË\]YØ]ÝËÝ]\ÎÚÚ\Y\ÜÛY\ÜØYÙNÙ[HÝÝ[Û[ÙY[
 
-        const p = data.person;
-        const firstName = p.firstName || "";
-        const lastName = p.lastName || "";
-        const fullName = `${firstName} ${lastName}`.trim();
-        const headline = p.headline || "";
-        const about = p.summary || p.about || "";
+
 
-        // Position history
-        const positions = p.positions?.positionHistory || p.positionHistory || [];
-        const currentPos = Array.isArray(positions) && positions.length > 0 ? positions[0] : null;
-        const experienceText = (Array.isArray(positions) ? positions : [])
-          .map((pos: any) => {
-            const title = pos.title || "";
-            const company = pos.companyName || pos.company || "";
-            const startDate = pos.startEndDate?.start?.month ? `${pos.startEndDate.start.month}/${pos.startEndDate.start.year}` : "";
-            const endDate = pos.startEndDate?.end?.month ? `${pos.startEndDate.end.month}/${pos.startEndDate.end.year}` : "Present";
-            const dateStr = startDate ? `${startDate} - ${endDate}` : "";
-            return `${title} at ${company}${dateStr ? ` (${dateStr})` : ""}`;
-          })
-          .filter((s: string) => s.trim() !== "at")
-          .join("\n");
+HÙ[WÜ]X[]WÜÝ]\ÎÚÜÝH\È[JK\JYXYY
+NÂ[XÚYÛÝ[
+ÊÎÂH[ÙHÂ\ÜË\Ú
+ØÜ\[	Ü\ËÝ]\ßHÜ	ÛXY[ÙY[Ý\X
+NÂBÛÛ[YNÂBÛÛÝ]HH]ØZ]\ËÛÛ
+NÂY
+Y]KÝXØÙ\ÜÈY]K\ÛÛHÂÛÛÛÛK\ÜØÜ\[]\YÈ\ÛÛÜ[ÙY[\
+NÂ]ØZ]Ý\X\ÙKÛJÚÜÝÜÙ[\ÈK\Ù\
+Â[ÙY[Ý\[ÙY[\X\ÛÛ×Ù]WÜ]\YÚYÛ[ØÛÝ[ÛÝ\ÙN[XÚ[XYËX]Ú]XÝYØ]ÝËKÈÛÛÛXÝ[ÙY[Ý\JKÙ[XÝ
 
-        // Education history
-        const educations = p.schools?.educationHistory || p.educationHistory || [];
-        const educationText = (Array.isArray(educations) ? educations : [])
-          .map((edu: any) => {
-            const school = edu.schoolName || edu.school || "";
-            const degree = edu.degreeName || edu.degree || "";
-            const field = edu.fieldOfStudy || "";
-            return `${degree}${field ? ` in ${field}` : ""} at ${school}`;
-          })
-          .filter((s: string) => s.trim() !== "at")
-          .join("\n");
+KX^XTÚ[ÛJ
+NÂ]ØZ]Ý\X\ÙKÛJØ[\ZYÛÛXYÈK\]JÂÙ[WÙ[XÚYØ]ÝË\]YØ]ÝËÝ]\ÎÚÚ\Y\ÜÛY\ÜØYÙNÈÙ[H]H]\YÙ[WÜ]X[]WÜÝ]\ÎÚÜÝH\È[JK\JYXYY
+NÂ[XÚYÛÝ[
+ÊÎÂÛÛ[YNÂBÛÛÝH]K\ÛÛÂÛÛÝ\Ý[YHH\Ý[YHÂÛÛÝ\Ý[YHH\Ý[YHÂÛÛÝ[[YHH	Ù\Ý[Y_H	Û\Ý[Y_X[J
+NÂÛÛÝXY[HHXY[HÂÛÛÝXÝ]HÝ[[X\HXÝ]ÂËÈÜÚ][Û\ÝÜBÛÛÝÜÚ][ÛÈHÜÚ][ÛÏËÜÚ][Û\ÝÜHÜÚ][Û\ÝÜH×NÂÛÛÝÝ\[ÜÈH\^K\Ð\^JÜÚ][ÛÊH	ÜÚ][ÛË[ÝÈÜÚ][ÛÖÌH[ÂÛÛÝ^\Y[ÙU^H
+\^K\Ð\^JÜÚ][ÛÊHÈÜÚ][ÛÈ×JBX\
 
-        // Skills
-        const skills = p.skills || [];
-        const skillsText = (Array.isArray(skills) ? skills : [])
-          .map((s: any) => typeof s === "string" ? s : (s.name || ""))
-          .filter(Boolean)
-          .join(", ");
+ÜÎ[JHOÂÛÛÝ]HHÜË]HÂÛÛÝÛÛ\[HHÜËÛÛ\[S[YHÜËÛÛ\[HÂÛÛÝÝ\]HHÜËÝ\[]OËÝ\Ë[ÛÈ	ÜÜËÝ\[]KÝ\[ÛKÉÜÜËÝ\[]KÝ\YX\XÂÛÛÝ[]HHÜËÝ\[]OË[Ë[ÛÈ	ÜÜËÝ\[]K[[ÛKÉÜÜËÝ\[]K[YX\X\Ù[ÂÛÛÝ]TÝHÝ\]HÈ	ÜÝ\]_HH	Ù[]_XÂ]\	Ý]_H]	ØÛÛ\[_IÙ]TÝÈ
+	Ù]TÝJXXÂJB[\
+ÎÝ[ÊHOË[J
+HOOH]BÚ[NÂËÈYXØ][Û\ÝÜBÛÛÝYXØ][ÛÈHØÚÛÛÏËYXØ][Û\ÝÜHYXØ][Û\ÝÜH×NÂÛÛÝYXØ][Û^H
+\^K\Ð\^JYXØ][ÛÊHÈYXØ][ÛÈ×JBX\
 
-        const rawText = [
-          headline ? `Headline: ${headline}` : "",
-          about ? `About: ${about}` : "",
-          experienceText ? `Experience:\n${experienceText}` : "",
-          educationText ? `Education:\n${educationText}` : "",
-          skillsText ? `Skills: ${skillsText}` : "",
-          p.location ? `Location: ${[p.location.city, p.location.state, p.location.country].filter(Boolean).join(", ")}` : "",
-        ].filter(Boolean).join("\n\n");
+YN[JHOÂÛÛÝØÚÛÛHYKØÚÛÛ[YHYKØÚÛÛÂÛÛÝYÜYHHYKYÜYS[YHYKYÜYHÂÛÛÝY[HYKY[ÙÝYHÂ]\	ÙYÜY_IÙY[È[	ÙY[XH]	ÜØÚÛÛXÂJB[\
+ÎÝ[ÊHOË[J
+HOOH]BÚ[NÂËÈÚÚ[ÂÛÛÝÚÚ[ÈHÚÚ[È×NÂÛÛÝÚÚ[Õ^H
+\^K\Ð\^JÚÚ[ÊHÈÚÚ[È×JBX\
 
-        // Ghost profile detection
-        const hasAbout = about.trim().length > 20;
-        const hasSkills = Array.isArray(skills) && skills.length >= 2;
-        const hasEducation = Array.isArray(educations) && educations.length > 0;
-        const hasPosition = Array.isArray(positions) && positions.length >= 1;
-        const followerCount = p.followersCount || p.followerCount || 0;
-        const connectionCount = p.connectionsCount || p.connectionCount || 0;
+Î[JHO\[ÙÈOOHÝ[ÈÈÈ
+Ë[YHJB[\ÛÛX[BÚ[NÂÛÛÝ]Õ^HÂXY[HÈXY[N	ÚXY[_XXÝ]ÈXÝ]	ØXÝ]X^\Y[ÙU^È^\Y[ÙNÙ^\Y[ÙU^XYXØ][Û^ÈYXØ][ÛÙYXØ][Û^XÚÚ[Õ^ÈÚÚ[Î	ÜÚÚ[Õ^XØØ][ÛÈØØ][Û	ÖÜØØ][ÛÚ]KØØ][ÛÝ]KØØ][ÛÛÝ[WK[\ÛÛX[KÚ[_XK[\ÛÛX[KÚ[NÂËÈÚÜÝÙ[H]XÝ[ÛÛÛÝ\ÐXÝ]HXÝ][J
+K[ÝÂÛÛÝ\ÔÚÚ[ÈH\^K\Ð\^JÚÚ[ÊH	ÚÚ[Ë[ÝHÂÛÛÝ\ÑYXØ][ÛH\^K\Ð\^JYXØ][ÛÊH	YXØ][ÛË[ÝÂÛÛÝ\ÔÜÚ][ÛH\^K\Ð\^JÜÚ][ÛÊH	ÜÚ][ÛË[ÝHNÂÛÛÝÛÝÙ\ÛÝ[HÛÝÙ\ÐÛÝ[ÛÝÙ\ÛÝ[ÂÛÛÝÛÛXÝ[ÛÛÝ[HÛÛXÝ[ÛÐÛÝ[ÛÛXÝ[ÛÛÝ[ÂÛÛÝÚYÛ[ÛÝ[HÚ\ÐXÝ]\ÔÚÚ[Ë\ÑYXØ][Û\ÔÜÚ][ÛÛÝÙ\ÛÝ[LÛÛXÝ[ÛÛÝ[
+LK[\ÛÛX[K[ÝÂY
+ÚYÛ[ÛÝ[HJHÂÛÛÝX\ÛÛHÚÜÝÙ[H
+Z[[X[]N	ÈZ\ÐXÝ]È	ÛÈXÝ]	È	ÉßIÈZ\ÔÚÚ[ÈÈ	ËÈÚÚ[ÉÈ	ÉßIÈZ\ÑYXØ][ÛÈ	ËÈYXØ][ÛÈ	ÉßIÈZ\ÔÜÚ][ÛÈ	ËÈÜÚ][ÛÈ	ÉßIÙÛÝÙ\ÛÝ[HLÈ	Ë]ÈÛÝÙ\ÉÈ	ÉßJX\XÙJ	ÊZ[[X[]N	Ë	ÊZ[[X[]N	ÊNÂÛÛÛÛKÙÊÚÚ\[ÈÚÜÝÙ[H	Û[ÙY[\N	ÜX\ÛÛX
+NÂ]ØZ]Ý\X\ÙKÛJÚÜÝÜÙ[\ÈK\Ù\
+Â[ÙY[Ý\[ÙY[\X\ÛÛÚÜÝÛZ[[X[Ù]HÚYÛ[ØÛÝ[ÚYÛ[ÛÝ[ÛÝ\ÙN[XÚ[XYËX]Ú]XÝYØ]ÝË]×Ù]NÂ\ÐXÝ]\ÔÚÚ[Ë\ÑYXØ][Û\ÔÜÚ][ÛÛÝÙ\ÛÝ[ÛÛXÝ[ÛÛÝ[XY[NXY[OËÝXÝ[ÊL
+K[YN[[YKKKÈÛÛÛXÝ[ÙY[Ý\JKÙ[XÝ
 
-        const signalCount = [hasAbout, hasSkills, hasEducation, hasPosition, followerCount > 10, connectionCount > 50].filter(Boolean).length;
-
-        if (signalCount <= 1) {
-          const reason = `Ghost profile (minimal data: ${!hasAbout ? 'no about' : ''}${!hasSkills ? ', no skills' : ''}${!hasEducation ? ', no education' : ''}${!hasPosition ? ', no position' : ''}${followerCount <= 10 ? ', few followers' : ''})`.replace('(minimal data: ,', '(minimal data: ');
-
-          console.log(`Skipping ghost profile ${linkedinUrl}: ${reason}`);
-
-          await supabase.from("ghost_profiles").upsert({
-            linkedin_url: linkedinUrl,
-            reason: "ghost_minimal_data",
-            signal_count: signalCount,
-            source: "enrich-leads-batch",
-            detected_at: now,
-            raw_data: {
-              hasAbout, hasSkills, hasEducation, hasPosition,
-              followerCount, connectionCount,
-              headline: headline?.substring(0, 100),
-              name: fullName,
-            },
-          }, { onConflict: "linkedin_url" }).select().maybeSingle();
-
-          await supabase.from("campaign_leads").update({
-            profile_enriched_at: now,
-            updated_at: now,
-            status: "skipped",
-            error_message: reason,
-            profile_headline: headline || null,
-            profile_about: about || null,
-            first_name: firstName || null,
-            last_name: lastName || null,
-            full_name: fullName || null,
-            profile_quality_status: "ghost",
-          } as any).eq("id", lead.id);
-          enrichedCount++;
-          continue;
-        }
-
-        // Save snapshot
-        const { data: snapshot } = await supabase
-          .from("profile_snapshots")
-          .insert({
-            user_id: effectiveUserId,
-            linkedin_url: linkedinUrl,
-            headline,
-            about,
-            experience: experienceText || null,
-            raw_text: rawText,
-            source: "scrapin",
-          } as any)
-          .select("id")
-          .single();
-
-        const updateData: any = {
-          profile_enriched_at: now,
-          profile_headline: headline || null,
-          profile_about: about || null,
-          profile_current_title: currentPos?.title || null,
-          profile_current_company: currentPos?.companyName || currentPos?.company || null,
-          updated_at: now,
-          error_message: null,
-        };
-        if (snapshot) updateData.snapshot_id = snapshot.id;
-        if (fullName) {
-          updateData.full_name = fullName;
-          updateData.first_name = firstName;
-          updateData.last_name = lastName;
-        }
-
-        await supabase.from("campaign_leads").update(updateData).eq("id", lead.id);
-        enrichedCount++;
-
-        // Fire-and-forget: generate messages
-        fetch(`${supabaseUrl}/functions/v1/generate-dm`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
-          body: JSON.stringify({ campaign_lead_id: lead.id, user_id: effectiveUserId }),
-        }).catch(err => console.error(`generate-dm fire-and-forget error for ${lead.id}:`, err));
-
-
-      } catch (e: any) {
-        if (e.name === "AbortError") {
-          console.error("Scrapin timeout for:", lead.linkedin_url);
-          errors.push(`Timeout for ${lead.linkedin_url}`);
-        } else {
-          console.error("Scrapin error for lead:", lead.linkedin_url, e);
-          errors.push(e.message || "Unknown error");
-        }
-      }
-    }
-
-    // ══════════════════════════════════════════════════════════
-    // UPDATE PROCESSING COUNTER (Credit Model v2)
-    // Only processing count — enrich-leads-batch doesn't handle outreach credits
-    // ══════════════════════════════════════════════════════════
-    if (processingCountToAdd > 0) {
-      await supabase
-        .from("user_settings")
-        .update({ leads_processed_this_cycle: currentProcessed + processingCountToAdd })
-        .eq("user_id", effectiveUserId);
-    }
-
-    const remaining = Math.max(0, (totalRemaining || 0) - enrichedCount);
-
-    return new Response(JSON.stringify({
-      success: true,
-      enriched: enrichedCount,
-      remaining,
-      done: remaining === 0,
-      scrapin_calls: processingCountToAdd,
-      errors: errors.length > 0 ? errors : undefined,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    console.error("enrich-leads-batch error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-});
+KX^XTÚ[ÛJ
+NÂ]ØZ]Ý\X\ÙKÛJØ[\ZYÛÛXYÈK\]JÂÙ[WÙ[XÚYØ]ÝË\]YØ]ÝËÝ]\ÎÚÚ\Y\ÜÛY\ÜØYÙNX\ÛÛÙ[WÚXY[NXY[H[Ù[WØXÝ]XÝ][\ÝÛ[YN\Ý[YH[\ÝÛ[YN\Ý[YH[[Û[YN[[YH[Ù[WÜ]X[]WÜÝ]\ÎÚÜÝH\È[JK\JYXYY
+NÂ[XÚYÛÝ[
+ÊÎÂÛÛ[YNÂBËÈØ]HÛ\ÚÝÛÛÝÈ]NÛ\ÚÝHH]ØZ]Ý\X\ÙBÛJÙ[WÜÛ\ÚÝÈB[Ù\
+Â\Ù\ÚYYXÝ]U\Ù\Y[ÙY[Ý\[ÙY[\XY[KXÝ]^\Y[ÙN^\Y[ÙU^[]×Ý^]Õ^ÛÝ\ÙNØÜ\[H\È[JBÙ[XÝ
+YBÚ[ÛJ
+NÂÛÛÝ\]Q]N[HHÂÙ[WÙ[XÚYØ]ÝËÙ[WÚXY[NXY[H[Ù[WØXÝ]XÝ][Ù[WØÝ\[Ý]NÝ\[ÜÏË]H[Ù[WØÝ\[ØÛÛ\[NÝ\[ÜÏËÛÛ\[S[YHÝ\[ÜÏËÛÛ\[H[\]YØ]ÝË\ÜÛY\ÜØYÙN[NÂY
+Û\ÚÝ
+H\]Q]KÛ\ÚÝÚYHÛ\ÚÝYÂY
+[[YJHÂ\]Q]K[Û[YHH[[YNÂ\]Q]K\ÝÛ[YHH\Ý[YNÂ\]Q]K\ÝÛ[YHH\Ý[YNÂB]ØZ]Ý\X\ÙKÛJØ[\ZYÛÛXYÈK\]J\]Q]JK\JYXYY
+NÂ[XÚYÛÝ[
+ÊÎÂËÈ\KX[YÜÙ]Ù[\]HY\ÜØYÙ\Â]Ú
+	ÜÝ\X\ÙU\KÙ[Ý[ÛËÝKÙÙ[\]KYXÂY]ÙÔÕXY\ÎÈÛÛ[U\H\XØ][ÛÚÛÛ]]Ü^][ÛX\\	ÜÝ\X\ÙRÙ^_XKÙNÓÓÝ[ÚYJÈØ[\ZYÛÛXYÚYXYY\Ù\ÚYYXÝ]U\Ù\YJKJKØ]Ú
+\OÛÛÛÛK\ÜÙ[\]KYH\KX[YÜÙ]\ÜÜ	ÛXYYN\JNÂHØ]Ú
+N[JHÂY
+K[YHOOHXÜ\ÜHÂÛÛÛÛK\ÜØÜ\[[Y[Ý]ÜXY[ÙY[Ý\
+NÂ\ÜË\Ú
+[Y[Ý]Ü	ÛXY[ÙY[Ý\X
+NÂH[ÙHÂÛÛÛÛK\ÜØÜ\[\ÜÜXYXY[ÙY[Ý\JNÂ\ÜË\Ú
+KY\ÜØYÙH[ÛÝÛ\ÜNÂBBBËÈ8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥dËÈTUHÐÑTÔÒSÈÓÕST
+ÜY][Ù[BËÈÛHØÙ\ÜÚ[ÈÛÝ[8 %[XÚ[XYËX]ÚÙ\ÛÝ[HÝ]XXÚÜY]ÂËÈ8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥d8¥dY
+ØÙ\ÜÚ[ÐÛÝ[ÐY
+HÂ]ØZ]Ý\X\ÙBÛJ\Ù\ÜÙ][ÜÈB\]JÈXY×ÜØÙ\ÜÙYÝ\×ØÞXÛNÝ\[ØÙ\ÜÙY
+ÈØÙ\ÜÚ[ÐÛÝ[ÐYJB\J\Ù\ÚYYXÝ]U\Ù\Y
+NÂBÛÛÝ[XZ[[ÈHX]X^
+
+Ý[[XZ[[È
+HH[XÚYÛÝ[
+NÂ]\]È\ÜÛÙJÓÓÝ[ÚYJÂÝXØÙ\ÜÎYK[XÚY[XÚYÛÝ[[XZ[[ËÛN[XZ[[ÈOOHØÜ\[ØØ[ÎØÙ\ÜÚ[ÐÛÝ[ÐY\ÜÎ\ÜË[ÝÈ\ÜÈ[Y[YJKÂXY\ÎÈÛÜÒXY\ËÛÛ[U\H\XØ][ÛÚÛÛKJNÂHØ]Ú
+JHÂÛÛÛÛK\Ü[XÚ[XYËX]Ú\ÜJNÂ]\]È\ÜÛÙJÓÓÝ[ÚYJÈ\ÜH[Ý[Ù[Ù\ÜÈKY\ÜØYÙH[ÛÝÛ\ÜJKÂÝ]\Î
+LXY\ÎÈÛÜÒXY\ËÛÛ[U\H\XØ][ÛÚÛÛKJNÂBJNÂ
