@@ -281,6 +281,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    margin-top: -72px;
+    padding-top: 72px;
     padding-bottom: 96px;
     background-color: #0b1325;
     background-image:
@@ -370,6 +372,8 @@
 
   @media (max-width: 768px) {
     .hero-topgun {
+      margin-top: -64px;
+      padding-top: 64px;
       padding-bottom: 80px;
       background-position: center top;
     }
