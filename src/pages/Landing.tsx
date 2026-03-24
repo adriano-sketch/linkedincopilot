@@ -205,7 +205,7 @@ export default function Landing() {
           <line x1="100" y1="60" x2="120" y2="60" stroke="hsl(var(--gold))" strokeWidth="1.5"/>
         </svg>
 
-        <div className="container mx-auto max-w-[900px] text-center relative z-[2]">
+        <div className="container mx-auto max-w-[900px] text-center relative z-[2] pt-20 sm:pt-24">
           <h1 className="sr-only">LinkedIn Copilot: AI-Powered LinkedIn Automation for B2B Sales Outreach</h1>
 
           <motion.div
