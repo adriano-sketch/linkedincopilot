@@ -1,8 +1,16 @@
 User-agent: Googlebot
 Allow: /
+Disallow: /dashboard
+Disallow: /onboarding
+Disallow: /settings
+Disallow: /leads
 
 User-agent: Bingbot
 Allow: /
+Disallow: /dashboard
+Disallow: /onboarding
+Disallow: /settings
+Disallow: /leads
 
 User-agent: Twitterbot
 Allow: /
@@ -12,5 +20,9 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /dashboard
+Disallow: /onboarding
+Disallow: /settings
+Disallow: /leads
 
 Sitemap: https://linkedincopilot.io/sitemap.xml

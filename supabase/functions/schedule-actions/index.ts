@@ -112,15 +112,17 @@ serve(async (req) => {
     // Get all extension_status to know user schedules
     const { data: allExtensions } = await supabase
       .from("extension_status")
-      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, timezone, last_limit_reset_at, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests, daily_limit_messages");
+      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits");
 
     // ── Daily counter reset (inline, before any limit checks) ──
+    // Use last_heartbeat_at date as proxy since last_limit_reset_at doesn't exist
     for (const ext of allExtensions || []) {
-      const lastResetDate = ext.last_limit_reset_at
-        ? new Date(ext.last_limit_reset_at).toISOString().slice(0, 10)
+      const lastHeartbeatDate = ext.last_heartbeat_at
+        ? new Date(ext.last_heartbeat_at).toISOString().slice(0, 10)
         : null;
 
-      if (lastResetDate !== todayDateStr) {
+      // Reset if heartbeat is from a previous day (counters are stale)
+      if (lastHeartbeatDate && lastHeartbeatDate !== todayDateStr && (ext.visits_today > 0 || ext.actions_today > 0)) {
         await supabase
           .from("extension_status")
           .update({
@@ -128,17 +130,13 @@ serve(async (req) => {
             actions_today: 0,
             connection_requests_today: 0,
             messages_today: 0,
-            last_limit_reset_at: now,
-            updated_at: now,
           })
           .eq("user_id", ext.user_id);
 
-        // Update local copy so limit checks below use fresh values
         ext.visits_today = 0;
         ext.actions_today = 0;
         ext.connection_requests_today = 0;
         ext.messages_today = 0;
-        ext.last_limit_reset_at = now;
         console.log(`Reset daily counters for user ${ext.user_id.slice(0, 8)}…`);
       }
     }
@@ -220,6 +218,9 @@ serve(async (req) => {
           visitActionsPerUser.set(leadInfo.user_id, (visitActionsPerUser.get(leadInfo.user_id) || 0) + 1);
           const visitKey = `${leadInfo.user_id}:${leadInfo.campaign_profile_id}`;
           visitActionsPerUserCampaign.set(visitKey, (visitActionsPerUserCampaign.get(visitKey) || 0) + 1);
+          // Track per-type sub-limits for budget splitting
+          const subTypeKey = a.action_type === "follow_profile" ? `follow:${leadInfo.user_id}` : `visit:${leadInfo.user_id}`;
+          visitActionsPerUserCampaign.set(subTypeKey, (visitActionsPerUserCampaign.get(subTypeKey) || 0) + 1);
         }
       }
     }
@@ -246,6 +247,8 @@ serve(async (req) => {
     let scheduled = 0;
     let timeouts = 0;
     const errors: string[] = [];
+    const skipReasons: Record<string, number> = {};
+    const addSkip = (reason: string) => { skipReasons[reason] = (skipReasons[reason] || 0) + 1; };
 
     if (leads && leads.length > 0) {
       const connectedUsers = new Set(
@@ -255,8 +258,9 @@ serve(async (req) => {
       );
       console.log(`Connected users: ${[...connectedUsers].join(', ')}. Extensions total: ${allExtensions?.length || 0}`);
 
-      // ── Priority ordering: process check/reply actions FIRST so they don't
-      // get starved by the per-user cap. Then messaging, then visits.
+      // ── Priority ordering: advance existing pipeline leads FIRST.
+      // Checks → messaging → connection requests → follows → new visits.
+      // This ensures leads already in the pipeline progress before starting new ones.
       const PRIORITY_ORDER: Record<string, number> = {
         check_connection_status: 0,
         check_reply_status: 0,
@@ -264,7 +268,7 @@ serve(async (req) => {
         send_followup: 1,
         send_connection_request: 2,
         follow_profile: 3,
-        visit_profile: 3,
+        visit_profile: 4,  // New visits have lowest priority — advance existing leads first
       };
       const sortedLeads = [...leads].sort((a, b) => {
         const aAction = STATUS_TO_ACTION[a.status] || '';
@@ -324,21 +328,21 @@ serve(async (req) => {
 
       for (const lead of sortedLeads) {
         // Skip if extension not connected
-        if (!connectedUsers.has(lead.user_id)) continue;
+        if (!connectedUsers.has(lead.user_id)) { addSkip("no_extension"); continue; }
 
         const actionType = STATUS_TO_ACTION[lead.status];
-        if (!actionType) continue;
+        if (!actionType) { addSkip("no_action_type"); continue; }
 
         // Cap: separate limits for lightweight checks vs other actions
         if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
           const userChecks = pendingChecksPerUser.get(lead.user_id) || 0;
-          if (userChecks >= MAX_PENDING_CHECKS) continue;
+          if (userChecks >= MAX_PENDING_CHECKS) { addSkip("cap_checks"); continue; }
         } else if (WARMUP_ACTIONS.has(actionType)) {
           const userWarmup = pendingWarmupPerUser.get(lead.user_id) || 0;
-          if (userWarmup >= MAX_PENDING_WARMUP) continue;
+          if (userWarmup >= MAX_PENDING_WARMUP) { addSkip("cap_warmup"); continue; }
         } else {
           const userOther = pendingOtherPerUser.get(lead.user_id) || 0;
-          if (userOther >= MAX_PENDING_OTHER) continue;
+          if (userOther >= MAX_PENDING_OTHER) { addSkip("cap_other"); continue; }
         }
 
         // Get user schedule
@@ -356,32 +360,53 @@ serve(async (req) => {
           // Connection stage: visit_profile, follow_profile, send_connection_request
           if ((actionType === "visit_profile" || actionType === "follow_profile" || actionType === "send_connection_request") &&
               !campaignStageConnection.get(lead.campaign_profile_id)) {
-            continue;
+            addSkip("stage_connection_not_approved"); continue;
           }
           // DM stage: send_dm
           if (actionType === "send_dm" &&
               !campaignStageDm.get(lead.campaign_profile_id)) {
-            continue;
+            addSkip("stage_dm_not_approved"); continue;
           }
           // Follow-up stage: send_followup
           if (actionType === "send_followup" &&
               !campaignStageFollowup.get(lead.campaign_profile_id)) {
-            continue;
+            addSkip("stage_followup_not_approved"); continue;
           }
         }
 
         // Enforce daily warming limit (visit_profile + follow_profile) with per-campaign balancing
+        // Split budget: follows get up to 60% of daily limit, visits get the rest.
+        // This keeps the pipeline flowing instead of alternating days.
         if (actionType === "visit_profile" || actionType === "follow_profile") {
           const visitLimit = ext?.daily_limit_visits ?? 80;
           const userCampaignCount = dueWarmingCampaignsPerUser.get(lead.user_id)?.size || 1;
           const perCampaignVisitLimit = Math.max(1, Math.floor(visitLimit / userCampaignCount));
 
           const userVisitCount = visitActionsPerUser.get(lead.user_id) || 0;
-          if (userVisitCount >= visitLimit) continue;
+          if (userVisitCount >= visitLimit) { addSkip("daily_visit_limit"); continue; }
+
+          // Sub-limits per action type to ensure pipeline flow
+          const followSubLimit = Math.ceil(visitLimit * 0.6);  // 60% for follows (advancing pipeline)
+          const visitSubLimit = visitLimit - followSubLimit;     // 40% for new visits (feeding pipeline)
+
+          // Track per-type counts
+          const userFollowKey = `follow:${lead.user_id}`;
+          const userVisitKey = `visit:${lead.user_id}`;
+          const userFollowCount = visitActionsPerUserCampaign.get(userFollowKey) || 0;
+          const userVisitOnlyCount = visitActionsPerUserCampaign.get(userVisitKey) || 0;
+
+          if (actionType === "follow_profile" && userFollowCount >= followSubLimit) {
+            // Follow sub-limit reached, but allow overflow into visit slots if visits didn't use them
+            if (userVisitCount >= visitLimit) { addSkip("daily_follow_sublimit"); continue; }
+          }
+          if (actionType === "visit_profile" && userVisitOnlyCount >= visitSubLimit) {
+            // Visit sub-limit reached, but allow overflow into follow slots if follows didn't use them
+            if (userVisitCount >= visitLimit) { addSkip("daily_visit_sublimit"); continue; }
+          }
 
           const visitCampaignKey = `${lead.user_id}:${lead.campaign_profile_id}`;
           const campaignVisitCount = visitActionsPerUserCampaign.get(visitCampaignKey) || 0;
-          if (campaignVisitCount >= perCampaignVisitLimit) continue;
+          if (campaignVisitCount >= perCampaignVisitLimit) { addSkip("campaign_visit_limit"); continue; }
         }
 
         // ── Per-campaign connection request balancing ──
@@ -443,7 +468,7 @@ serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        if (existing) continue;
+        if (existing) { addSkip("existing_action"); continue; }
 
         // Get message text if needed
         const messageField = ACTION_MESSAGE_FIELD[actionType];
@@ -509,6 +534,9 @@ serve(async (req) => {
             visitActionsPerUser.set(lead.user_id, (visitActionsPerUser.get(lead.user_id) || 0) + 1);
             const visitCampaignKey = `${lead.user_id}:${lead.campaign_profile_id}`;
             visitActionsPerUserCampaign.set(visitCampaignKey, (visitActionsPerUserCampaign.get(visitCampaignKey) || 0) + 1);
+            // Track per-type sub-limits
+            const subTypeKey = actionType === "follow_profile" ? `follow:${lead.user_id}` : `visit:${lead.user_id}`;
+            visitActionsPerUserCampaign.set(subTypeKey, (visitActionsPerUserCampaign.get(subTypeKey) || 0) + 1);
           }
         }
       }
@@ -550,6 +578,7 @@ serve(async (req) => {
       timeouts,
       leads_checked: leads?.length || 0,
       errors,
+      skipReasons,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

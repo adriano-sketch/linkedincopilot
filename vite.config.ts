@@ -24,4 +24,21 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
+  build: {
+    // Generate sourcemaps for debugging
+    sourcemap: mode === "development",
+    // Optimize chunk splitting for better caching
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "react-router-dom"],
+          ui: ["framer-motion", "lucide-react"],
+        },
+      },
+    },
+    // Target modern browsers for smaller bundle
+    target: "es2020",
+    // Inline assets smaller than 8KB
+    assetsInlineLimit: 8192,
+  },
 }));

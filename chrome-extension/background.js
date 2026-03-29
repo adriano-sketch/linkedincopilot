@@ -904,10 +904,10 @@ const queueProcessor = {
       }
     }
 
-    const ghostGuardActions = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'send_dm', 'send_followup'];
+    const ghostGuardActions = ['visit_profile', 'send_connection_request', 'send_dm', 'send_followup'];
     if (ghostGuardActions.includes(action.action_type)) {
       const quality = await this.runProfileQualityCheck(tab.id);
-      if (quality?.is_ghost) {
+      if (quality?.is_ghost && quality?.confidence === 'strong') {
         const now = new Date().toISOString();
         const ghostResult = { ...quality, action: 'check_profile_quality', jit: true };
         try {

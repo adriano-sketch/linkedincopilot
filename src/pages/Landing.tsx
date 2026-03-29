@@ -170,9 +170,9 @@ export default function Landing() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" itemScope itemType="https://schema.org/WebPage">
       {/* -- NAVBAR -- */}
-      <nav className="fixed top-0 w-full z-50 glass">
+      <nav className="fixed top-0 w-full z-50 glass" aria-label="Main navigation" role="navigation">
         <div className="container mx-auto flex items-center justify-between h-[72px] px-4">
           <div className="flex items-center">
             <img src={logoImg} alt="LinkedIn Copilot \u2014 AI-powered LinkedIn automation tool for B2B outreach" className="h-14 w-auto" />
@@ -194,7 +194,8 @@ export default function Landing() {
       </nav>
 
       {/* SECTION 1: HERO (dark) */}
-      <section className="px-4 sm:px-6 relative overflow-hidden hero-topgun">
+      <main>
+      <section className="px-4 sm:px-6 relative overflow-hidden hero-topgun" aria-label="Hero">
         <svg className="target-reticle hidden md:block" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <circle cx="60" cy="60" r="55" stroke="hsl(var(--gold))" strokeWidth="1.5" strokeDasharray="8 4"/>
           <circle cx="60" cy="60" r="35" stroke="hsl(var(--gold))" strokeWidth="1"/>
@@ -276,7 +277,7 @@ export default function Landing() {
       </section>
 
       {/* SECTION: WHAT IS LINKEDIN AUTOMATION? (AEO) */}
-      <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
+      <section id="what-is-linkedin-automation" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-3xl relative z-10">
           <motion.div {...fadeUp} className="text-center">
             <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight mb-6">
@@ -290,7 +291,7 @@ export default function Landing() {
       </section>
 
       {/* SECTION 2: HOW IT WORKS (light) */}
-      <section ref={howRef} className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
+      <section ref={howRef} id="how-it-works" className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-16">
             <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight">
@@ -364,7 +365,7 @@ export default function Landing() {
       </section>
 
       {/* SECTION 4: SOLUTION + FEATURES (dark) */}
-      <section ref={featuresRef} className="py-20 md:py-28 px-4 bg-navy relative overflow-hidden">
+      <section ref={featuresRef} id="features" className="py-20 md:py-28 px-4 bg-navy relative overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[200px] pointer-events-none" />
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
@@ -586,7 +587,7 @@ export default function Landing() {
       </section>
 
       {/* SECTION 7: PRICING (light) */}
-      <section ref={pricingRef} className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
+      <section ref={pricingRef} id="pricing" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl text-center relative z-10">
           <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">Pricing built for real outreach.</motion.h2>
           <motion.p {...fadeUp} className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">Start free, validate results, then scale with confidence.</motion.p>
@@ -734,7 +735,7 @@ export default function Landing() {
       </section>
 
       {/* SECTION 8: FAQ (light) */}
-      <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
+      <section id="faq" itemScope itemType="https://schema.org/FAQPage" className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-2xl relative z-10">
           <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-center mb-4">
             Frequently Asked <span className="text-gradient-gold">Questions</span>
@@ -823,8 +824,9 @@ export default function Landing() {
         </div>
       </section>
 
+      </main>
       {/* -- FOOTER -- */}
-      <footer className="bg-navy py-16 px-4 border-t border-white/5">
+      <footer role="contentinfo" className="bg-navy py-16 px-4 border-t border-white/5">
         <div className="container mx-auto max-w-5xl">
           <div className="flex flex-col md:flex-row gap-12">
             <div className="md:w-2/5">

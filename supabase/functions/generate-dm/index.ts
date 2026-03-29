@@ -296,6 +296,7 @@ serve(async (req) => {
     }
 
     // Update campaign_lead with generated messages
+    // Set status to pending_approval so user can review before auto-run
     await supabase.from("campaign_leads")
       .update({
         connection_note: args.connection_note || null,
@@ -303,6 +304,7 @@ serve(async (req) => {
         dm_text: args.custom_dm,
         custom_followup: args.custom_followup || null,
         follow_up_text: args.custom_followup || null,
+        status: "pending_approval",
         dm_generated_at: new Date().toISOString(),
         messages_generated_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

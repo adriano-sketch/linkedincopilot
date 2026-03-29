@@ -293,7 +293,7 @@
         rgba(8, 12, 24, 0.55) 70%,
         rgba(8, 12, 24, 0.92) 100%
       ),
-      url('/hero-bg.jpg');
+      url('/hero-bg.webp');
     background-size: cover;
     background-position: center top;
     background-repeat: no-repeat;
