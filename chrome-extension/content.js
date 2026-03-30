@@ -101,41 +101,52 @@ async function sendConnectionRequest(noteText) {
     noteText = noteText.substring(0, 197) + '...';
   }
 
-  // ── STEP 1: Find and click the Connect button ──
-  const connectButton = await findConnectButton();
+  // ── STEP 1: Check if custom-invite dialog is already open (navigated directly) ──
+  let dialogAlreadyOpen = !!document.querySelector('dialog, div[role="dialog"]');
+  const isCustomInvitePage = window.location.pathname.includes('/preload/custom-invite');
 
-  if (!connectButton) {
-    // Check if we're already connected
-    const messageButton = document.querySelector('button[aria-label*="Message" i]');
-    if (messageButton) {
-      return { success: true, action: 'send_connection_request', note: 'already_connected' };
+  if (!dialogAlreadyOpen || !isCustomInvitePage) {
+    // ── STEP 1b: Find the Connect button/link on the profile page ──
+    const connectButton = await findConnectButton();
+
+    if (!connectButton) {
+      // Check if we're already connected
+      const messageButton = document.querySelector('button[aria-label*="Message" i]');
+      if (messageButton) {
+        return { success: true, action: 'send_connection_request', note: 'already_connected' };
+      }
+
+      // Check if connection request is already pending
+      const pendingButton = document.querySelector('button[aria-label*="Pending" i]');
+      if (pendingButton) {
+        return { success: true, action: 'send_connection_request', note: 'already_pending' };
+      }
+
+      throw new Error('Connect button not found on profile page');
     }
 
-    // Check if connection request is already pending
-    const pendingButton = document.querySelector('button[aria-label*="Pending" i]');
-    if (pendingButton) {
-      return { success: true, action: 'send_connection_request', note: 'already_pending' };
+    // If it's a <a> link (new LinkedIn 2026 layout), signal background.js to navigate
+    if (connectButton.tagName === 'A' && connectButton.href && connectButton.href.includes('custom-invite')) {
+      return { success: false, action: 'send_connection_request', redirect: connectButton.href, note: 'custom_invite_redirect' };
     }
 
-    throw new Error('Connect button not found on profile page');
-  }
+    connectButton.click();
+    await sleep(1500 + Math.random() * 1000);
 
-  connectButton.click();
-  await sleep(1500 + Math.random() * 1000);
+    // ── STEP 2: Handle "How do you know" modal ──
+    const howDoYouKnowModal = document.querySelector('div[role="dialog"]');
+    if (howDoYouKnowModal) {
+      const otherButton = howDoYouKnowModal.querySelector('button[aria-label*="Other" i]');
+      if (otherButton) {
+        otherButton.click();
+        await sleep(800 + Math.random() * 500);
+      }
 
-  // ── STEP 2: Handle "How do you know" modal ──
-  const howDoYouKnowModal = document.querySelector('div[role="dialog"]');
-  if (howDoYouKnowModal) {
-    const otherButton = howDoYouKnowModal.querySelector('button[aria-label*="Other" i]');
-    if (otherButton) {
-      otherButton.click();
-      await sleep(800 + Math.random() * 500);
-    }
-
-    const connectInsideModal = howDoYouKnowModal.querySelector('button[aria-label*="Connect" i]');
-    if (connectInsideModal) {
-      connectInsideModal.click();
-      await sleep(800 + Math.random() * 500);
+      const connectInsideModal = howDoYouKnowModal.querySelector('button[aria-label*="Connect" i]');
+      if (connectInsideModal) {
+        connectInsideModal.click();
+        await sleep(800 + Math.random() * 500);
+      }
     }
   }
 
@@ -691,6 +702,12 @@ async function simulateProfileBrowsing() {
 // ── CONNECTION REQUEST BUTTON FINDERS ──
 
 async function findConnectButton() {
+  // New LinkedIn layout (2026): "Connect" is an <a> link already present in the DOM
+  // with href containing "custom-invite". Works for both "Follow first" profiles
+  // (where Connect is in the More dropdown) and standard profiles.
+  const connectMenuItem = document.querySelector('a[href*="custom-invite"]');
+  if (connectMenuItem && connectMenuItem.offsetParent !== null) return connectMenuItem;
+
   const selectors = [
     'main button[aria-label*="connect" i]:not([aria-label*="disconnect" i])',
     'main button[aria-label*="Invite" i]',
@@ -706,6 +723,7 @@ async function findConnectButton() {
   }
 
   // Fallback: look in "More actions" / "More" dropdown
+  // Strategy 1: find by aria-label (legacy LinkedIn layout)
   const moreSelectors = [
     'button[aria-label*="More actions" i]',
     'button[aria-label*="More" i].artdeco-dropdown__trigger',
@@ -713,39 +731,74 @@ async function findConnectButton() {
     '.pv-top-card-v2-ctas button[aria-label*="More" i]',
   ];
 
+  // Strategy 2: find by text content (new LinkedIn layout — no aria-label)
+  let moreButton = null;
   for (const moreSelector of moreSelectors) {
-    const moreButton = document.querySelector(moreSelector);
-    if (moreButton && moreButton.offsetParent !== null) {
+    const btn = document.querySelector(moreSelector);
+    if (btn && btn.offsetParent !== null) { moreButton = btn; break; }
+  }
+  if (!moreButton) {
+    const mainButtons = document.querySelectorAll('main button');
+    for (const btn of mainButtons) {
+      if (btn.textContent.trim() === 'More' && btn.offsetParent !== null) {
+        moreButton = btn;
+        break;
+      }
+    }
+  }
+
+  if (moreButton) {
       moreButton.click();
       await sleep(800 + Math.random() * 400);
-      
-      // Search in all visible dropdown containers
-      const dropdowns = document.querySelectorAll('div.artdeco-dropdown__content, div.artdeco-dropdown__content--is-open, ul[role="menu"]');
+
+      // Search in all visible dropdown containers (legacy + new layout)
+      const dropdowns = document.querySelectorAll('div.artdeco-dropdown__content, div.artdeco-dropdown__content--is-open, ul[role="menu"], div[role="menu"]');
       for (const dropdown of dropdowns) {
         if (!dropdown.offsetParent) continue;
         // Try aria-label match first
         const connectByLabel = dropdown.querySelector('[aria-label*="connect" i]:not([aria-label*="disconnect" i])');
         if (connectByLabel) return connectByLabel;
-        // Try text content match on list items and spans
-        const allItems = dropdown.querySelectorAll('li span, div[role="button"], span.display-flex, div.artdeco-dropdown__item');
+        // Try text content match — search ALL descendants (div, span, li, etc.)
+        const allItems = dropdown.querySelectorAll('li, li span, div[role="button"], div[role="menuitem"], span.display-flex, div.artdeco-dropdown__item, div, span');
         const connectByText = Array.from(allItems).find(
           el => {
             const txt = el.textContent.trim().toLowerCase();
-            return txt === 'connect' || txt === 'conectar';
+            return (txt === 'connect' || txt === 'conectar') && el.children.length === 0;
           }
         );
         if (connectByText) {
-          // Click the parent li or the element itself
-          const clickTarget = connectByText.closest('li, div[role="button"], div.artdeco-dropdown__item') || connectByText;
+          // Click the closest interactive parent or the element itself
+          const clickTarget = connectByText.closest('div[role="menuitem"], li, div[role="button"], div.artdeco-dropdown__item') || connectByText;
           return clickTarget;
         }
       }
-      
+
+      // New LinkedIn layout (2026): dropdown items use <a role="menuitem"> with
+      // inner <div aria-label="Invite ... to connect"> and <p>Connect</p>
+      // Search broadly after clicking More
+      const connectLink = document.querySelector('a[role="menuitem"] div[aria-label*="connect" i]:not([aria-label*="disconnect" i])');
+      if (connectLink && connectLink.offsetParent !== null) {
+        const clickTarget = connectLink.closest('a[role="menuitem"]') || connectLink;
+        return clickTarget;
+      }
+
+      // Broader fallback: find any visible element with exact "Connect"/"Conectar" text
+      const allLeafElements = document.querySelectorAll('p, span, div, a');
+      for (const el of allLeafElements) {
+        const txt = el.textContent.trim();
+        if ((txt === 'Connect' || txt === 'Conectar') && el.children.length === 0 && el.offsetParent !== null) {
+          // Skip main page buttons (Follow/Connect in top card)
+          const isMainButton = el.closest('button[aria-label*="Follow" i], button[aria-label*="connect" i]');
+          if (!isMainButton) {
+            const clickTarget = el.closest('a[role="menuitem"], div[role="menuitem"], li, div[role="button"]') || el;
+            return clickTarget;
+          }
+        }
+      }
+
       // Close the dropdown if Connect not found
       moreButton.click();
       await sleep(300);
-      break;
-    }
   }
 
   // Last resort: find by text

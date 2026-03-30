@@ -697,7 +697,21 @@ const queueProcessor = {
       const delay = safetyManager.getRandomDelay(action.action_type);
       console.log(`[QueueProcessor] Waiting ${Math.round(delay / 1000)}s before ${action.action_type}...`);
       await this.sleep(delay);
-      const result = await this.sendToContentScript(action);
+      let result = await this.sendToContentScript(action);
+
+      // Handle custom-invite redirect (new LinkedIn 2026 layout)
+      if (result && result.redirect && result.note === 'custom_invite_redirect') {
+        console.log(`[QueueProcessor] Redirecting to custom-invite page: ${result.redirect}`);
+        const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
+        if (tab) {
+          await chrome.tabs.update(tab.id, { url: result.redirect });
+          await this.waitForTabLoad(tab.id);
+          await this.sleep(3000);
+          // Re-execute content script on the custom-invite page
+          result = await this.sendToContentScript(action);
+        }
+      }
+
       if (result && result.skip_report) {
         console.log(`[QueueProcessor] ${action.action_type} skipped: ${result.reason || 'skip_report'}`);
         return;
