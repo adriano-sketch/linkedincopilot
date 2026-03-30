@@ -737,6 +737,180 @@ serve(async (req) => {
   stats.dm_generated_last_20m = dmRecentCount || 0;
 
   // ═══════════════════════════════════════════════════════
+  // 9b. ACTION FAILURE RATE — detect systematic failures per action_type
+  //     Catches issues like "Connect button not found" (LinkedIn layout change)
+  // ═══════════════════════════════════════════════════════
+  const sixHoursAgo = new Date(now.getTime() - 6 * 3600000).toISOString();
+  const { data: recentActions } = await supabase
+    .from("action_queue")
+    .select("action_type, status, error_message")
+    .gte("created_at", sixHoursAgo)
+    .in("status", ["completed", "failed"])
+    .limit(1000);
+
+  if (recentActions && recentActions.length > 0) {
+    // Group by action_type and compute failure rates
+    const typeStats: Record<string, { total: number; failed: number; errors: Record<string, number> }> = {};
+    for (const a of recentActions) {
+      if (!typeStats[a.action_type]) typeStats[a.action_type] = { total: 0, failed: 0, errors: {} };
+      typeStats[a.action_type].total++;
+      if (a.status === "failed") {
+        typeStats[a.action_type].failed++;
+        const errKey = (a.error_message || "unknown").slice(0, 80);
+        typeStats[a.action_type].errors[errKey] = (typeStats[a.action_type].errors[errKey] || 0) + 1;
+      }
+    }
+
+    for (const [actionType, s] of Object.entries(typeStats)) {
+      if (s.total < 3) continue; // not enough data
+      const failRate = s.failed / s.total;
+
+      if (failRate >= 0.8) {
+        const topError = Object.entries(s.errors).sort((a, b) => b[1] - a[1])[0];
+        issues.push({
+          severity: "critical",
+          area: "Taxa de Falha Sistêmica",
+          description: `${actionType}: ${Math.round(failRate * 100)}% de falha (${s.failed}/${s.total}) nas últimas 6h`,
+          auto_fixed: false,
+          details: topError ? `Erro principal: "${topError[0]}" (${topError[1]}x)` : undefined,
+        });
+
+        // Auto-fix: if ALL recent actions of this type failed with the same error,
+        // reset the failed ones to pending so they can retry after a code fix is deployed
+        if (failRate === 1 && topError && topError[1] === s.failed) {
+          const { data: toReset } = await supabase
+            .from("action_queue")
+            .select("id")
+            .eq("status", "failed")
+            .eq("action_type", actionType)
+            .gte("created_at", sixHoursAgo)
+            .limit(100);
+
+          if (toReset && toReset.length > 0) {
+            const resetIds = toReset.map((r: any) => r.id);
+            await supabase
+              .from("action_queue")
+              .update({
+                status: "pending",
+                error_message: null,
+                retry_count: 0,
+                scheduled_for: new Date(now.getTime() + 30 * 60000).toISOString(),
+              } as any)
+              .in("id", resetIds);
+
+            issues.push({
+              severity: "info",
+              area: "Auto-Retry Sistêmico",
+              description: `${resetIds.length} ações ${actionType} resetadas para retry em 30min`,
+              auto_fixed: true,
+              details: `100% falha com mesmo erro — resetadas automaticamente aguardando fix.`,
+            });
+          }
+        }
+      } else if (failRate >= 0.5) {
+        const topError = Object.entries(s.errors).sort((a, b) => b[1] - a[1])[0];
+        issues.push({
+          severity: "warning",
+          area: "Taxa de Falha Elevada",
+          description: `${actionType}: ${Math.round(failRate * 100)}% de falha (${s.failed}/${s.total}) nas últimas 6h`,
+          auto_fixed: false,
+          details: topError ? `Erro principal: "${topError[0]}" (${topError[1]}x)` : undefined,
+        });
+      }
+    }
+
+    stats.action_failure_rates = Object.fromEntries(
+      Object.entries(typeStats).map(([k, v]) => [k, { total: v.total, failed: v.failed, rate: Math.round(v.failed / v.total * 100) + "%" }])
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 9c. GHOST GUARD SPIKE — detect sudden increase in ghost-skipped leads
+  //     Catches false positive issues with the Ghost Guard JIT check
+  // ═══════════════════════════════════════════════════════
+  const { count: recentGhostCount } = await supabase
+    .from("campaign_leads")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "skipped")
+    .eq("profile_quality_status", "ghost")
+    .gte("updated_at", sixHoursAgo);
+
+  const { count: totalActiveLeads } = await supabase
+    .from("campaign_leads")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["ready", "visiting_profile", "following", "connection_sent", "connected", "dm_sent"]);
+
+  const ghostRate = (totalActiveLeads && totalActiveLeads > 0) ? (recentGhostCount || 0) / totalActiveLeads : 0;
+
+  if ((recentGhostCount || 0) > 5 && ghostRate > 0.05) {
+    issues.push({
+      severity: "critical",
+      area: "Ghost Guard Spike",
+      description: `${recentGhostCount} leads marcados como ghost nas últimas 6h (${Math.round(ghostRate * 100)}% dos ativos)`,
+      auto_fixed: false,
+      details: "Possível falso positivo no Ghost Guard. Verificar extensão — seção runProfileQualityCheck.",
+    });
+  } else if ((recentGhostCount || 0) > 2) {
+    issues.push({
+      severity: "info",
+      area: "Ghost Guard",
+      description: `${recentGhostCount} leads marcados como ghost nas últimas 6h`,
+      auto_fixed: false,
+    });
+  }
+
+  stats.ghost_detections_6h = recentGhostCount || 0;
+  stats.ghost_rate = Math.round(ghostRate * 10000) / 100 + "%";
+
+  // ═══════════════════════════════════════════════════════
+  // 9d. PIPELINE VELOCITY — detect if warming pipeline has stalled
+  //     Catches issues where actions are scheduled but nothing executes
+  // ═══════════════════════════════════════════════════════
+  for (const ext of extensions || []) {
+    if (!ext.is_connected || ext.is_paused) continue;
+
+    // Check completed warming actions in last 6 hours
+    const { count: completedWarming } = await supabase
+      .from("action_queue")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", ext.user_id)
+      .in("action_type", ["visit_profile", "follow_profile"])
+      .eq("status", "completed")
+      .gte("completed_at", sixHoursAgo);
+
+    // Check pending warming actions that are past due
+    const { count: pendingPastDue } = await supabase
+      .from("action_queue")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", ext.user_id)
+      .in("action_type", ["visit_profile", "follow_profile"])
+      .eq("status", "pending")
+      .lte("scheduled_for", now.toISOString());
+
+    if ((completedWarming === 0 || completedWarming === null) && (pendingPastDue || 0) > 5) {
+      issues.push({
+        severity: "critical",
+        area: "Pipeline Parado",
+        description: `User ${ext.user_id.slice(0, 8)}…: 0 ações de warming completadas em 6h com ${pendingPastDue} pendentes atrasadas`,
+        auto_fixed: false,
+        details: "Extensão online mas pipeline não está fluindo. Verificar aba LinkedIn, cooldown, ou erro na extensão.",
+      });
+    } else if ((completedWarming || 0) > 0 && (completedWarming || 0) < 10) {
+      issues.push({
+        severity: "info",
+        area: "Pipeline Lento",
+        description: `User ${ext.user_id.slice(0, 8)}…: apenas ${completedWarming} ações de warming em 6h`,
+        auto_fixed: false,
+      });
+    }
+
+    stats[`pipeline_${ext.user_id.slice(0, 8)}`] = {
+      completed_warming_6h: completedWarming || 0,
+      pending_past_due: pendingPastDue || 0,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════
   // 10. STALE CONNECTION_SENT — pending connections > 10 days
   // ═══════════════════════════════════════════════════════
   const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 3600000).toISOString();
