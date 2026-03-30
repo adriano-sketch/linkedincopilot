@@ -1146,7 +1146,7 @@ const queueProcessor = {
           reject(new Error('No response from content script'));
           return;
         }
-        if (response.success) {
+        if (response.success || response.redirect) {
           resolve(response);
         } else {
           reject(new Error(response.error || 'Action failed'));
