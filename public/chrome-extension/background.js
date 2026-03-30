@@ -700,15 +700,21 @@ const queueProcessor = {
       let result = await this.sendToContentScript(action);
 
       // Handle custom-invite redirect (new LinkedIn 2026 layout)
+      // The content script found a <a href="/preload/custom-invite/..."> link instead of
+      // an inline Connect button. Navigate to that URL and re-run the content script
+      // directly on the custom-invite page (which shows the connection dialog).
       if (result && result.redirect && result.note === 'custom_invite_redirect') {
         console.log(`[QueueProcessor] Redirecting to custom-invite page: ${result.redirect}`);
         const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
         if (tab) {
-          await chrome.tabs.update(tab.id, { url: result.redirect });
+          const redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
+          await chrome.tabs.update(tab.id, { url: redirectUrl });
           await this.waitForTabLoad(tab.id);
-          await this.sleep(3000);
-          // Re-execute content script on the custom-invite page
-          result = await this.sendToContentScript(action);
+          await this.sleep(4000);
+          // Inject and execute content script on the custom-invite page
+          // Do NOT call sendToContentScript — it would re-navigate to the profile page
+          await this.ensureContentScript(tab.id);
+          result = await this.sendMessageToTab(tab.id, action);
         }
       }
 

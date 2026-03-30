@@ -664,6 +664,7 @@ async function waitForLinkedInReady() {
       // Wait for profile actions to load (key indicator page is interactive)
       const actionsReady = document.querySelector('.pvs-profile-actions') ||
         document.querySelector('.pv-top-card-v2-ctas') ||
+        document.querySelector('div[role="dialog"]') ||
         document.querySelector('main button');
       if (actionsReady) {
         await sleep(1500);
