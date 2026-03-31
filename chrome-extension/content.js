@@ -159,7 +159,7 @@ async function sendConnectionRequest(noteText) {
       await sleep(800 + Math.random() * 500);
 
       // ── STEP 4: Find the note textarea and type the message ──
-      const noteInput = findNoteInput();
+      const noteInput = await findNoteInput();
 
       if (noteInput) {
         noteInput.focus();
@@ -898,7 +898,7 @@ async function findAddNoteButton() {
   return null;
 }
 
-function findNoteInput() {
+async function findNoteInput() {
   const selectors = [
     'textarea[name="message"]',
     'textarea#custom-message',
@@ -906,13 +906,18 @@ function findNoteInput() {
     'textarea[placeholder*="nota" i]',
     'textarea[placeholder*="note" i]',
     'div[role="dialog"] textarea',
+    'dialog textarea',
     '.artdeco-modal textarea',
     '[data-test-modal] textarea',
   ];
 
-  for (const selector of selectors) {
-    const el = document.querySelector(selector);
-    if (el) return el;
+  // Retry up to 6 times (3s total) — textarea appears async after clicking "Add a note"
+  for (let attempt = 0; attempt < 6; attempt++) {
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      if (el && el.offsetParent !== null) return el;
+    }
+    await sleep(500);
   }
 
   return null;
