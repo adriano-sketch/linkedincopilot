@@ -185,6 +185,15 @@ async function sendConnectionRequest(noteText) {
         if (typedValue.length < expectedValue.length * 0.95) {
           throw new Error(`Connection note truncated (${typedValue.length}/${expectedValue.length})`);
         }
+
+        // Dispatch extra events to ensure LinkedIn's Ember.js detects the input change
+        // and enables the Send button (Ember binds on focusout/blur, not just input)
+        noteInput.dispatchEvent(new Event('focusin', { bubbles: true }));
+        noteInput.dispatchEvent(new Event('focusout', { bubbles: true }));
+        noteInput.dispatchEvent(new Event('blur', { bubbles: true }));
+        noteInput.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(300);
+        console.log('[LinkedIn Copilot] Note typed and events dispatched ✅');
       } else {
         console.warn('[LinkedIn Copilot] Note input not found, sending without note');
       }
@@ -925,7 +934,7 @@ async function findNoteInput() {
 
 async function findSendButton() {
   // Retry finding the dialog and send button — LinkedIn may render it async
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const dialog = document.querySelector('div[role="dialog"]') ||
       document.querySelector('[data-test-modal]') ||
       document.querySelector('.artdeco-modal');
@@ -962,6 +971,35 @@ async function findSendButton() {
     const primaryBtn = dialog.querySelector('button.artdeco-button--primary');
     if (primaryBtn && primaryBtn.offsetParent !== null && !primaryBtn.disabled) {
       return primaryBtn;
+    }
+
+    // On custom-invite page: if Send button exists but is disabled, try to force-enable it
+    // by re-triggering input events on the textarea (Ember.js may not have detected the input)
+    if (attempt >= 3 && window.location.pathname.includes('/preload/custom-invite')) {
+      const textarea = dialog.querySelector('textarea');
+      if (textarea && textarea.value.trim().length > 0) {
+        console.log('[LinkedIn Copilot] Send button disabled — re-triggering textarea events');
+        textarea.focus();
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        textarea.dispatchEvent(new Event('focusout', { bubbles: true }));
+        textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+        // Also try Ember-specific: trigger keyup to simulate real typing
+        textarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: ' ' }));
+        textarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
+      }
+
+      // Last resort: if the button is still disabled after all retries, force-click it
+      if (attempt >= 6) {
+        const sendBtn = dialog.querySelector('button[aria-label*="Send" i]') ||
+          dialog.querySelector('button.artdeco-button--primary');
+        if (sendBtn && sendBtn.offsetParent !== null) {
+          console.warn('[LinkedIn Copilot] Force-clicking disabled Send button as last resort');
+          sendBtn.disabled = false;
+          sendBtn.classList.remove('artdeco-button--disabled');
+          return sendBtn;
+        }
+      }
     }
 
     await sleep(600);
