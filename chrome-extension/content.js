@@ -1,24 +1,26 @@
-// Prevent double injection
+// Prevent double injection — guard MUST wrap the message listener too,
+// otherwise each injection adds another listener causing duplicate execution
 if (window.__linkedinCopilotLoaded) {
   console.log('[LinkedIn Copilot] Content script already loaded, skipping');
+  // STOP HERE — do not register another message listener
 } else {
   window.__linkedinCopilotLoaded = true;
   console.log('[LinkedIn Copilot] Content script loaded');
-}
 
-// Listen for action requests from background
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'PING') {
-    sendResponse({ pong: true });
-    return;
-  }
-  if (message.type === 'EXECUTE_ACTION') {
-    handleAction(message.action)
-      .then(result => sendResponse(result))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // Keep channel open for async response
-  }
-});
+  // Listen for action requests from background (registered ONCE only)
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'PING') {
+      sendResponse({ pong: true });
+      return;
+    }
+    if (message.type === 'EXECUTE_ACTION') {
+      handleAction(message.action)
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true; // Keep channel open for async response
+    }
+  });
+}
 
 async function handleAction(action) {
   console.log(`[LinkedIn Copilot] Executing: ${action.action_type}`);
@@ -110,15 +112,22 @@ async function sendConnectionRequest(noteText) {
     const connectButton = await findConnectButton();
 
     if (!connectButton) {
-      // Check if we're already connected
-      const messageButton = document.querySelector('button[aria-label*="Message" i]');
-      if (messageButton) {
+      // Check if we're already connected (LinkedIn 2026: Message can be a button OR a link)
+      const messageElement = document.querySelector('button[aria-label*="Message" i]') ||
+        document.querySelector('a[aria-label*="Message" i]') ||
+        document.querySelector('a[href*="/messaging/compose/"]');
+      if (messageElement) {
         return { success: true, action: 'send_connection_request', note: 'already_connected' };
       }
 
-      // Check if connection request is already pending
-      const pendingButton = document.querySelector('button[aria-label*="Pending" i]');
-      if (pendingButton) {
+      // Check if connection request is already pending (LinkedIn 2026: Pending can be a button OR a link)
+      const pendingElement = document.querySelector('button[aria-label*="Pending" i]') ||
+        document.querySelector('a[aria-label*="Pending" i]') ||
+        Array.from(document.querySelectorAll('a, button, span')).find(el => {
+          const text = (el.textContent || '').trim().toLowerCase();
+          return text.includes('pending') && text.includes('withdraw');
+        });
+      if (pendingElement) {
         return { success: true, action: 'send_connection_request', note: 'already_pending' };
       }
 
@@ -760,6 +769,10 @@ async function findConnectButton() {
   if (moreButton) {
       moreButton.click();
       await sleep(800 + Math.random() * 400);
+
+      // Re-check for custom-invite link (may only appear in DOM after More dropdown opens)
+      const customInviteAfterMore = document.querySelector('a[href*="custom-invite"]');
+      if (customInviteAfterMore) return customInviteAfterMore;
 
       // Search in all visible dropdown containers (legacy + new layout)
       const dropdowns = document.querySelectorAll('div.artdeco-dropdown__content, div.artdeco-dropdown__content--is-open, ul[role="menu"], div[role="menu"]');
