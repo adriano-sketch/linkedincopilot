@@ -238,12 +238,24 @@ async function sendConnectionRequest(noteText) {
   if (dialogStillOpen) {
     const errorMsg = dialogStillOpen.querySelector('.artdeco-inline-feedback__message');
     if (errorMsg) {
-      throw new Error(`LinkedIn error: ${errorMsg.textContent.trim()}`);
+      const errText = errorMsg.textContent.trim();
+      if (isLimitError(errText)) {
+        throw new Error(`LINKEDIN_LIMIT: ${errText}`);
+      }
+      throw new Error(`LinkedIn error: ${errText}`);
     }
-    const limitWarning = dialogStillOpen.textContent;
-    if (limitWarning.toLowerCase().includes('limit') || limitWarning.toLowerCase().includes('restriction')) {
-      throw new Error('LinkedIn connection request limit reached');
+    const dialogText = dialogStillOpen.textContent.toLowerCase();
+    if (isLimitError(dialogText)) {
+      throw new Error('LINKEDIN_LIMIT: Connection request limit reached');
     }
+  }
+
+  // Also check for page-level limit banners (LinkedIn sometimes shows them outside dialogs)
+  const pageLimitBanner = detectLinkedInLimitBanner();
+  if (pageLimitBanner) {
+    console.warn('[LinkedIn Copilot] LinkedIn limit banner detected:', pageLimitBanner);
+    // Connection was likely sent, but flag the limit for the queue to pause
+    return { success: true, action: 'send_connection_request', note: 'sent_with_note', limitWarning: pageLimitBanner };
   }
 
   return { success: true, action: 'send_connection_request', note: noteText ? 'sent_with_note' : 'sent_without_note' };
@@ -1262,4 +1274,44 @@ async function simulateScroll(pixels) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ══════════════════════════════════════════════
+// LINKEDIN LIMIT DETECTION
+// ══════════════════════════════════════════════
+
+// Detects if a text string indicates a LinkedIn rate limit
+function isLimitError(text) {
+  const lower = (text || '').toLowerCase();
+  const limitPhrases = [
+    'limit', 'restriction', 'too many', 'quota',
+    'weekly invitation', 'invitation limit', 'invitations this week',
+    'you\'ve reached', 'reached the maximum', 'try again later',
+    'slow down', 'temporarily restricted', 'temporarily limited',
+    'límite', 'restricción', 'limite', 'restrição',  // ES/PT
+  ];
+  return limitPhrases.some(phrase => lower.includes(phrase));
+}
+
+// Scans the page for LinkedIn limit banners/alerts outside dialogs
+function detectLinkedInLimitBanner() {
+  const bannerSelectors = [
+    '.artdeco-toast-item', '.artdeco-notification',
+    '.ip-fuse-limit-alert', '[data-test-artdeco-toast]',
+    '.artdeco-inline-feedback', '.global-alert',
+  ];
+  for (const selector of bannerSelectors) {
+    const elements = document.querySelectorAll(selector);
+    for (const el of elements) {
+      const text = (el.textContent || '').trim();
+      if (isLimitError(text)) return text.substring(0, 200);
+    }
+  }
+  // Also check for any visible element with limit-related text near the top of the page
+  const alerts = document.querySelectorAll('[role="alert"], [role="status"]');
+  for (const el of alerts) {
+    const text = (el.textContent || '').trim();
+    if (isLimitError(text)) return text.substring(0, 200);
+  }
+  return null;
 }

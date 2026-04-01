@@ -117,6 +117,81 @@ serve(async (req) => {
     // If failed, handle retry
     if (!success) {
       const retryCount = (action.retry_count || 0) + 1;
+      const errorLower = (error_message || "").toLowerCase();
+
+      // ── LINKEDIN LIMIT DETECTION ──
+      // If the error is a LinkedIn rate limit, don't retry — reschedule to next day
+      // and pause all pending same-type actions for this user
+      const isLimitError = errorLower.includes("linkedin_limit") ||
+        errorLower.includes("limit_reached") ||
+        errorLower.includes("invitation limit") ||
+        errorLower.includes("weekly invitation") ||
+        errorLower.includes("too many") ||
+        errorLower.includes("temporarily restricted") ||
+        (errorLower.includes("limit") && errorLower.includes("connection"));
+
+      if (isLimitError) {
+        console.log(`⚠️ LinkedIn limit detected for user ${user.id}: ${error_message}`);
+
+        // Don't retry this action — reschedule to next business day
+        const rescheduleTime = rbt(1);
+        await supabase.from("action_queue").insert({
+          user_id: user.id,
+          campaign_lead_id: action.campaign_lead_id,
+          action_type: action.action_type,
+          linkedin_url: action.linkedin_url,
+          message_text: action.message_text,
+          scheduled_for: rescheduleTime,
+          priority: action.priority,
+          status: "pending",
+          retry_count: 0, // Reset retry count — this isn't a bug, it's a limit
+        });
+
+        // Reschedule ALL pending same-type actions for this user to tomorrow
+        const { data: pendingActions } = await supabase.from("action_queue")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("action_type", action.action_type)
+          .eq("status", "pending")
+          .lt("scheduled_for", new Date().toISOString());
+
+        if (pendingActions && pendingActions.length > 0) {
+          const ids = pendingActions.map((a: any) => a.id);
+          console.log(`Rescheduling ${ids.length} pending ${action.action_type} actions to tomorrow`);
+          for (const id of ids) {
+            const newTime = rbt(1); // Spread across next business day
+            await supabase.from("action_queue")
+              .update({ scheduled_for: newTime } as any)
+              .eq("id", id);
+          }
+        }
+
+        // Record in activity log
+        await supabase.from("activity_log").insert({
+          user_id: user.id,
+          campaign_lead_id: action.campaign_lead_id,
+          action: "linkedin_limit_reached",
+          details: {
+            error: error_message,
+            action_type: action.action_type,
+            rescheduled_count: (pendingActions?.length || 0) + 1,
+          },
+        });
+
+        // Update lead — don't mark as error, just record the limit
+        await supabase.from("campaign_leads")
+          .update({
+            error_message: `LinkedIn limit reached — rescheduled to next business day`,
+            updated_at: now,
+          } as any)
+          .eq("id", action.campaign_lead_id);
+
+        return new Response(JSON.stringify({
+          ok: true,
+          limit_detected: true,
+          rescheduled: (pendingActions?.length || 0) + 1,
+        }), { headers: { "Content-Type": "application/json" } });
+      }
 
       if (retryCount < (action.max_retries || 3)) {
         // For lightweight actions (checks), retry in 2-5 minutes instead of next business day

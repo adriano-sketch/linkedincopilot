@@ -729,8 +729,62 @@ const queueProcessor = {
       await safetyManager.incrementCounter(action.action_type);
       await this.reportCompletion(action, true, result);
       console.log(`[QueueProcessor] ${action.action_type} completed`);
+
+      // If the action succeeded but LinkedIn showed a limit warning banner,
+      // pause the queue proactively to avoid hitting the hard limit
+      if (result && result.limitWarning) {
+        console.warn(`[QueueProcessor] ⚠️ LinkedIn limit warning detected after successful action: ${result.limitWarning}`);
+        console.warn(`[QueueProcessor] Pausing connection requests for 24 hours`);
+        const cooldownUntil = Date.now() + (24 * 60 * 60 * 1000);
+        await chrome.storage.local.set({
+          linkedin_cooldown_until: cooldownUntil,
+          linkedin_cooldown_reason: `Limit warning: ${result.limitWarning}`,
+          linkedin_cooldown_started: Date.now(),
+        });
+      }
     } catch (error) {
       console.error(`[QueueProcessor] ${action.action_type} failed:`, error);
+
+      // ── LINKEDIN LIMIT DETECTION ──
+      // If the error indicates a LinkedIn rate limit, pause the entire queue
+      // instead of retrying (retrying would just hit the limit again)
+      const isLinkedInLimit = error.message && (
+        error.message.includes('LINKEDIN_LIMIT') ||
+        error.message.toLowerCase().includes('invitation limit') ||
+        error.message.toLowerCase().includes('weekly invitation') ||
+        error.message.toLowerCase().includes('too many') ||
+        error.message.toLowerCase().includes('you\'ve reached') ||
+        error.message.toLowerCase().includes('temporarily restricted') ||
+        (error.message.toLowerCase().includes('limit') && error.message.toLowerCase().includes('connection'))
+      );
+
+      if (isLinkedInLimit) {
+        console.warn(`[QueueProcessor] ⚠️ LINKEDIN LIMIT DETECTED: ${error.message}`);
+        console.warn(`[QueueProcessor] Pausing queue for 24 hours to respect LinkedIn limits`);
+
+        // Set 24-hour cooldown
+        const cooldownUntil = Date.now() + (24 * 60 * 60 * 1000);
+        await chrome.storage.local.set({
+          linkedin_cooldown_until: cooldownUntil,
+          linkedin_cooldown_reason: error.message,
+          linkedin_cooldown_started: Date.now(),
+        });
+
+        // Mark this action as failed with limit reason (no retry)
+        try {
+          await supabase.update('action_queue',
+            { status: 'failed', error_message: `LIMIT_REACHED: ${error.message}` },
+            `id=eq.${action.id}`
+          );
+          await this.reportCompletion(action, false, null, `LIMIT_REACHED: ${error.message}`);
+        } catch (reportErr) {
+          console.error(`[QueueProcessor] Failed to report limit:`, reportErr.message);
+        }
+
+        this.isProcessing = false;
+        return; // Exit early — don't retry
+      }
+
       try {
         await supabase.update('action_queue',
           { status: 'failed', error_message: error.message, retry_count: (action.retry_count || 0) + 1 },
