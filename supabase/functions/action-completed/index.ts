@@ -1,4 +1,5 @@
 // LinkedIn Copilot — action-completed edge function
+// Deploy trigger: updated SUPABASE_DB_URL secret (Apr 3, 2026)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
