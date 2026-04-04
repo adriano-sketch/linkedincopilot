@@ -833,11 +833,11 @@ const queueProcessor = {
             return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'profile_unavailable', confidence: 'strong', debug: debugInfo };
           }
 
-          const h1 = document.querySelector('main h1');
+          const h1 = document.querySelector('main h1') || document.querySelector('main h2');
           const name = normalize(h1?.textContent || '');
           debugInfo.name = name || null;
           if (!name) {
-            return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'no_h1', confidence: 'weak', debug: debugInfo };
+            return { success: true, action: 'check_profile_quality', is_ghost: true, note: 'no_heading', confidence: 'weak', debug: debugInfo };
           }
 
           const placeholderNames = ['linkedin member', 'linkedin user', 'member only', 'private member', 'membro do linkedin', 'miembro de linkedin', 'membre linkedin'];
@@ -1025,11 +1025,11 @@ const queueProcessor = {
             const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
             const debugInfo = { url: window.location.href, buttonsFound: 0 };
 
-            const profileNameEl = document.querySelector('main h1');
+            const profileNameEl = document.querySelector('main h1') || document.querySelector('main h2');
             debugInfo.profileName = normalize(profileNameEl?.textContent || '') || null;
 
             if (!profileNameEl) {
-              return { success: true, action: 'check_connection_status', is_connected: false, note: 'no_h1_found', confidence: 'weak', debug: debugInfo };
+              return { success: true, action: 'check_connection_status', is_connected: false, note: 'no_heading_found', confidence: 'weak', debug: debugInfo };
             }
 
             const profileSection = profileNameEl.closest('section, .artdeco-card, [data-view-name]') || profileNameEl.parentElement?.parentElement;

@@ -143,7 +143,7 @@ async function sendConnectionRequest(noteText) {
     await sleep(1500 + Math.random() * 1000);
 
     // ── STEP 2: Handle "How do you know" modal ──
-    const howDoYouKnowModal = document.querySelector('div[role="dialog"]');
+    const howDoYouKnowModal = document.querySelector('dialog, div[role="dialog"]');
     if (howDoYouKnowModal) {
       const otherButton = howDoYouKnowModal.querySelector('button[aria-label*="Other" i]');
       if (otherButton) {
@@ -208,7 +208,7 @@ async function sendConnectionRequest(noteText) {
       }
     } else {
       // Diagnostic: log dialog buttons to help debug selector issues
-      const diag = document.querySelector('div[role="dialog"]');
+      const diag = document.querySelector('dialog, div[role="dialog"]');
       if (diag) {
         const btns = Array.from(diag.querySelectorAll('button')).map(b => ({
           text: b.textContent.trim().substring(0, 60),
@@ -234,7 +234,7 @@ async function sendConnectionRequest(noteText) {
   await sleep(2000 + Math.random() * 1000);
 
   // ── STEP 6: Verify — check if the dialog closed and button changed ──
-  const dialogStillOpen = document.querySelector('div[role="dialog"]');
+  const dialogStillOpen = document.querySelector('dialog, div[role="dialog"]');
   if (dialogStillOpen) {
     const errorMsg = dialogStillOpen.querySelector('.artdeco-inline-feedback__message');
     if (errorMsg) {
@@ -283,10 +283,10 @@ async function sendMessage(messageText) {
   }
   await sleep(500);
 
-  // ── STEP 0.5: Capture the profile name from the page h1 ──
-  const profileH1 = document.querySelector('main h1');
+  // ── STEP 0.5: Capture the profile name from the page heading ──
+  const profileH1 = document.querySelector('main h1') || document.querySelector('main h2');
   const profileName = profileH1 ? profileH1.textContent.trim().toLowerCase() : null;
-  console.log('[LinkedIn Copilot] Target profile name from h1:', profileName);
+  console.log('[LinkedIn Copilot] Target profile name from heading:', profileName);
 
   // ── STEP 1: Click the Message button on their profile ──
   const messageButton = findMessageButton();
@@ -567,9 +567,9 @@ async function checkConnectionStatus() {
   await sleep(1000 + Math.random() * 1000);
 
   const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const profileNameEl = document.querySelector('main h1');
+  const profileNameEl = document.querySelector('main h1') || document.querySelector('main h2');
   if (!profileNameEl) {
-    return { success: true, action: 'check_connection_status', is_connected: false, note: 'no_h1_found', confidence: 'weak' };
+    return { success: true, action: 'check_connection_status', is_connected: false, note: 'no_heading_found', confidence: 'weak' };
   }
   const profileSection = profileNameEl.closest('section, .artdeco-card, [data-view-name]') || profileNameEl.parentElement?.parentElement;
   if (!profileSection) {
@@ -694,7 +694,7 @@ async function waitForLinkedInReady() {
       // Wait for profile actions to load (key indicator page is interactive)
       const actionsReady = document.querySelector('.pvs-profile-actions') ||
         document.querySelector('.pv-top-card-v2-ctas') ||
-        document.querySelector('div[role="dialog"]') ||
+        document.querySelector('dialog, div[role="dialog"]') ||
         document.querySelector('main button');
       if (actionsReady) {
         await sleep(1500);
@@ -876,7 +876,7 @@ async function findAddNoteButton() {
   // Wait for dialog to appear with retry
   let dialog = null;
   for (let i = 0; i < 8; i++) {
-    dialog = document.querySelector('div[role="dialog"]') ||
+    dialog = document.querySelector('dialog, div[role="dialog"]') ||
              document.querySelector('.artdeco-modal') ||
              document.querySelector('[data-test-modal]');
     if (dialog) break;
@@ -960,7 +960,7 @@ async function findNoteInput() {
 async function findSendButton() {
   // Retry finding the dialog and send button — LinkedIn may render it async
   for (let attempt = 0; attempt < 8; attempt++) {
-    const dialog = document.querySelector('div[role="dialog"]') ||
+    const dialog = document.querySelector('dialog, div[role="dialog"]') ||
       document.querySelector('[data-test-modal]') ||
       document.querySelector('.artdeco-modal');
     if (!dialog) {
