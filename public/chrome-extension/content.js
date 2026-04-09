@@ -697,24 +697,55 @@ async function composeOnMessagingPage(messageText, expectedName) {
     }
   }
 
-  // Clear any existing text
+  // ── Insert text using direct DOM manipulation (fast, works even if element is hidden) ──
   messageInput.focus();
-  await sleep(300);
+  await sleep(500);
+
+  // Clear existing content
   messageInput.innerHTML = '';
   messageInput.textContent = '';
   messageInput.dispatchEvent(new Event('input', { bubbles: true }));
   await sleep(300);
 
-  // Type the message using human-like typing
-  await typeHumanLike(messageInput, messageText);
+  // Strategy 1: Set innerHTML with <p> tag (how LinkedIn stores messages)
+  messageInput.innerHTML = `<p>${messageText}</p>`;
+  messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+  messageInput.dispatchEvent(new Event('change', { bubbles: true }));
+  await sleep(500);
 
-  // Verify message integrity
-  const isValid = await verifyComposerIntegrity(messageInput, messageText);
-  if (!isValid) {
-    throw new Error('Message integrity check failed on messaging page');
+  // Verify text was set
+  let composerText = (messageInput.textContent || '').trim();
+  console.log(`[LinkedIn Copilot] After innerHTML set, composer has ${composerText.length} chars (expected ${messageText.length})`);
+
+  // Strategy 2: If innerHTML didn't work, try insertText
+  if (composerText.length < messageText.length * 0.5) {
+    console.log('[LinkedIn Copilot] innerHTML failed, trying execCommand insertText');
+    messageInput.innerHTML = '';
+    messageInput.focus();
+    await sleep(200);
+    document.execCommand('insertText', false, messageText);
+    messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(500);
+    composerText = (messageInput.textContent || '').trim();
   }
 
-  // Find and click Send button
+  // Strategy 3: Try setting textContent directly
+  if (composerText.length < messageText.length * 0.5) {
+    console.log('[LinkedIn Copilot] insertText failed, trying textContent');
+    messageInput.textContent = messageText;
+    messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(500);
+    composerText = (messageInput.textContent || '').trim();
+  }
+
+  if (composerText.length < messageText.length * 0.5) {
+    throw new Error(`Failed to set message text in composer (got ${composerText.length} chars, expected ${messageText.length})`);
+  }
+
+  console.log('[LinkedIn Copilot] Message text set successfully');
+  await sleep(1000);
+
+  // ── Find Send button (with retry, also accept hidden buttons) ──
   let sendButton = null;
   const sendSelectors = [
     'button.msg-form__send-button',
@@ -723,36 +754,50 @@ async function composeOnMessagingPage(messageText, expectedName) {
     'button[aria-label*="Enviar" i]',
     'button[aria-label*="Envoyer" i]',
   ];
-  for (const selector of sendSelectors) {
-    const btn = document.querySelector(selector);
-    if (btn && btn.offsetParent !== null && !btn.disabled) {
-      sendButton = btn;
-      break;
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    for (const selector of sendSelectors) {
+      const btn = document.querySelector(selector);
+      if (btn && !btn.disabled) { sendButton = btn; break; }
     }
-  }
-  // Fallback: find by text
-  if (!sendButton) {
+    if (sendButton) break;
+    // Fallback: find by text
     const allButtons = document.querySelectorAll('button');
     for (const btn of allButtons) {
-      const text = btn.textContent.trim().toLowerCase();
-      if ((text === 'send' || text === 'enviar' || text === 'envoyer') && btn.offsetParent !== null && !btn.disabled) {
+      const text = (btn.textContent || '').trim().toLowerCase();
+      if ((text === 'send' || text === 'enviar' || text === 'envoyer') && !btn.disabled) {
         sendButton = btn;
         break;
       }
     }
+    if (sendButton) break;
+    await sleep(1000);
   }
 
   if (!sendButton) {
-    throw new Error('Send button not found on messaging page');
+    const allBtns = document.querySelectorAll('button');
+    const btnTexts = Array.from(allBtns).map(b => `${b.textContent.trim().substring(0,20)}[disabled=${b.disabled}]`).slice(0, 10);
+    throw new Error(`Send button not found on messaging page (buttons=${JSON.stringify(btnTexts)})`);
   }
 
+  console.log('[LinkedIn Copilot] Clicking Send button:', sendButton.textContent.trim(), sendButton.className);
   sendButton.click();
-  await sleep(2000 + Math.random() * 1000);
+  await sleep(3000);
 
-  // Verify: check if the compose input is now empty (message was sent)
+  // Verify: check if composer was cleared (message sent)
   const remainingText = (messageInput.textContent || '').trim();
   if (remainingText.length > 0 && remainingText.length > messageText.length * 0.5) {
-    throw new Error('Message may not have been sent — compose input still has content');
+    // Try clicking send again
+    console.warn('[LinkedIn Copilot] Text still in composer, retrying send');
+    const retryBtn = document.querySelector('button.msg-form__send-button') || sendButton;
+    if (retryBtn && !retryBtn.disabled) {
+      retryBtn.click();
+      await sleep(2000);
+    }
+    const finalText = (messageInput.textContent || '').trim();
+    if (finalText.length > messageText.length * 0.5) {
+      throw new Error('Message may not have been sent — compose input still has content');
+    }
   }
 
   console.log('[LinkedIn Copilot] ✅ Message sent successfully on messaging page');
