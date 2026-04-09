@@ -718,9 +718,36 @@ const queueProcessor = {
         }
       }
 
-      // NOTE: messaging_redirect handler removed — content.js now clicks the
-      // Message <a> link directly and composes on the messaging page in one
-      // execution (Approach 3), avoiding background.js redirect complexity.
+      // Handle messaging redirect (LinkedIn 2026: Message link navigates to /messaging/ page)
+      // Background.js handles navigation + re-injection since clicking the link
+      // in content.js destroys its execution context.
+      if (result && result.redirect && result.note === 'messaging_redirect') {
+        console.log(`[QueueProcessor] Messaging redirect to: ${result.redirect}`);
+        const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
+        if (tab) {
+          const redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
+          // Use SPA-friendly navigation via window.location.href
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (url) => { window.location.href = url; },
+            args: [redirectUrl],
+          });
+          await this.waitForTabLoad(tab.id);
+          await this.sleep(6000);
+          await this.ensureContentScript(tab.id);
+          await this.sleep(2000);
+          // Send compose action — sendMessageToTab uses 90s timeout for send_dm/compose
+          result = await this.sendMessageToTab(tab.id, {
+            ...action,
+            action_type: 'compose_on_messaging_page',
+            action_data: {
+              ...action.action_data,
+              message_text: action.action_data?.message_text || action.message_text,
+              expected_name: result.profileName || null,
+            },
+          });
+        }
+      }
 
       if (result && result.skip_report) {
         console.log(`[QueueProcessor] ${action.action_type} skipped: ${result.reason || 'skip_report'}`);
@@ -1186,8 +1213,8 @@ const queueProcessor = {
 
   sendMessageToTab(tabId, action) {
     return new Promise((resolve, reject) => {
-      // send_dm needs longer: 15s button retry + 6s SPA nav + 25s compose retry + typing/sending
-      const timeoutMs = (action.action_type === 'send_dm') ? 90000 : 30000;
+      // send_dm/compose needs longer: 25s compose input retry + typing/verification/sending
+      const timeoutMs = (action.action_type === 'send_dm' || action.action_type === 'compose_on_messaging_page') ? 90000 : 30000;
       const timeout = setTimeout(() => reject(new Error(`Content script timeout (${timeoutMs / 1000}s)`)), timeoutMs);
       chrome.tabs.sendMessage(tabId, {
         type: 'EXECUTE_ACTION',
