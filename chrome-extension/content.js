@@ -640,10 +640,12 @@ async function composeOnMessagingPage(messageText, expectedName) {
           console.log('[LinkedIn Copilot] Compose input activated successfully');
           break;
         }
-        // Even if not "visible" by offsetParent, if it's contenteditable and focusable, use it
-        if (attempt >= 15 && document.activeElement === hiddenInput) {
+        // After enough retries, just use the element regardless of visibility.
+        // LinkedIn 2026 uses CSS that makes offsetParent null (e.g. fixed positioning,
+        // or parent with visibility:hidden) but the element is still functional.
+        if (attempt >= 10) {
           messageInput = hiddenInput;
-          console.log('[LinkedIn Copilot] Using focused-but-hidden compose input');
+          console.log('[LinkedIn Copilot] Using hidden compose input directly after', attempt + 1, 'attempts');
           break;
         }
       }
