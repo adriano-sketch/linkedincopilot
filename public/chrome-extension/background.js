@@ -1186,7 +1186,9 @@ const queueProcessor = {
 
   sendMessageToTab(tabId, action) {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Content script timeout (30s)')), 30000);
+      // send_dm needs longer: 15s button retry + 6s SPA nav + 25s compose retry + typing/sending
+      const timeoutMs = (action.action_type === 'send_dm') ? 90000 : 30000;
+      const timeout = setTimeout(() => reject(new Error(`Content script timeout (${timeoutMs / 1000}s)`)), timeoutMs);
       chrome.tabs.sendMessage(tabId, {
         type: 'EXECUTE_ACTION',
         action: {
