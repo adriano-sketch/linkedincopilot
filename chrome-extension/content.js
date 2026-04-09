@@ -1175,27 +1175,53 @@ async function findSendButton() {
 // ── MESSAGE BUTTON FINDERS ──
 
 function findMessageButton() {
+  // Strategy 1: Direct selectors (broad — don't restrict to main or specific containers)
   const selectors = [
-    // LinkedIn 2026: Message is an <a> link with /messaging/compose/ href (no aria-label)
     'a[href*="/messaging/compose/"]',
-    // Legacy selectors
-    'main button[aria-label*="Message" i]',
-    '.pvs-profile-actions button[aria-label*="Message" i]',
     'a[href*="messaging"][aria-label*="Message" i]',
+    'button[aria-label*="Message" i]',
+    'a[href*="/messaging/"]',
   ];
 
   for (const selector of selectors) {
-    const btn = document.querySelector(selector);
-    if (btn && btn.offsetParent !== null) return btn;
-  }
-
-  // Fallback by text — check both buttons and links
-  const allClickables = document.querySelectorAll('main button, main a, .pvs-profile-actions button, section button, section a');
-  for (const el of allClickables) {
-    if (el.textContent.trim().toLowerCase() === 'message' && el.offsetParent !== null) {
+    const el = document.querySelector(selector);
+    if (el && el.offsetParent !== null) {
+      console.log('[LinkedIn Copilot] findMessageButton: found via selector:', selector, 'tag:', el.tagName, 'href:', el.href || '');
       return el;
     }
   }
+
+  // Strategy 2: Same approach as check_connection_status — find profile section, search within
+  const profileNameEl = document.querySelector('main h1') || document.querySelector('main h2');
+  if (profileNameEl) {
+    const profileSection = profileNameEl.closest('section, .artdeco-card, [data-view-name]') || profileNameEl.parentElement?.parentElement;
+    if (profileSection) {
+      const sectionClickables = profileSection.querySelectorAll('button, a[role="button"], a[href*="messaging"], a');
+      for (const el of sectionClickables) {
+        const text = (el.textContent || '').trim().toLowerCase();
+        const label = (el.getAttribute('aria-label') || '').toLowerCase();
+        if ((text === 'message' || text === 'mensagem' || text === 'mensaje' || label.includes('message')) && el.offsetParent !== null) {
+          console.log('[LinkedIn Copilot] findMessageButton: found in profileSection, tag:', el.tagName, 'text:', text, 'href:', el.href || '');
+          return el;
+        }
+      }
+    }
+  }
+
+  // Strategy 3: Broadest fallback — any visible clickable with "message" text
+  const allClickables = document.querySelectorAll('button, a');
+  for (const el of allClickables) {
+    const text = (el.textContent || '').trim().toLowerCase();
+    if (text === 'message' && el.offsetParent !== null) {
+      console.log('[LinkedIn Copilot] findMessageButton: found via broad fallback, tag:', el.tagName, 'href:', el.href || '');
+      return el;
+    }
+  }
+
+  // Diagnostic: log what buttons are visible for debugging
+  const allBtns = document.querySelectorAll('button, a[role="button"], a[href*="messaging"]');
+  const btnTexts = Array.from(allBtns).filter(b => b.offsetParent !== null).map(b => b.textContent.trim().substring(0, 30)).slice(0, 10);
+  console.error('[LinkedIn Copilot] findMessageButton: FAILED. Visible clickables:', JSON.stringify(btnTexts));
 
   return null;
 }
