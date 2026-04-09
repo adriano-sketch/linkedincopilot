@@ -718,6 +718,30 @@ const queueProcessor = {
         }
       }
 
+      // Handle messaging redirect (LinkedIn 2026: Message link navigates to /messaging/ page
+      // instead of opening an overlay on the profile page)
+      if (result && result.redirect && result.note === 'messaging_redirect') {
+        console.log(`[QueueProcessor] Redirecting to messaging page: ${result.redirect}`);
+        const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
+        if (tab) {
+          const redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
+          await chrome.tabs.update(tab.id, { url: redirectUrl });
+          await this.waitForTabLoad(tab.id);
+          await this.sleep(6000); // Messaging page needs extra time to render compose input
+          await this.ensureContentScript(tab.id);
+          // Send compose_on_messaging_page action to content script
+          result = await this.sendMessageToTab(tab.id, {
+            ...action,
+            action_type: 'compose_on_messaging_page',
+            action_data: {
+              ...action.action_data,
+              message_text: action.action_data?.message_text || action.message_text,
+              expected_name: result.profileName || null,
+            },
+          });
+        }
+      }
+
       if (result && result.skip_report) {
         console.log(`[QueueProcessor] ${action.action_type} skipped: ${result.reason || 'skip_report'}`);
         return;
@@ -1188,7 +1212,8 @@ const queueProcessor = {
         action: {
           action_type: action.action_type,
           linkedin_url: action.action_data?.linkedin_url || action.linkedin_url,
-          message_text: action.action_data?.message_text || action.message_text
+          message_text: action.action_data?.message_text || action.message_text,
+          expected_name: action.action_data?.expected_name || null,
         }
       }, (response) => {
         clearTimeout(timeout);

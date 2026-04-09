@@ -38,6 +38,8 @@ async function handleAction(action) {
     case 'send_dm':
     case 'send_followup':
       return await sendMessage(action.message_text);
+    case 'compose_on_messaging_page':
+      return await composeOnMessagingPage(action.message_text, action.expected_name);
     case 'check_connection_status':
       return await checkConnectionStatus();
     case 'check_reply_status':
@@ -288,11 +290,17 @@ async function sendMessage(messageText) {
   const profileName = profileH1 ? profileH1.textContent.trim().toLowerCase() : null;
   console.log('[LinkedIn Copilot] Target profile name from heading:', profileName);
 
-  // ── STEP 1: Click the Message button on their profile ──
+  // ── STEP 1: Find the Message button/link on their profile ──
   const messageButton = findMessageButton();
 
   if (!messageButton) {
     throw new Error('Message button not found — may not be connected');
+  }
+
+  // LinkedIn 2026: Message is an <a> link that navigates to /messaging/ page
+  // instead of opening an overlay. Signal background.js to handle navigation.
+  if (messageButton.tagName === 'A' && messageButton.href && messageButton.href.includes('messaging')) {
+    return { success: false, action: 'send_dm', redirect: messageButton.href, note: 'messaging_redirect', profileName };
   }
 
   messageButton.click();
@@ -558,6 +566,121 @@ function findMessageSendButton(overlayRoot = null) {
   }
 
   return null;
+}
+
+// ══════════════════════════════════════════════
+// COMPOSE MESSAGE ON FULL MESSAGING PAGE (LinkedIn 2026)
+// ══════════════════════════════════════════════
+async function composeOnMessagingPage(messageText, expectedName) {
+  console.log('[LinkedIn Copilot] Composing on messaging page...');
+
+  // Wait for compose textbox to appear (messaging page loads async)
+  let messageInput = null;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    messageInput = document.querySelector('div.msg-form__contenteditable[contenteditable="true"]') ||
+                   document.querySelector('div[role="textbox"][contenteditable="true"]') ||
+                   document.querySelector('div[aria-label*="Write a message" i][contenteditable="true"]') ||
+                   document.querySelector('div[aria-label*="Escriba un mensaje" i][contenteditable="true"]') ||
+                   document.querySelector('div[aria-label*="Escreva uma mensagem" i][contenteditable="true"]');
+    if (messageInput && messageInput.offsetParent !== null) break;
+    messageInput = null;
+    await sleep(1000);
+  }
+
+  if (!messageInput) {
+    throw new Error('Message compose input not found on messaging page');
+  }
+
+  // Verify recipient if possible
+  if (expectedName) {
+    const headerEls = document.querySelectorAll('h2, h3, a[class*="conversation-header"], [class*="msg-thread"] h2');
+    const expectedFirst = expectedName.split(/\s+/)[0].toLowerCase();
+    let nameFound = false;
+    for (const el of headerEls) {
+      const text = el.textContent.trim().toLowerCase();
+      if (text.includes(expectedFirst)) {
+        nameFound = true;
+        console.log('[LinkedIn Copilot] ✅ Recipient verified on messaging page:', text);
+        break;
+      }
+    }
+    // Also check the toolbar/header area
+    if (!nameFound) {
+      const toolbarLinks = document.querySelectorAll('a, span, h2');
+      for (const el of toolbarLinks) {
+        const text = el.textContent.trim().toLowerCase();
+        if (text === expectedName.toLowerCase() || text.includes(expectedFirst)) {
+          nameFound = true;
+          console.log('[LinkedIn Copilot] ✅ Recipient verified via toolbar:', text);
+          break;
+        }
+      }
+    }
+    if (!nameFound) {
+      console.warn('[LinkedIn Copilot] ⚠️ Could not verify recipient name, proceeding with caution');
+    }
+  }
+
+  // Clear any existing text
+  messageInput.focus();
+  await sleep(300);
+  messageInput.innerHTML = '';
+  messageInput.textContent = '';
+  messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(300);
+
+  // Type the message using human-like typing
+  await typeHumanLike(messageInput, messageText);
+
+  // Verify message integrity
+  const isValid = await verifyComposerIntegrity(messageInput, messageText);
+  if (!isValid) {
+    throw new Error('Message integrity check failed on messaging page');
+  }
+
+  // Find and click Send button
+  let sendButton = null;
+  const sendSelectors = [
+    'button.msg-form__send-button',
+    'button[type="submit"][class*="msg-form"]',
+    'button[aria-label*="Send" i]',
+    'button[aria-label*="Enviar" i]',
+    'button[aria-label*="Envoyer" i]',
+  ];
+  for (const selector of sendSelectors) {
+    const btn = document.querySelector(selector);
+    if (btn && btn.offsetParent !== null && !btn.disabled) {
+      sendButton = btn;
+      break;
+    }
+  }
+  // Fallback: find by text
+  if (!sendButton) {
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      const text = btn.textContent.trim().toLowerCase();
+      if ((text === 'send' || text === 'enviar' || text === 'envoyer') && btn.offsetParent !== null && !btn.disabled) {
+        sendButton = btn;
+        break;
+      }
+    }
+  }
+
+  if (!sendButton) {
+    throw new Error('Send button not found on messaging page');
+  }
+
+  sendButton.click();
+  await sleep(2000 + Math.random() * 1000);
+
+  // Verify: check if the compose input is now empty (message was sent)
+  const remainingText = (messageInput.textContent || '').trim();
+  if (remainingText.length > 0 && remainingText.length > messageText.length * 0.5) {
+    throw new Error('Message may not have been sent — compose input still has content');
+  }
+
+  console.log('[LinkedIn Copilot] ✅ Message sent successfully on messaging page');
+  return { success: true, action: 'send_dm', note: 'sent_via_messaging_page' };
 }
 
 // ══════════════════════════════════════════════
@@ -1037,6 +1160,9 @@ async function findSendButton() {
 
 function findMessageButton() {
   const selectors = [
+    // LinkedIn 2026: Message is an <a> link with /messaging/compose/ href (no aria-label)
+    'a[href*="/messaging/compose/"]',
+    // Legacy selectors
     'main button[aria-label*="Message" i]',
     '.pvs-profile-actions button[aria-label*="Message" i]',
     'a[href*="messaging"][aria-label*="Message" i]',
@@ -1047,11 +1173,11 @@ function findMessageButton() {
     if (btn && btn.offsetParent !== null) return btn;
   }
 
-  // Fallback by text
-  const allButtons = document.querySelectorAll('main button, .pvs-profile-actions button');
-  for (const btn of allButtons) {
-    if (btn.textContent.trim().toLowerCase() === 'message' && btn.offsetParent !== null) {
-      return btn;
+  // Fallback by text — check both buttons and links
+  const allClickables = document.querySelectorAll('main button, main a, .pvs-profile-actions button, section button, section a');
+  for (const el of allClickables) {
+    if (el.textContent.trim().toLowerCase() === 'message' && el.offsetParent !== null) {
+      return el;
     }
   }
 
