@@ -572,23 +572,33 @@ function findMessageSendButton(overlayRoot = null) {
 // COMPOSE MESSAGE ON FULL MESSAGING PAGE (LinkedIn 2026)
 // ══════════════════════════════════════════════
 async function composeOnMessagingPage(messageText, expectedName) {
-  console.log('[LinkedIn Copilot] Composing on messaging page...');
+  console.log('[LinkedIn Copilot] Composing on messaging page. URL:', window.location.href);
 
-  // Wait for compose textbox to appear (messaging page loads async)
+  // Wait for compose textbox to appear (messaging page loads async via SPA)
   let messageInput = null;
-  for (let attempt = 0; attempt < 15; attempt++) {
+  for (let attempt = 0; attempt < 25; attempt++) {
+    // Try multiple selector strategies
     messageInput = document.querySelector('div.msg-form__contenteditable[contenteditable="true"]') ||
                    document.querySelector('div[role="textbox"][contenteditable="true"]') ||
                    document.querySelector('div[aria-label*="Write a message" i][contenteditable="true"]') ||
                    document.querySelector('div[aria-label*="Escriba un mensaje" i][contenteditable="true"]') ||
-                   document.querySelector('div[aria-label*="Escreva uma mensagem" i][contenteditable="true"]');
+                   document.querySelector('div[aria-label*="Escreva uma mensagem" i][contenteditable="true"]') ||
+                   document.querySelector('[contenteditable="true"][class*="msg"]') ||
+                   document.querySelector('.msg-form__msg-content-container [contenteditable="true"]');
     if (messageInput && messageInput.offsetParent !== null) break;
     messageInput = null;
+    if (attempt % 5 === 4) {
+      console.log(`[LinkedIn Copilot] Compose input not found yet (attempt ${attempt + 1}/25). URL: ${window.location.pathname}`);
+    }
     await sleep(1000);
   }
 
   if (!messageInput) {
-    throw new Error('Message compose input not found on messaging page');
+    // Log diagnostic info
+    const editables = document.querySelectorAll('[contenteditable="true"]');
+    const forms = document.querySelectorAll('[class*="msg-form"], [class*="msg-overlay"]');
+    console.error(`[LinkedIn Copilot] Compose not found. Editables: ${editables.length}, Forms: ${forms.length}, URL: ${window.location.href}`);
+    throw new Error(`Message compose input not found on messaging page (editables=${editables.length}, url=${window.location.pathname})`);
   }
 
   // Verify recipient if possible

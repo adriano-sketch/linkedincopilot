@@ -725,9 +725,15 @@ const queueProcessor = {
         const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
         if (tab) {
           const redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
-          await chrome.tabs.update(tab.id, { url: redirectUrl });
+          // Use SPA navigation (window.location.href) instead of chrome.tabs.update
+          // so LinkedIn's React router handles the transition properly and renders the compose UI
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (url) => { window.location.href = url; },
+            args: [redirectUrl],
+          });
           await this.waitForTabLoad(tab.id);
-          await this.sleep(6000); // Messaging page needs extra time to render compose input
+          await this.sleep(8000); // Messaging page needs extra time to render compose input
           await this.ensureContentScript(tab.id);
           // Send compose_on_messaging_page action to content script
           result = await this.sendMessageToTab(tab.id, {
