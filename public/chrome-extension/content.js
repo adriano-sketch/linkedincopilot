@@ -608,12 +608,26 @@ async function composeOnMessagingPage(messageText, expectedName) {
     await sleep(1000);
   }
 
+  // Last resort: grab ANY visible contenteditable on the messaging page
   if (!messageInput) {
-    // Log diagnostic info
+    const allEditables = document.querySelectorAll('[contenteditable="true"]');
+    for (const el of allEditables) {
+      if (el.offsetParent !== null) {
+        console.log('[LinkedIn Copilot] Using fallback contenteditable:', el.tagName, el.className, el.getAttribute('aria-label'), el.getAttribute('role'));
+        messageInput = el;
+        break;
+      }
+    }
+  }
+
+  if (!messageInput) {
     const editables = document.querySelectorAll('[contenteditable="true"]');
-    const forms = document.querySelectorAll('[class*="msg-form"], [class*="msg-overlay"]');
-    console.error(`[LinkedIn Copilot] Compose not found. Editables: ${editables.length}, Forms: ${forms.length}, URL: ${window.location.href}`);
-    throw new Error(`Message compose input not found on messaging page (editables=${editables.length}, url=${window.location.pathname})`);
+    const editableInfo = Array.from(editables).map(e => ({
+      tag: e.tagName, cls: (e.className || '').substring(0, 60),
+      label: e.getAttribute('aria-label'), role: e.getAttribute('role'),
+      visible: !!e.offsetParent
+    }));
+    throw new Error(`Message compose input not found on messaging page (editables=${JSON.stringify(editableInfo)}, url=${window.location.pathname})`);
   }
 
   // Verify recipient if possible
