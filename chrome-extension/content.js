@@ -590,34 +590,69 @@ async function composeOnMessagingPage(messageText, expectedName) {
   console.log('[LinkedIn Copilot] Composing on messaging page. URL:', window.location.href);
 
   // Wait for compose textbox to appear (messaging page loads async via SPA)
-  let messageInput = null;
-  for (let attempt = 0; attempt < 25; attempt++) {
-    // Try multiple selector strategies
-    messageInput = document.querySelector('div.msg-form__contenteditable[contenteditable="true"]') ||
-                   document.querySelector('div[role="textbox"][contenteditable="true"]') ||
-                   document.querySelector('div[aria-label*="Write a message" i][contenteditable="true"]') ||
-                   document.querySelector('div[aria-label*="Escriba un mensaje" i][contenteditable="true"]') ||
-                   document.querySelector('div[aria-label*="Escreva uma mensagem" i][contenteditable="true"]') ||
-                   document.querySelector('[contenteditable="true"][class*="msg"]') ||
-                   document.querySelector('.msg-form__msg-content-container [contenteditable="true"]');
-    if (messageInput && messageInput.offsetParent !== null) break;
-    messageInput = null;
-    if (attempt % 5 === 4) {
-      console.log(`[LinkedIn Copilot] Compose input not found yet (attempt ${attempt + 1}/25). URL: ${window.location.pathname}`);
-    }
-    await sleep(1000);
-  }
+  const composeSelectors = [
+    'div.msg-form__contenteditable[contenteditable="true"]',
+    'div[role="textbox"][contenteditable="true"]',
+    'div[aria-label*="Write a message" i][contenteditable="true"]',
+    'div[aria-label*="Escriba un mensaje" i][contenteditable="true"]',
+    'div[aria-label*="Escreva uma mensagem" i][contenteditable="true"]',
+    '[contenteditable="true"][class*="msg"]',
+    '.msg-form__msg-content-container [contenteditable="true"]',
+  ];
 
-  // Last resort: grab ANY visible contenteditable on the messaging page
-  if (!messageInput) {
-    const allEditables = document.querySelectorAll('[contenteditable="true"]');
-    for (const el of allEditables) {
-      if (el.offsetParent !== null) {
-        console.log('[LinkedIn Copilot] Using fallback contenteditable:', el.tagName, el.className, el.getAttribute('aria-label'), el.getAttribute('role'));
-        messageInput = el;
-        break;
+  let messageInput = null;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    // First try to find a VISIBLE compose input
+    for (const sel of composeSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.offsetParent !== null) { messageInput = el; break; }
+    }
+    if (messageInput) break;
+
+    // If not visible, find ANY matching element and try to activate it
+    if (attempt >= 5) {
+      let hiddenInput = null;
+      for (const sel of composeSelectors) {
+        const el = document.querySelector(sel);
+        if (el) { hiddenInput = el; break; }
+      }
+      if (!hiddenInput) {
+        // Also try any contenteditable
+        hiddenInput = document.querySelector('[contenteditable="true"]');
+      }
+      if (hiddenInput) {
+        console.log(`[LinkedIn Copilot] Found hidden compose input (attempt ${attempt + 1}), activating...`);
+        // Try to make it visible: scroll, click parent containers, focus
+        hiddenInput.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(300);
+        // Click on the form container or parent to expand/activate
+        const formContainer = hiddenInput.closest('.msg-form, .msg-form__msg-content-container, form, [class*="msg-form"]');
+        if (formContainer) {
+          formContainer.click();
+          await sleep(500);
+        }
+        hiddenInput.focus();
+        hiddenInput.click();
+        await sleep(500);
+        // Check if now visible
+        if (hiddenInput.offsetParent !== null) {
+          messageInput = hiddenInput;
+          console.log('[LinkedIn Copilot] Compose input activated successfully');
+          break;
+        }
+        // Even if not "visible" by offsetParent, if it's contenteditable and focusable, use it
+        if (attempt >= 15 && document.activeElement === hiddenInput) {
+          messageInput = hiddenInput;
+          console.log('[LinkedIn Copilot] Using focused-but-hidden compose input');
+          break;
+        }
       }
     }
+
+    if (attempt % 5 === 4) {
+      console.log(`[LinkedIn Copilot] Compose input not found/visible yet (attempt ${attempt + 1}/30). URL: ${window.location.pathname}`);
+    }
+    await sleep(1000);
   }
 
   if (!messageInput) {
