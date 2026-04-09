@@ -718,35 +718,9 @@ const queueProcessor = {
         }
       }
 
-      // Handle messaging redirect (LinkedIn 2026: Message link navigates to /messaging/ page
-      // instead of opening an overlay on the profile page)
-      if (result && result.redirect && result.note === 'messaging_redirect') {
-        console.log(`[QueueProcessor] Redirecting to messaging page: ${result.redirect}`);
-        const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
-        if (tab) {
-          const redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
-          // Use SPA navigation (window.location.href) instead of chrome.tabs.update
-          // so LinkedIn's React router handles the transition properly and renders the compose UI
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: (url) => { window.location.href = url; },
-            args: [redirectUrl],
-          });
-          await this.waitForTabLoad(tab.id);
-          await this.sleep(8000); // Messaging page needs extra time to render compose input
-          await this.ensureContentScript(tab.id);
-          // Send compose_on_messaging_page action to content script
-          result = await this.sendMessageToTab(tab.id, {
-            ...action,
-            action_type: 'compose_on_messaging_page',
-            action_data: {
-              ...action.action_data,
-              message_text: action.action_data?.message_text || action.message_text,
-              expected_name: result.profileName || null,
-            },
-          });
-        }
-      }
+      // NOTE: messaging_redirect handler removed — content.js now clicks the
+      // Message <a> link directly and composes on the messaging page in one
+      // execution (Approach 3), avoiding background.js redirect complexity.
 
       if (result && result.skip_report) {
         console.log(`[QueueProcessor] ${action.action_type} skipped: ${result.reason || 'skip_report'}`);

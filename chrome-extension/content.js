@@ -298,9 +298,15 @@ async function sendMessage(messageText) {
   }
 
   // LinkedIn 2026: Message is an <a> link that navigates to /messaging/ page
-  // instead of opening an overlay. Signal background.js to handle navigation.
+  // instead of opening an overlay. Click it directly (SPA navigation preserves
+  // content script context) then compose on the messaging page.
   if (messageButton.tagName === 'A' && messageButton.href && messageButton.href.includes('messaging')) {
-    return { success: false, action: 'send_dm', redirect: messageButton.href, note: 'messaging_redirect', profileName };
+    console.log('[LinkedIn Copilot] Message button is <a> link, clicking for SPA navigation to:', messageButton.href);
+    messageButton.click();
+    // Wait for SPA navigation to messaging page
+    await sleep(4000 + Math.random() * 2000);
+    console.log('[LinkedIn Copilot] After click, now at:', window.location.href);
+    return await composeOnMessagingPage(messageText, profileName);
   }
 
   messageButton.click();
