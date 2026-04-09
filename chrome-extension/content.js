@@ -290,11 +290,24 @@ async function sendMessage(messageText) {
   const profileName = profileH1 ? profileH1.textContent.trim().toLowerCase() : null;
   console.log('[LinkedIn Copilot] Target profile name from heading:', profileName);
 
-  // ── STEP 1: Find the Message button/link on their profile ──
-  const messageButton = findMessageButton();
+  // ── STEP 1: Find the Message button/link on their profile (with retry) ──
+  let messageButton = null;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    messageButton = findMessageButton();
+    if (messageButton) break;
+    if (attempt % 3 === 2) {
+      console.log(`[LinkedIn Copilot] sendMessage: Message button not found yet (attempt ${attempt + 1}/10), URL: ${window.location.href}`);
+    }
+    await sleep(1500);
+  }
 
   if (!messageButton) {
-    throw new Error('Message button not found — may not be connected');
+    // Include diagnostic info in error message so it reaches Supabase
+    const profileNameEl = document.querySelector('main h1') || document.querySelector('main h2');
+    const pName = profileNameEl ? profileNameEl.textContent.trim() : 'NO_HEADING';
+    const allBtns = document.querySelectorAll('button, a[role="button"], a[href*="messaging"]');
+    const btnTexts = Array.from(allBtns).filter(b => b.offsetParent !== null).map(b => b.textContent.trim().substring(0, 25)).slice(0, 8);
+    throw new Error(`Message button not found (url=${window.location.pathname}, heading=${pName}, buttons=${JSON.stringify(btnTexts)})`);
   }
 
   // LinkedIn 2026: Message is an <a> link that navigates to /messaging/ page
