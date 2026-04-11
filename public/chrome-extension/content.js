@@ -313,7 +313,16 @@ async function sendMessage(messageText) {
   // LinkedIn 2026: Message is an <a> link that navigates to /messaging/ page
   // instead of opening an overlay. Return redirect to background.js which handles
   // navigation and re-injection (clicking directly destroys content script context).
-  if (messageButton.tagName === 'A' && messageButton.href && messageButton.href.includes('messaging')) {
+  //
+  // CRITICAL: Only follow /messaging/compose/... or /messaging/thread/new/... URLs.
+  // A plain /messaging/ href is the global-nav inbox icon — following that opens
+  // whichever thread was last active, which caused the 2026-04-10 incident where
+  // 16 DMs all landed in the same (wrong) thread because findMessageButton fell
+  // through to that selector. See isValidMessageHref().
+  if (messageButton.tagName === 'A') {
+    if (!isValidMessageHref(messageButton.href)) {
+      throw new Error(`Refused to redirect to non-compose messaging href: "${messageButton.href}" (url=${window.location.pathname})`);
+    }
     console.log('[LinkedIn Copilot] Message button is <a> link, returning redirect:', messageButton.href);
     return { success: false, action: 'send_dm', redirect: messageButton.href, note: 'messaging_redirect', profileName };
   }
@@ -586,10 +595,91 @@ function findMessageSendButton(overlayRoot = null) {
 // ══════════════════════════════════════════════
 // COMPOSE MESSAGE ON FULL MESSAGING PAGE (LinkedIn 2026)
 // ══════════════════════════════════════════════
+
+// Find the active thread container on /messaging/... pages. Everything we
+// query (compose input, send button, header, banners) MUST be scoped to this
+// container — doing document.querySelector(...) page-wide is what caused the
+// 2026-04-10 "all DMs in one thread" incident, because the sidebar and any
+// lingering thread panels contain duplicate compose inputs, send buttons and
+// name spans that cause false positives.
+function findActiveThreadContainer() {
+  const selectors = [
+    '.msg-thread',
+    '.msg-convo-wrapper',
+    '[data-test-conversation-container]',
+    '.scaffold-layout__detail .msg-form__msg-content-container',
+    '.msg-form', // fallback: the compose form itself acts as a scope
+  ];
+  for (const sel of selectors) {
+    const els = document.querySelectorAll(sel);
+    for (const el of els) {
+      if (el.offsetParent !== null) {
+        // Prefer a container that is also the closest ancestor of a visible compose input
+        const compose = el.querySelector('div.msg-form__contenteditable[contenteditable="true"]');
+        if (compose && compose.offsetParent !== null) {
+          // Walk up from compose to the outer thread/convo scope if possible
+          const outer = compose.closest('.msg-thread, .msg-convo-wrapper, [data-test-conversation-container]') || el;
+          return outer;
+        }
+      }
+    }
+  }
+  // Last resort: return the closest ancestor of the most-visible compose input
+  const visibleCompose = Array.from(
+    document.querySelectorAll('div.msg-form__contenteditable[contenteditable="true"]')
+  ).find((el) => el.offsetParent !== null);
+  if (visibleCompose) {
+    return (
+      visibleCompose.closest('.msg-thread, .msg-convo-wrapper, [data-test-conversation-container]') ||
+      visibleCompose.closest('.msg-form') ||
+      visibleCompose.parentElement
+    );
+  }
+  return null;
+}
+
+// Returns a short description of any blocking banner shown inside the active
+// thread (e.g. "This member has disabled messaging" / "unable to receive").
+// If any such banner is present, we must abort instead of typing into a
+// phantom compose that will never deliver.
+function detectUnableToReceiveBanner(scope) {
+  if (!scope) return null;
+  const bannerSelectors = [
+    '.msg-s-message-list__event--unable-to-send',
+    '.msg-connections-typeahead__member-note',
+    '[class*="unable-to-send"]',
+    '[class*="unable-to-receive"]',
+    '[class*="cannot-send"]',
+    '.msg-overlay-messaging-container--unavailable',
+  ];
+  for (const sel of bannerSelectors) {
+    const el = scope.querySelector(sel);
+    if (el && el.offsetParent !== null) {
+      return (el.textContent || '').trim().substring(0, 100) || 'unable_to_receive_banner_detected';
+    }
+  }
+  // Text-based fallback: look for unmistakable phrases in the thread
+  const text = (scope.textContent || '').toLowerCase();
+  const phrases = [
+    'unable to receive messages',
+    'no pueden recibir mensajes',
+    'não pode receber mensagens',
+    'nao pode receber mensagens',
+    'this member only accepts messages',
+    'messaging is restricted',
+  ];
+  for (const p of phrases) {
+    if (text.includes(p)) return p;
+  }
+  return null;
+}
+
 async function composeOnMessagingPage(messageText, expectedName) {
   console.log('[LinkedIn Copilot] Composing on messaging page. URL:', window.location.href);
 
-  // Wait for compose textbox to appear (messaging page loads async via SPA)
+  // Wait for the active thread to render AND contain a VISIBLE compose input.
+  // No more "use a hidden compose element" fallback — that was the fast path
+  // to sending DMs into phantom composes belonging to other threads.
   const composeSelectors = [
     'div.msg-form__contenteditable[contenteditable="true"]',
     'div[role="textbox"][contenteditable="true"]',
@@ -600,59 +690,26 @@ async function composeOnMessagingPage(messageText, expectedName) {
     '.msg-form__msg-content-container [contenteditable="true"]',
   ];
 
+  let threadScope = null;
   let messageInput = null;
   for (let attempt = 0; attempt < 30; attempt++) {
-    // First try to find a VISIBLE compose input
-    for (const sel of composeSelectors) {
-      const el = document.querySelector(sel);
-      if (el && el.offsetParent !== null) { messageInput = el; break; }
-    }
-    if (messageInput) break;
-
-    // If not visible, find ANY matching element and try to activate it
-    if (attempt >= 5) {
-      let hiddenInput = null;
+    threadScope = findActiveThreadContainer();
+    if (threadScope) {
+      // Bail out immediately if the active thread is restricted — no point
+      // typing into a compose that LinkedIn will refuse to deliver.
+      const banner = detectUnableToReceiveBanner(threadScope);
+      if (banner) {
+        throw new Error(`RECIPIENT_UNABLE_TO_RECEIVE: ${banner} (url=${window.location.pathname})`);
+      }
       for (const sel of composeSelectors) {
-        const el = document.querySelector(sel);
-        if (el) { hiddenInput = el; break; }
+        const el = threadScope.querySelector(sel);
+        if (el && el.offsetParent !== null) { messageInput = el; break; }
       }
-      if (!hiddenInput) {
-        // Also try any contenteditable
-        hiddenInput = document.querySelector('[contenteditable="true"]');
-      }
-      if (hiddenInput) {
-        console.log(`[LinkedIn Copilot] Found hidden compose input (attempt ${attempt + 1}), activating...`);
-        // Try to make it visible: scroll, click parent containers, focus
-        hiddenInput.scrollIntoView({ behavior: 'instant', block: 'center' });
-        await sleep(300);
-        // Click on the form container or parent to expand/activate
-        const formContainer = hiddenInput.closest('.msg-form, .msg-form__msg-content-container, form, [class*="msg-form"]');
-        if (formContainer) {
-          formContainer.click();
-          await sleep(500);
-        }
-        hiddenInput.focus();
-        hiddenInput.click();
-        await sleep(500);
-        // Check if now visible
-        if (hiddenInput.offsetParent !== null) {
-          messageInput = hiddenInput;
-          console.log('[LinkedIn Copilot] Compose input activated successfully');
-          break;
-        }
-        // After enough retries, just use the element regardless of visibility.
-        // LinkedIn 2026 uses CSS that makes offsetParent null (e.g. fixed positioning,
-        // or parent with visibility:hidden) but the element is still functional.
-        if (attempt >= 10) {
-          messageInput = hiddenInput;
-          console.log('[LinkedIn Copilot] Using hidden compose input directly after', attempt + 1, 'attempts');
-          break;
-        }
-      }
+      if (messageInput) break;
     }
 
     if (attempt % 5 === 4) {
-      console.log(`[LinkedIn Copilot] Compose input not found/visible yet (attempt ${attempt + 1}/30). URL: ${window.location.pathname}`);
+      console.log(`[LinkedIn Copilot] Visible compose input not found yet (attempt ${attempt + 1}/30). URL: ${window.location.pathname}`);
     }
     await sleep(1000);
   }
@@ -664,37 +721,57 @@ async function composeOnMessagingPage(messageText, expectedName) {
       label: e.getAttribute('aria-label'), role: e.getAttribute('role'),
       visible: !!e.offsetParent
     }));
-    throw new Error(`Message compose input not found on messaging page (editables=${JSON.stringify(editableInfo)}, url=${window.location.pathname})`);
+    throw new Error(`Visible message compose input not found on messaging page (editables=${JSON.stringify(editableInfo)}, url=${window.location.pathname})`);
   }
 
-  // Verify recipient if possible
-  if (expectedName) {
-    const headerEls = document.querySelectorAll('h2, h3, a[class*="conversation-header"], [class*="msg-thread"] h2');
+  // STRICT recipient verification: read the header of the active thread ONLY
+  // (not every <a, span, h2> on the page, which matches dozens of sidebar
+  // conversation previews and "verifies" any name). If it doesn't match, abort.
+  if (expectedName && threadScope) {
     const expectedFirst = expectedName.split(/\s+/)[0].toLowerCase();
-    let nameFound = false;
-    for (const el of headerEls) {
-      const text = el.textContent.trim().toLowerCase();
-      if (text.includes(expectedFirst)) {
-        nameFound = true;
-        console.log('[LinkedIn Copilot] ✅ Recipient verified on messaging page:', text);
-        break;
+    // Look for the conversation header within the same scaffold panel as the thread
+    const headerScope =
+      threadScope.closest('.scaffold-layout__detail') ||
+      threadScope.closest('.msg-convo-wrapper') ||
+      threadScope.parentElement ||
+      threadScope;
+    const headerSelectors = [
+      '.msg-entity-lockup__entity-title',
+      '[class*="conversation-header"] a',
+      '[class*="conversation-header"] h2',
+      '[class*="msg-thread"] h2',
+      '.msg-thread__link-to-profile',
+      '.msg-compose-form__member-name',
+      '.msg-connections-typeahead__selected-pill',
+      'h2.msg-entity-lockup__entity-title',
+      'h2',
+    ];
+    let headerText = '';
+    for (const sel of headerSelectors) {
+      const el = headerScope.querySelector(sel);
+      if (el && el.offsetParent !== null) {
+        headerText = (el.textContent || '').trim().toLowerCase();
+        if (headerText) break;
       }
     }
-    // Also check the toolbar/header area
-    if (!nameFound) {
-      const toolbarLinks = document.querySelectorAll('a, span, h2');
-      for (const el of toolbarLinks) {
-        const text = el.textContent.trim().toLowerCase();
-        if (text === expectedName.toLowerCase() || text.includes(expectedFirst)) {
-          nameFound = true;
-          console.log('[LinkedIn Copilot] ✅ Recipient verified via toolbar:', text);
-          break;
-        }
-      }
+    console.log('[LinkedIn Copilot] Active thread header:', headerText || '(empty)', 'expected:', expectedName);
+    const expectedLower = expectedName.toLowerCase();
+    const matches =
+      headerText && (
+        headerText.includes(expectedFirst) ||
+        headerText.includes(expectedLower) ||
+        expectedLower.includes(headerText)
+      );
+    if (!matches) {
+      throw new Error(`RECIPIENT_MISMATCH: expected "${expectedName}" but active thread header was "${headerText || '(empty)'}" (url=${window.location.pathname})`);
     }
-    if (!nameFound) {
-      console.warn('[LinkedIn Copilot] ⚠️ Could not verify recipient name, proceeding with caution');
+    // Also re-check for "unable to receive" on the now-active compose — LinkedIn
+    // sometimes shows the banner after the thread header loads.
+    const lateBanner = detectUnableToReceiveBanner(threadScope);
+    if (lateBanner) {
+      throw new Error(`RECIPIENT_UNABLE_TO_RECEIVE: ${lateBanner}`);
     }
+    console.log('[LinkedIn Copilot] ✅ Recipient verified strictly:', headerText);
   }
 
   // ── Insert text using direct DOM manipulation (fast, works even if element is hidden) ──
@@ -745,7 +822,19 @@ async function composeOnMessagingPage(messageText, expectedName) {
   console.log('[LinkedIn Copilot] Message text set successfully');
   await sleep(1000);
 
-  // ── Find Send button (with retry, also accept hidden buttons) ──
+  // ── Find Send button SCOPED to the same thread as the compose input ──
+  // Critical: use the closest msg-form container to the validated compose,
+  // never document.querySelector — otherwise we'd click a send button from a
+  // different, unrelated thread (the original 2026-04-10 bug).
+  const sendScope =
+    messageInput.closest('.msg-form') ||
+    messageInput.closest('.msg-form__msg-content-container') ||
+    threadScope ||
+    messageInput.parentElement;
+  if (!sendScope) {
+    throw new Error('Could not determine send button scope (no msg-form ancestor of compose)');
+  }
+
   let sendButton = null;
   const sendSelectors = [
     'button.msg-form__send-button',
@@ -757,15 +846,15 @@ async function composeOnMessagingPage(messageText, expectedName) {
 
   for (let attempt = 0; attempt < 10; attempt++) {
     for (const selector of sendSelectors) {
-      const btn = document.querySelector(selector);
-      if (btn && !btn.disabled) { sendButton = btn; break; }
+      const btn = sendScope.querySelector(selector);
+      if (btn && !btn.disabled && btn.offsetParent !== null) { sendButton = btn; break; }
     }
     if (sendButton) break;
-    // Fallback: find by text
-    const allButtons = document.querySelectorAll('button');
-    for (const btn of allButtons) {
+    // Fallback: find by text — ALSO scoped to sendScope
+    const scopeButtons = sendScope.querySelectorAll('button');
+    for (const btn of scopeButtons) {
       const text = (btn.textContent || '').trim().toLowerCase();
-      if ((text === 'send' || text === 'enviar' || text === 'envoyer') && !btn.disabled) {
+      if ((text === 'send' || text === 'enviar' || text === 'envoyer') && !btn.disabled && btn.offsetParent !== null) {
         sendButton = btn;
         break;
       }
@@ -775,9 +864,9 @@ async function composeOnMessagingPage(messageText, expectedName) {
   }
 
   if (!sendButton) {
-    const allBtns = document.querySelectorAll('button');
-    const btnTexts = Array.from(allBtns).map(b => `${b.textContent.trim().substring(0,20)}[disabled=${b.disabled}]`).slice(0, 10);
-    throw new Error(`Send button not found on messaging page (buttons=${JSON.stringify(btnTexts)})`);
+    const scopeBtns = sendScope.querySelectorAll('button');
+    const btnTexts = Array.from(scopeBtns).map(b => `${b.textContent.trim().substring(0,20)}[disabled=${b.disabled}]`).slice(0, 10);
+    throw new Error(`Send button not found in active thread scope (buttons=${JSON.stringify(btnTexts)})`);
   }
 
   console.log('[LinkedIn Copilot] Clicking Send button:', sendButton.textContent.trim(), sendButton.className);
@@ -787,9 +876,9 @@ async function composeOnMessagingPage(messageText, expectedName) {
   // Verify: check if composer was cleared (message sent)
   const remainingText = (messageInput.textContent || '').trim();
   if (remainingText.length > 0 && remainingText.length > messageText.length * 0.5) {
-    // Try clicking send again
+    // Try clicking send again — scoped
     console.warn('[LinkedIn Copilot] Text still in composer, retrying send');
-    const retryBtn = document.querySelector('button.msg-form__send-button') || sendButton;
+    const retryBtn = sendScope.querySelector('button.msg-form__send-button') || sendButton;
     if (retryBtn && !retryBtn.disabled) {
       retryBtn.click();
       await sleep(2000);
@@ -1361,53 +1450,121 @@ async function findSendButton() {
 
 // ── MESSAGE BUTTON FINDERS ──
 
-function findMessageButton() {
-  // Strategy 1: Direct selectors (broad — don't restrict to main or specific containers)
-  const selectors = [
-    'a[href*="/messaging/compose/"]',
-    'a[href*="messaging"][aria-label*="Message" i]',
-    'button[aria-label*="Message" i]',
-    'a[href*="/messaging/"]',
-  ];
-
-  for (const selector of selectors) {
-    const el = document.querySelector(selector);
-    if (el && el.offsetParent !== null) {
-      console.log('[LinkedIn Copilot] findMessageButton: found via selector:', selector, 'tag:', el.tagName, 'href:', el.href || '');
-      return el;
-    }
+// Reject hrefs that point to the messaging inbox root instead of a specific
+// compose/thread. This was the root cause of the "all DMs land in the same
+// thread" incident (2026-04-10): findMessageButton used to fall back to
+// document.querySelector('a[href*="/messaging/"]') which always matched the
+// top-nav Messaging icon (href="/messaging/"), causing the extension to
+// redirect every lead to the inbox root — which opens whichever thread the
+// user had open last. A valid profile Message link MUST contain /messaging/compose/
+// or /messaging/thread/new/ (never plain /messaging/).
+function isValidMessageHref(href) {
+  if (!href) return false;
+  try {
+    const u = new URL(href, window.location.origin);
+    if (u.hostname && u.hostname !== window.location.hostname) return false;
+    const p = u.pathname || '';
+    // Plain inbox — reject
+    if (p === '/messaging' || p === '/messaging/') return false;
+    // Inbox with query but no compose path — reject
+    if (p === '/messaging' || p.startsWith('/messaging') && !p.includes('/compose') && !p.includes('/thread/new')) return false;
+    return p.includes('/messaging/compose') || p.includes('/messaging/thread/new');
+  } catch (_) {
+    return false;
   }
+}
 
-  // Strategy 2: Same approach as check_connection_status — find profile section, search within
+// Check that an element is inside the profile's top-card / primary-actions
+// area, not in the left/right rails, sidebar, footer, global nav, etc.
+function isInsideProfileTopCard(el) {
+  if (!el) return false;
+  // Reject anything inside the global nav bar
+  if (el.closest('nav, header, .global-nav, #global-nav, [class*="global-nav"]')) return false;
+  // Reject sidebars / rails / footer
+  if (el.closest('aside, footer, [class*="right-rail"], [class*="left-rail"], [class*="rail-"]')) return false;
+  const profileNameEl = document.querySelector('main h1') || document.querySelector('main h2');
+  if (!profileNameEl) return false;
+  // The top-card / primary-actions container usually wraps the h1. We accept
+  // anything in the same section/card as the h1, OR any descendant of <main>
+  // provided it's not in a rail/nav.
+  const topCard = profileNameEl.closest('section, [class*="pv-top-card"], [class*="top-card"], .artdeco-card, [data-view-name]');
+  if (topCard && topCard.contains(el)) return true;
+  const main = document.querySelector('main');
+  if (main && main.contains(el)) return true;
+  return false;
+}
+
+function findMessageButton() {
+  // Strategy 1: Prefer scoped search inside the profile top-card / primary-actions.
   const profileNameEl = document.querySelector('main h1') || document.querySelector('main h2');
   if (profileNameEl) {
-    const profileSection = profileNameEl.closest('section, .artdeco-card, [data-view-name]') || profileNameEl.parentElement?.parentElement;
-    if (profileSection) {
-      const sectionClickables = profileSection.querySelectorAll('button, a[role="button"], a[href*="messaging"], a');
-      for (const el of sectionClickables) {
-        const text = (el.textContent || '').trim().toLowerCase();
-        const label = (el.getAttribute('aria-label') || '').toLowerCase();
-        if ((text === 'message' || text === 'mensagem' || text === 'mensaje' || label.includes('message')) && el.offsetParent !== null) {
-          console.log('[LinkedIn Copilot] findMessageButton: found in profileSection, tag:', el.tagName, 'text:', text, 'href:', el.href || '');
+    // Walk up a few levels looking for the card that contains the action buttons
+    const candidates = [
+      profileNameEl.closest('[class*="pv-top-card"]'),
+      profileNameEl.closest('[class*="top-card"]'),
+      profileNameEl.closest('section'),
+      profileNameEl.closest('.artdeco-card'),
+      profileNameEl.closest('[data-view-name]'),
+      profileNameEl.parentElement?.parentElement,
+      profileNameEl.parentElement?.parentElement?.parentElement,
+    ].filter(Boolean);
+
+    const scopedSelectors = [
+      'a[href*="/messaging/compose/"]',
+      'a[href*="/messaging/thread/new"]',
+      'button[aria-label*="Message" i]',
+    ];
+
+    for (const scope of candidates) {
+      for (const sel of scopedSelectors) {
+        const els = scope.querySelectorAll(sel);
+        for (const el of els) {
+          if (el.offsetParent === null) continue;
+          // For <a> elements, require a compose/thread-new href
+          if (el.tagName === 'A' && !isValidMessageHref(el.href)) continue;
+          console.log('[LinkedIn Copilot] findMessageButton: found (scoped)', sel, 'href:', el.href || '(button)');
           return el;
         }
+      }
+      // Text-based match inside the scope (e.g. localized)
+      const clickables = scope.querySelectorAll('button, a[role="button"], a');
+      for (const el of clickables) {
+        if (el.offsetParent === null) continue;
+        const text = (el.textContent || '').trim().toLowerCase();
+        const label = (el.getAttribute('aria-label') || '').toLowerCase();
+        const isMessageText =
+          text === 'message' || text === 'mensagem' || text === 'mensaje' ||
+          label === 'message' || label.includes('message ') || label.startsWith('message');
+        if (!isMessageText) continue;
+        // For <a>, must have a valid compose href (reject navbar inbox link)
+        if (el.tagName === 'A' && !isValidMessageHref(el.href)) continue;
+        console.log('[LinkedIn Copilot] findMessageButton: found (scoped text)', 'href:', el.href || '(button)');
+        return el;
       }
     }
   }
 
-  // Strategy 3: Broadest fallback — any visible clickable with "message" text
-  const allClickables = document.querySelectorAll('button, a');
-  for (const el of allClickables) {
-    const text = (el.textContent || '').trim().toLowerCase();
-    if (text === 'message' && el.offsetParent !== null) {
-      console.log('[LinkedIn Copilot] findMessageButton: found via broad fallback, tag:', el.tagName, 'href:', el.href || '');
+  // Strategy 2: Global search but with strict href validation — rejects the
+  // global-nav "Messaging" icon which has href="/messaging/" (inbox root).
+  const strictSelectors = [
+    'a[href*="/messaging/compose/"]',
+    'a[href*="/messaging/thread/new"]',
+    'button[aria-label*="Message" i]',
+  ];
+  for (const sel of strictSelectors) {
+    const els = document.querySelectorAll(sel);
+    for (const el of els) {
+      if (el.offsetParent === null) continue;
+      if (el.tagName === 'A' && !isValidMessageHref(el.href)) continue;
+      if (!isInsideProfileTopCard(el)) continue;
+      console.log('[LinkedIn Copilot] findMessageButton: found (strict global)', sel, 'href:', el.href || '(button)');
       return el;
     }
   }
 
   // Diagnostic: log what buttons are visible for debugging
   const allBtns = document.querySelectorAll('button, a[role="button"], a[href*="messaging"]');
-  const btnTexts = Array.from(allBtns).filter(b => b.offsetParent !== null).map(b => b.textContent.trim().substring(0, 30)).slice(0, 10);
+  const btnTexts = Array.from(allBtns).filter(b => b.offsetParent !== null).map(b => `${b.textContent.trim().substring(0, 30)}[${b.href || ''}]`).slice(0, 10);
   console.error('[LinkedIn Copilot] findMessageButton: FAILED. Visible clickables:', JSON.stringify(btnTexts));
 
   return null;
