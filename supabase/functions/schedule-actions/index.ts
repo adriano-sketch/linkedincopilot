@@ -16,6 +16,11 @@ const STATUS_TO_ACTION: Record<string, string> = {
   connected: "send_dm",
   dm_sent: "check_reply_status",
   waiting_reply: "send_followup",
+  // After the follow-up goes out we still need to detect replies —
+  // without this mapping leads would silently stall forever post-followup
+  // and never transition to "replied". The dashboard reply count would
+  // systematically under-report by ~50% for any campaign that uses follow-ups.
+  followup_sent: "check_reply_status",
 };
 
 // Actions that involve sending a message — restricted to business hours
@@ -258,15 +263,17 @@ serve(async (req) => {
       );
       console.log(`Connected users: ${[...connectedUsers].join(', ')}. Extensions total: ${allExtensions?.length || 0}`);
 
-      // ── Priority ordering: advance existing pipeline leads FIRST.
-      // Checks → messaging → connection requests → follows → new visits.
-      // This ensures leads already in the pipeline progress before starting new ones.
+      // ── Priority ordering: revenue-generating messaging FIRST.
+      // send_dm/followup → connection req → checks → follows → new visits.
+      // Must match the priority values inserted into action_queue below, so
+      // that in-memory lead processing order matches how the extension
+      // will later drain the queue (ORDER BY priority ASC).
       const PRIORITY_ORDER: Record<string, number> = {
-        check_connection_status: 0,
-        check_reply_status: 0,
-        send_dm: 1,
-        send_followup: 1,
-        send_connection_request: 2,
+        send_dm: 0,
+        send_followup: 0,
+        send_connection_request: 1,
+        check_connection_status: 2,
+        check_reply_status: 2,
         follow_profile: 3,
         visit_profile: 4,  // New visits have lowest priority — advance existing leads first
       };
@@ -308,7 +315,11 @@ serve(async (req) => {
       const ALWAYS_ON_ACTIONS = new Set(["check_connection_status", "check_reply_status", "visit_profile", "follow_profile"]);
       const MAX_PENDING_CHECKS = 40;  // Lightweight checks
       const MAX_PENDING_WARMUP = 40;  // Warm-up actions (visit/follow)
-      const MAX_PENDING_OTHER = 20;   // Heavier: sending messages, connections
+      // Heavy actions (connection requests, DMs, follow-ups).
+      // Was 20, but a healthy day processes 30–50 of these, so the
+      // 20 cap was creating artificial backlog pressure and leaving
+      // ready leads stuck for hours (cap_other=201 in skipReasons).
+      const MAX_PENDING_OTHER = 60;
 
       // Count existing pending by category
       const pendingChecksPerUser = new Map<string, number>();
@@ -508,7 +519,19 @@ serve(async (req) => {
             linkedin_url: lead.linkedin_url,
             message_text: messageText,
             scheduled_for: scheduledFor,
-            priority: LIGHTWEIGHT_ACTIONS.has(actionType) ? 1 : (actionType === "send_dm" || actionType === "send_followup" ? 3 : 5),
+            // Priority ordering (lower = higher priority, picked first by extension):
+            //   1 = send_dm / send_followup  → revenue-generating, must not be starved
+            //   2 = send_connection_request  → pipeline advancement
+            //   3 = check_connection_status / check_reply_status → monitoring (lightweight)
+            //   5 = visit_profile / follow_profile → warm-up background
+            // Rationale: messaging actions previously sat at priority 3 while
+            // check_* was priority 1, causing send_dm to be starved whenever
+            // the scheduler had pending checks. Monitoring is important but
+            // should never block a customer-facing message.
+            priority: (actionType === "send_dm" || actionType === "send_followup") ? 1
+              : actionType === "send_connection_request" ? 2
+              : LIGHTWEIGHT_ACTIONS.has(actionType) ? 3
+              : 5,
             status: "pending",
           });
 
