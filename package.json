@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "audit:schema": "python3 scripts/dump-schema.py /tmp/schema.py && SCHEMA_PATH=/tmp/schema.py python3 scripts/schema-drift-audit.py"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
