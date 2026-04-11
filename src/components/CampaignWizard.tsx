@@ -21,6 +21,7 @@ import { useVerticals, Vertical } from '@/hooks/useVerticals';
 import { parseLeadCsv } from '@/lib/csv';
 import VerticalSelector from '@/components/campaign-wizard/VerticalSelector';
 import TitleZones from '@/components/campaign-wizard/TitleZones';
+import IcpFitPreview from '@/components/IcpFitPreview';
 import {
   CAMPAIGN_OBJECTIVES, TONE_OPTIONS,
   PAIN_POINT_PLACEHOLDERS, MESSAGE_LANGUAGES,
@@ -484,6 +485,22 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                       </CollapsibleContent>
                     </Collapsible>
                   )}
+
+                  {/* Live ICP quality analysis. Runs analyze-icp-fit as the
+                      user edits pain points + value prop + titles, so they
+                      can fix a weak ICP BEFORE burning enrichment credits. */}
+                  <IcpFitPreview
+                    input={{
+                      icp_description: form.icp_description,
+                      icp_titles: form.icp_titles,
+                      icp_industries: form.icp_industries,
+                      pain_points: form.pain_points,
+                      value_proposition: form.value_proposition,
+                      proof_points: form.proof_points,
+                      campaign_objective: form.campaign_objective,
+                      campaign_angle: form.campaign_angle,
+                    }}
+                  />
                 </>
               )}
             </>

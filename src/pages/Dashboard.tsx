@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import LeadRow from '@/components/LeadRow';
 import PipelineStats, { STAGE_STATUS_MAP } from '@/components/PipelineStats';
+import CampaignMetricsPanel from '@/components/CampaignMetricsPanel';
 import CampaignSelector from '@/components/CampaignSelector';
 import CampaignWizard, { CampaignFormData } from '@/components/CampaignWizard';
 import CampaignEditDialog from '@/components/CampaignEditDialog';
@@ -529,6 +530,7 @@ export default function Dashboard() {
                 <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 text-[10px] px-1.5">!</Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="health">📈 Health</TabsTrigger>
           </TabsList>
 
           {/* Sequence View Tab */}
@@ -654,6 +656,17 @@ export default function Dashboard() {
                 const c = campaigns.find(c => c.id === selectedCampaignId);
                 if (c) setEditingCampaign(c);
               }}
+            />
+          </TabsContent>
+
+          {/* Pipeline Health Tab — calls campaign-metrics edge function and
+              renders funnel, conversion rates, benchmarks, diagnosis, and
+              top blockers. Scoped to the selected campaign when one is
+              selected, else shows cross-campaign lifetime metrics. */}
+          <TabsContent value="health">
+            <CampaignMetricsPanel
+              campaignProfileId={selectedCampaignId || undefined}
+              windowDays={30}
             />
           </TabsContent>
         </Tabs>
