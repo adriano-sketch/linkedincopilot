@@ -45,6 +45,9 @@ serve(async (req) => {
     const lastResetDate = lastReset ? lastReset.toISOString().slice(0, 10) : null;
 
     if (lastResetDate !== todayDateStr) {
+      // NOTE: extension_status does not have an `updated_at` column — do not
+      // include it in the payload or PostgREST returns a 42703 error and
+      // silently fails the whole update.
       await supabase
         .from("extension_status")
         .update({
@@ -53,7 +56,6 @@ serve(async (req) => {
           connection_requests_today: 0,
           messages_today: 0,
           last_limit_reset_at: now.toISOString(),
-          updated_at: now.toISOString(),
         })
         .eq("user_id", ext.user_id);
       countersReset++;
@@ -83,10 +85,10 @@ serve(async (req) => {
     const minutesSinceHeartbeat = lastBeat ? (now.getTime() - lastBeat.getTime()) / 60000 : Infinity;
 
     if (minutesSinceHeartbeat > 30) {
-      // Auto-fix: mark as disconnected
+      // Auto-fix: mark as disconnected (no updated_at — column doesn't exist)
       await supabase
         .from("extension_status")
-        .update({ is_connected: false, updated_at: now.toISOString() })
+        .update({ is_connected: false })
         .eq("user_id", ext.user_id);
 
       issues.push({
@@ -456,9 +458,15 @@ serve(async (req) => {
   const oneDayAgo = new Date(now.getTime() - 24 * 3600000).toISOString();
   const deprecatedActionTypes = new Set(["like_post"]);
 
+  // NOTE: `max_retries` is NOT a column on action_queue — the schema
+  // only has retry_count. Selecting a non-existent column causes PostgREST
+  // to return 400, which would silently break this entire section (same
+  // class of bug as the last_limit_reset_at incident). We hard-code the
+  // retry ceiling here (matches scheduler policy: 3 attempts).
+  const MAX_RETRIES_FALLBACK = 3;
   const { data: failedActions } = await supabase
     .from("action_queue")
-    .select("id, action_type, error_message, retry_count, max_retries")
+    .select("id, action_type, error_message, retry_count")
     .eq("status", "failed")
     .gte("created_at", oneDayAgo)
     .limit(500);
@@ -466,15 +474,13 @@ serve(async (req) => {
   const terminalFailedActions = (failedActions || []).filter((a: any) => {
     if (deprecatedActionTypes.has(a.action_type)) return false;
     const retryCount = Number(a.retry_count ?? 0);
-    const maxRetries = Number(a.max_retries ?? 3);
-    return retryCount >= maxRetries;
+    return retryCount >= MAX_RETRIES_FALLBACK;
   });
 
   const retriableFailedActions = (failedActions || []).filter((a: any) => {
     if (deprecatedActionTypes.has(a.action_type)) return false;
     const retryCount = Number(a.retry_count ?? 0);
-    const maxRetries = Number(a.max_retries ?? 3);
-    return retryCount < maxRetries;
+    return retryCount < MAX_RETRIES_FALLBACK;
   });
 
   if (terminalFailedActions.length > 5) {
@@ -978,6 +984,208 @@ serve(async (req) => {
       }
     }
   }
+
+  // ═══════════════════════════════════════════════════════
+  // 🆕 PER-USER HEALTH SCORE + AUTO-PAUSE
+  // Computes a 0..100 score per connected user based on signals gathered
+  // above plus quick pipeline queries. If the score drops below CRITICAL_SCORE
+  // AND the user is currently running, the extension is auto-paused to
+  // prevent further damage (e.g. burning connection requests while LinkedIn
+  // is logged out or while every action is failing).
+  // ═══════════════════════════════════════════════════════
+  const CRITICAL_SCORE = 25;
+  const healthReports: Array<Record<string, any>> = [];
+  let autoPausedCount = 0;
+
+  // Do a fresh, narrow fetch for health-check purposes. We don't reuse the
+  // earlier `allExt` because that query references a legacy column set and
+  // may silently return undefined if the schema drifts.
+  const { data: healthExtensions, error: healthFetchErr } = await supabase
+    .from("extension_status")
+    .select("user_id, is_connected, is_paused, last_heartbeat_at, linkedin_logged_in");
+  if (healthFetchErr) console.error("[health] fetch error:", healthFetchErr);
+
+  for (const ext of healthExtensions || []) {
+    if (!ext.is_connected) continue;
+
+    const userIssues: Array<{ code: string; weight: number; message: string }> = [];
+    let score = 100;
+
+    // Signal 1: heartbeat freshness
+    const lastHb = ext.last_heartbeat_at ? new Date(ext.last_heartbeat_at) : null;
+    const minutesSinceHb = lastHb ? (now.getTime() - lastHb.getTime()) / 60000 : Infinity;
+    if (minutesSinceHb > 30) {
+      userIssues.push({ code: "stale_heartbeat", weight: 15, message: `No heartbeat for ${Math.round(minutesSinceHb)} min` });
+      score -= 15;
+    }
+
+    // Signal 2: LinkedIn logged out — critical
+    if (ext.linkedin_logged_in === false) {
+      userIssues.push({ code: "linkedin_logged_out", weight: 40, message: "LinkedIn is logged out in the extension" });
+      score -= 40;
+    }
+
+    // Signal 3: recent action failure rate (last 6h).
+    // NOTE: action_queue has `completed_at`, NOT `updated_at`. Filtering by
+    // a non-existent column silently breaks the entire health score (same
+    // class as last_limit_reset_at incident) and every user scores 100.
+    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
+    const { data: recentActions } = await supabase
+      .from("action_queue")
+      .select("status")
+      .eq("user_id", ext.user_id)
+      .gte("completed_at", sixHoursAgo)
+      .in("status", ["completed", "failed"])
+      .limit(500);
+    const totalRecent = (recentActions || []).length;
+    const failedRecent = (recentActions || []).filter((a: any) => a.status === "failed" || a.status === "permanent_fail").length;
+    const failureRate = totalRecent > 0 ? failedRecent / totalRecent : 0;
+
+    if (totalRecent >= 10 && failureRate >= 0.8) {
+      userIssues.push({ code: "catastrophic_failure", weight: 45, message: `${Math.round(failureRate * 100)}% of recent actions failed (${failedRecent}/${totalRecent})` });
+      score -= 45;
+    } else if (totalRecent >= 10 && failureRate >= 0.5) {
+      userIssues.push({ code: "high_failure_rate", weight: 25, message: `${Math.round(failureRate * 100)}% of recent actions failed (${failedRecent}/${totalRecent})` });
+      score -= 25;
+    } else if (totalRecent >= 10 && failureRate >= 0.3) {
+      userIssues.push({ code: "elevated_failure_rate", weight: 10, message: `${Math.round(failureRate * 100)}% of recent actions failed (${failedRecent}/${totalRecent})` });
+      score -= 10;
+    }
+
+    // Signal 4: acceptance rate (last 14d) — only penalize if enough volume
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentLeads } = await supabase
+      .from("campaign_leads")
+      .select("status, connection_sent_at, connected_at, connection_accepted_at, dm_sent_at")
+      .eq("user_id", ext.user_id)
+      .gte("connection_sent_at", fourteenDaysAgo)
+      .limit(500);
+    const leadSample = recentLeads || [];
+    const REPLIED_OR_BEYOND_WD = new Set(["replied", "meeting_booked", "won", "lost"]);
+    const sentCount = leadSample.filter((l: any) => l.connection_sent_at).length;
+    const acceptedCount = leadSample.filter((l: any) =>
+      l.connected_at || l.connection_accepted_at || l.dm_sent_at ||
+      ["connected","dm_sent","waiting_reply","replied","meeting_booked","won","lost"].includes(l.status)
+    ).length;
+    if (sentCount >= 20) {
+      const acceptRate = acceptedCount / sentCount;
+      if (acceptRate < 0.10) {
+        userIssues.push({ code: "low_acceptance", weight: 15, message: `Acceptance ${Math.round(acceptRate * 100)}% over last 14d` });
+        score -= 15;
+      } else if (acceptRate < 0.18) {
+        userIssues.push({ code: "mid_acceptance", weight: 6, message: `Acceptance ${Math.round(acceptRate * 100)}% — below healthy` });
+        score -= 6;
+      }
+    }
+
+    // Signal 5: zero replies across 25+ DMs
+    const dmCount = leadSample.filter((l: any) => l.dm_sent_at).length;
+    const replyCount = leadSample.filter((l: any) => REPLIED_OR_BEYOND_WD.has(l.status)).length;
+    if (dmCount >= 25 && replyCount === 0) {
+      userIssues.push({ code: "zero_replies", weight: 15, message: `0 replies across ${dmCount} DMs in 14d` });
+      score -= 15;
+    }
+
+    // Signal 6: credits exhausted
+    const { data: settings } = await supabase
+      .from("user_settings")
+      .select("leads_used_this_cycle, max_leads_per_cycle")
+      .eq("user_id", ext.user_id)
+      .maybeSingle();
+    if (settings && settings.max_leads_per_cycle > 0 && settings.leads_used_this_cycle >= settings.max_leads_per_cycle) {
+      userIssues.push({ code: "credits_exhausted", weight: 5, message: "Lead credits exhausted for current cycle" });
+      score -= 5;
+    }
+
+    score = Math.max(0, Math.min(100, score));
+    const healthStatus: "ok" | "warn" | "degraded" | "critical" =
+      score >= 85 ? "ok" : score >= 60 ? "warn" : score >= 30 ? "degraded" : "critical";
+
+    // Auto-pause if critical AND not already paused AND we have at least
+    // one "hard" signal (logged out or catastrophic failure). We deliberately
+    // do NOT pause for low acceptance/reply alone — those are coaching moments,
+    // not emergencies.
+    const hasHardSignal = userIssues.some((i) => i.code === "linkedin_logged_out" || i.code === "catastrophic_failure");
+    const shouldAutoPause = score < CRITICAL_SCORE && hasHardSignal && !ext.is_paused;
+
+    const updatePayload: Record<string, any> = {
+      health_score: score,
+      health_status: healthStatus,
+      health_issues: userIssues,
+      health_checked_at: now.toISOString(),
+    };
+
+    if (shouldAutoPause) {
+      updatePayload.is_paused = true;
+      updatePayload.auto_paused_at = now.toISOString();
+      updatePayload.auto_paused_reason = userIssues
+        .filter((i) => i.weight >= 25)
+        .map((i) => i.message)
+        .join(" | ") || "Critical health score";
+      autoPausedCount++;
+      issues.push({
+        severity: "critical",
+        area: "Auto-Pause",
+        description: `User ${ext.user_id.slice(0, 8)}… auto-paused (health ${score}/100)`,
+        auto_fixed: true,
+        details: updatePayload.auto_paused_reason,
+      });
+    } else if (healthStatus === "critical") {
+      issues.push({
+        severity: "critical",
+        area: "Saúde da Conta",
+        description: `User ${ext.user_id.slice(0, 8)}… em estado crítico (health ${score}/100)`,
+        auto_fixed: false,
+        details: userIssues.map((i) => i.message).join(" | "),
+      });
+    } else if (healthStatus === "degraded") {
+      issues.push({
+        severity: "warning",
+        area: "Saúde da Conta",
+        description: `User ${ext.user_id.slice(0, 8)}… degradado (health ${score}/100)`,
+        auto_fixed: false,
+        details: userIssues.map((i) => i.message).join(" | "),
+      });
+    }
+
+    try {
+      await supabase
+        .from("extension_status")
+        .update(updatePayload)
+        .eq("user_id", ext.user_id);
+    } catch (err) {
+      console.error(`Failed to update health score for user ${ext.user_id}:`, err);
+    }
+
+    // Fire the user-facing alert function for critical/degraded users so they
+    // get an email explaining WHY we auto-paused or WHY their pipeline is
+    // underperforming. Fire-and-forget.
+    if (healthStatus === "critical" || shouldAutoPause) {
+      try {
+        fetch(`${supabaseUrl}/functions/v1/user-health-alert`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ user_id: ext.user_id, force: true }),
+        }).catch((err) => console.error("user-health-alert fire-and-forget failed:", err));
+      } catch (err) {
+        console.error("failed to trigger user-health-alert:", err);
+      }
+    }
+
+    healthReports.push({
+      user_id: ext.user_id.slice(0, 8),
+      score,
+      status: healthStatus,
+      paused: !!updatePayload.is_paused,
+      top_issues: userIssues.slice(0, 3).map((i) => i.code),
+    });
+  }
+
+  stats.health_reports = healthReports;
+  stats.auto_paused = autoPausedCount;
 
   // ═══════════════════════════════════════════════════════
   const criticals = issues.filter(i => i.severity === "critical");
