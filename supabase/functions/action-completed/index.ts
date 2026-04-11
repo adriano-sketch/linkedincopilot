@@ -222,18 +222,26 @@ serve(async (req) => {
         // current pipeline status instead of regressing to 'error'.
         // This ensures accepted connections aren't lost when DM sending fails.
         const POST_CONNECTION_ACTIONS = new Set(["send_dm", "send_followup", "check_reply_status"]);
-        
+
         if (POST_CONNECTION_ACTIONS.has(action.action_type)) {
-          // Keep current status (e.g. 'connected'), just record the error
+          // Keep current status (e.g. 'connected'), record the error,
+          // and schedule next_action_at to the next business day so that
+          // schedule-actions can re-enqueue the DM. Previously this set
+          // next_action_at=null which orphaned connected leads forever —
+          // they'd stay in 'connected' with no ability to ever reach dm_sent
+          // until someone manually re-enqueued the action.
+          // Using rbt(1) (tomorrow's business window) gives a human-scale
+          // backoff while ensuring the pipeline does self-heal.
+          const nextRetryAt = rbt(1);
           await supabase.from("campaign_leads")
             .update({
               error_message: `${action.action_type} failed: ${error_message || "Max retries reached"}`,
-              retry_count: retryCount,
-              next_action_at: null, // Stop scheduling until manually retried
+              retry_count: 0, // Reset so the next attempt gets a fresh retry budget
+              next_action_at: nextRetryAt,
               updated_at: now,
             } as any)
             .eq("id", action.campaign_lead_id);
-          console.log(`Lead ${action.campaign_lead_id}: ${action.action_type} max retries — preserved status, set error_message`);
+          console.log(`Lead ${action.campaign_lead_id}: ${action.action_type} max retries — preserved status, rescheduled for ${nextRetryAt}`);
         } else {
           // Pre-connection actions: safe to mark as error
           await supabase.from("campaign_leads")
@@ -347,14 +355,24 @@ serve(async (req) => {
       case "send_dm":
         leadUpdate.status = "dm_sent";
         leadUpdate.dm_sent_at = now;
-        leadUpdate.next_action_at = rbt(4);
+        // Check for replies on the next business day (was rbt(4) which
+        // delayed detection by ~4 days and made the dashboard blind to
+        // any response for nearly a week).
+        leadUpdate.next_action_at = rbt(1);
         break;
 
       case "check_reply_status":
         if (result?.has_reply) {
           leadUpdate.status = "replied";
           leadUpdate.replied_at = now;
+          leadUpdate.reply_detected_at = now;
+          if (result?.reply_text) {
+            leadUpdate.reply_text = String(result.reply_text).slice(0, 4000);
+          }
           leadUpdate.next_action_at = null;
+          // Fire-and-forget classification — we populate the leadUpdate
+          // first, then kick classify-reply after the main update commits
+          // (see fireClassifyReply() call below).
         } else {
           leadUpdate.status = "waiting_reply";
           leadUpdate.next_action_at = now; // Trigger follow-up immediately
@@ -364,7 +382,8 @@ serve(async (req) => {
       case "send_followup":
         leadUpdate.status = "followup_sent";
         leadUpdate.followup_sent_at = now;
-        leadUpdate.next_action_at = rbt(4);
+        // Same fix as send_dm: check for replies next business day, not 4 days later.
+        leadUpdate.next_action_at = rbt(1);
         break;
     }
 
@@ -395,6 +414,38 @@ serve(async (req) => {
         console.error(`Failed to update lead ${action.campaign_lead_id} after ${action.action_type}:`, leadUpdateError);
       } else {
         console.log(`Lead ${action.campaign_lead_id} updated: ${action.action_type} → ${leadUpdate.status || '(no status change)'}`);
+      }
+    }
+
+    // Fire-and-forget sentiment classification when a real reply was
+    // detected. We intentionally don't await — the extension shouldn't wait
+    // on an LLM round-trip to close the action, and classify-reply is
+    // idempotent via reply_classified_at.
+    if (
+      action.action_type === "check_reply_status" &&
+      result?.has_reply === true &&
+      result?.reply_text
+    ) {
+      try {
+        const baseUrl = Deno.env.get("SUPABASE_URL");
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (baseUrl && serviceKey) {
+          // Do NOT await — best-effort, log failures only.
+          fetch(`${baseUrl}/functions/v1/classify-reply`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({
+              user_id: user.id,
+              campaign_lead_id: action.campaign_lead_id,
+              reply_text: String(result.reply_text).slice(0, 4000),
+            }),
+          }).catch((e) => console.error("classify-reply fire-and-forget failed:", e));
+        }
+      } catch (e) {
+        console.error("classify-reply dispatch error:", e);
       }
     }
 

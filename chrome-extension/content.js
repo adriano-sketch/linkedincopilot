@@ -43,7 +43,7 @@ async function handleAction(action) {
     case 'check_connection_status':
       return await checkConnectionStatus();
     case 'check_reply_status':
-      return await checkReplyStatus();
+      return await checkReplyStatus(action);
     default:
       throw new Error(`Unknown action: ${action.action_type}`);
   }
@@ -882,8 +882,20 @@ async function checkConnectionStatus() {
 
 // ══════════════════════════════════════════════
 // CHECK REPLY STATUS
+// ──────────────────────────────────────────────
+// Author-based detection: we read every message bubble in the thread and
+// bucket it into "ours" vs "theirs" based on the sender's profile link or
+// an explicit "You" marker. A reply exists iff at least one bubble belongs
+// to the lead. Replaces the old `chatMessages.length > 1` heuristic which
+// false-positived on any thread with prior history and false-negatived
+// when our DM hadn't rendered yet.
 // ══════════════════════════════════════════════
-async function checkReplyStatus() {
+async function checkReplyStatus(action) {
+  const leadUrl = action?.action_data?.linkedin_url || action?.linkedin_url || "";
+  // Extract the lead's LinkedIn slug from the URL — we'll match it against
+  // profile links inside the chat thread to classify who sent each message.
+  const leadSlug = extractLinkedinSlug(leadUrl);
+
   const messageButton = findMessageButton();
   if (!messageButton) {
     return { success: true, action: 'check_reply_status', has_reply: false, note: 'not_connected' };
@@ -892,31 +904,101 @@ async function checkReplyStatus() {
   messageButton.click();
   await sleep(2500 + Math.random() * 1500);
 
-  // Look for messages in the chat overlay that are NOT from us
-  const chatMessages = document.querySelectorAll(
-    '.msg-s-event-listitem, .msg-s-message-list__event'
-  );
+  // Wait up to 4s for bubbles to render (slow networks)
+  let events = [];
+  for (let i = 0; i < 8; i++) {
+    events = Array.from(document.querySelectorAll('.msg-s-event-listitem, .msg-s-message-list__event'));
+    if (events.length > 0) break;
+    await sleep(500);
+  }
 
-  if (chatMessages.length === 0) {
+  const close = () => {
     const closeBtn = document.querySelector('.msg-overlay-bubble-header button[aria-label*="Close" i]');
     if (closeBtn) closeBtn.click();
+  };
+
+  if (events.length === 0) {
+    close();
     return { success: true, action: 'check_reply_status', has_reply: false, note: 'no_messages_found' };
   }
 
-  // Simple heuristic: if there are more messages than what we sent (1 DM), they replied
-  const hasReply = chatMessages.length > 1;
+  // Classify each event as "ours" or "theirs" or "unknown".
+  // Heuristics, in order of reliability:
+  //   1. Event has .msg-s-event-listitem__message-bubble--msg-arrived-while-scrolled signals
+  //      irrelevant, skip.
+  //   2. Author link href contains the lead's slug → theirs.
+  //   3. Author link href contains "/in/me/" or the event has
+  //      aria-label starting with "You " → ours.
+  //   4. Fallback: the first event in the thread is usually ours (our DM),
+  //      mark subsequent events with a *different* author as theirs.
+  let lastAuthorHref = null;
+  let firstAuthorHref = null;
+  const classified = [];
+  for (const ev of events) {
+    // Find the author link for this event (or reuse the previous one,
+    // because LinkedIn groups consecutive messages under one author header).
+    const authorLink = ev.querySelector('a.msg-s-message-group__profile-link, a.msg-s-event-listitem__link, a[href*="/in/"]');
+    const href = authorLink?.getAttribute('href') || lastAuthorHref;
+    if (href) {
+      lastAuthorHref = href;
+      if (!firstAuthorHref) firstAuthorHref = href;
+    }
 
-  const closeBtn = document.querySelector('.msg-overlay-bubble-header button[aria-label*="Close" i]');
-  if (closeBtn) {
-    await sleep(500);
-    closeBtn.click();
+    // Message text
+    const bodyEl = ev.querySelector('.msg-s-event-listitem__body, .msg-s-event__content');
+    const text = (bodyEl?.textContent || '').trim();
+    if (!text) continue;
+
+    // Skip edit-notice / system rows
+    if (/^(edited|sent|seen|delivered)$/i.test(text)) continue;
+
+    let who = 'unknown';
+    if (leadSlug && href && href.includes(`/in/${leadSlug}`)) {
+      who = 'theirs';
+    } else if (href && /\/in\/(me|ACoAA)/i.test(href)) {
+      // LinkedIn's "You" profile often resolves to /in/me or the session user's own ACoAA-id
+      who = 'ours';
+    }
+    classified.push({ who, text, href });
   }
+
+  // Fallback classification: if nothing was marked "theirs" yet but we saw
+  // at least two *distinct* author hrefs, the second distinct author is
+  // almost certainly the lead.
+  const distinctHrefs = [...new Set(classified.map(c => c.href).filter(Boolean))];
+  if (!classified.some(c => c.who === 'theirs') && distinctHrefs.length >= 2) {
+    // Assume the first distinct author is "ours" (we sent the DM first).
+    const oursHref = distinctHrefs[0];
+    for (const c of classified) {
+      if (c.href && c.href !== oursHref) c.who = 'theirs';
+      else if (c.href === oursHref) c.who = 'ours';
+    }
+  }
+
+  const theirs = classified.filter(c => c.who === 'theirs');
+  const hasReply = theirs.length > 0;
+  // Last reply text — truncated to 2KB to keep action_queue payloads small.
+  const replyText = hasReply ? theirs[theirs.length - 1].text.slice(0, 2000) : null;
+
+  await sleep(500);
+  close();
 
   return {
     success: true,
     action: 'check_reply_status',
-    has_reply: hasReply
+    has_reply: hasReply,
+    reply_text: replyText,
+    reply_count: theirs.length,
+    total_events: classified.length,
+    detection_method: distinctHrefs.length >= 2 ? 'distinct_authors' : (leadSlug ? 'slug_match' : 'heuristic_only'),
   };
+}
+
+// Extract the LinkedIn slug (the part after /in/) from a full profile URL.
+function extractLinkedinSlug(url) {
+  if (!url) return null;
+  const m = url.match(/\/in\/([^/?#]+)/i);
+  return m ? decodeURIComponent(m[1]).toLowerCase() : null;
 }
 
 // ══════════════════════════════════════════════
