@@ -427,7 +427,27 @@ async function sendMessage(messageText) {
     throw new Error('Send verification failed — message text remained in composer after clicking Send');
   }
 
-  return { success: true, action: 'send_dm' };
+  // Forensic telemetry — see composeOnMessagingPage for rationale.
+  let overlayHeader = '';
+  try {
+    const hEl = messageOverlay?.querySelector?.(
+      '.msg-overlay-bubble-header h2, .msg-overlay-bubble-header a, .msg-overlay-bubble-header span.msg-overlay-bubble-header__title'
+    );
+    overlayHeader = hEl ? (hEl.textContent || '').trim().substring(0, 80) : '';
+  } catch (_) {}
+
+  return {
+    success: true,
+    action: 'send_dm',
+    note: 'sent_via_overlay',
+    telemetry: {
+      url_path: window.location.pathname,
+      thread_header: overlayHeader || null,
+      expected_name: profileName || null,
+      text_preview: (messageText || '').substring(0, 40),
+      sent_at_client: new Date().toISOString(),
+    },
+  };
 }
 
 async function clearComposer(element) {
@@ -774,6 +794,32 @@ async function composeOnMessagingPage(messageText, expectedName) {
     console.log('[LinkedIn Copilot] ✅ Recipient verified strictly:', headerText);
   }
 
+  // Capture forensic telemetry that will be returned in the success result so
+  // action-completed can persist it into action_queue.result. This lets us
+  // detect future variants of the 2026-04-10 "all DMs in one thread" bug
+  // IMMEDIATELY (server-side) instead of waiting hours for the user to notice.
+  let thread_header_final = '';
+  const headerProbeSelectors = [
+    '.msg-entity-lockup__entity-title',
+    '[class*="conversation-header"] a',
+    '[class*="conversation-header"] h2',
+    '[class*="msg-thread"] h2',
+    '.msg-thread__link-to-profile',
+    'h2.msg-entity-lockup__entity-title',
+  ];
+  const headerProbeScope =
+    (threadScope && threadScope.closest('.scaffold-layout__detail')) ||
+    (threadScope && threadScope.parentElement) ||
+    threadScope ||
+    document;
+  for (const sel of headerProbeSelectors) {
+    const el = headerProbeScope.querySelector(sel);
+    if (el && el.offsetParent !== null) {
+      thread_header_final = (el.textContent || '').trim().substring(0, 80);
+      if (thread_header_final) break;
+    }
+  }
+
   // ── Insert text using direct DOM manipulation (fast, works even if element is hidden) ──
   messageInput.focus();
   await sleep(500);
@@ -890,7 +936,29 @@ async function composeOnMessagingPage(messageText, expectedName) {
   }
 
   console.log('[LinkedIn Copilot] ✅ Message sent successfully on messaging page');
-  return { success: true, action: 'send_dm', note: 'sent_via_messaging_page' };
+  return {
+    success: true,
+    action: 'send_dm',
+    note: 'sent_via_messaging_page',
+    // Forensic telemetry — persisted to action_queue.result by the backend.
+    // Use these to cross-check that each DM actually went to the intended
+    // recipient, not whichever thread the script found first on the page.
+    telemetry: {
+      // The final URL the content script was on when it sent the DM.
+      url_path: window.location.pathname,
+      // Header of the thread the DM was actually delivered into. This is the
+      // single most important field — if it stops matching `expected_name`
+      // across multiple leads, the 2026-04-10 bug is back.
+      thread_header: thread_header_final || null,
+      // The expected recipient name passed in from the profile page heading.
+      expected_name: expectedName || null,
+      // First 40 chars of the DM text — used to distinguish which lead's
+      // generated_message was delivered (each lead has unique personalized text).
+      text_preview: (messageText || '').substring(0, 40),
+      // Timestamp of delivery (client-side).
+      sent_at_client: new Date().toISOString(),
+    },
+  };
 }
 
 // ══════════════════════════════════════════════

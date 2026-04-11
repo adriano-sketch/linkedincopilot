@@ -111,6 +111,93 @@ serve(async (req) => {
       } as any)
       .eq("id", action_queue_id);
 
+    // ══════════════════════════════════════════════════════════════
+    // ANOMALY DETECTION: "same thread consecutive" DM navigation bug
+    // ══════════════════════════════════════════════════════════════
+    // Detects the class of bug that caused the 2026-04-10 incident where
+    // 16 DMs all landed in the same LinkedIn thread because the extension
+    // redirected every lead to the messaging inbox root instead of the
+    // intended compose URL. The extension now ships `telemetry.thread_header`
+    // in every send_dm result; we compare the current DM's thread header
+    // against the previous 2 successful send_dm completions for the same
+    // user. If 3 consecutive DMs target leads A, B, C but all land in the
+    // same thread_header, the navigation is clearly broken — pause the
+    // extension immediately and log a critical alert.
+    //
+    // This is deliberately narrow: only fires on 3-in-a-row with matching
+    // non-empty headers AND distinct campaign_lead_ids. Single-thread reply
+    // chains won't trigger it because each send is to a different lead.
+    if (
+      success &&
+      action.action_type === "send_dm" &&
+      result &&
+      typeof result === "object" &&
+      (result as any).telemetry?.thread_header
+    ) {
+      try {
+        const currentHeader = String((result as any).telemetry.thread_header || "").trim().toLowerCase();
+        if (currentHeader) {
+          const { data: recent } = await supabase
+            .from("action_queue")
+            .select("id, campaign_lead_id, result, completed_at")
+            .eq("user_id", user.id)
+            .eq("action_type", "send_dm")
+            .eq("status", "completed")
+            .neq("id", action_queue_id)
+            .order("completed_at", { ascending: false })
+            .limit(2);
+
+          const recentSame = (recent || []).filter((r: any) => {
+            const h = String(r?.result?.telemetry?.thread_header || "").trim().toLowerCase();
+            return h && h === currentHeader && r.campaign_lead_id !== action.campaign_lead_id;
+          });
+
+          if (recentSame.length >= 2) {
+            // 3-in-a-row (current + 2 previous) landing in the same thread
+            // across distinct leads. Pause the user's extension immediately.
+            const affectedLeadIds = [
+              action.campaign_lead_id,
+              ...recentSame.map((r: any) => r.campaign_lead_id),
+            ];
+            console.error(
+              `🚨 DM_NAVIGATION_ANOMALY: user=${user.id} 3 consecutive send_dm completions all landed in thread "${currentHeader}" across distinct leads ${JSON.stringify(affectedLeadIds)}. Pausing extension.`
+            );
+
+            // Pause the extension to stop the bleeding
+            await supabase
+              .from("extension_status")
+              .update({
+                is_paused: true,
+                pause_reason: `dm_navigation_anomaly: 3 consecutive DMs landed in same thread "${currentHeader}"`,
+                paused_at: now,
+                updated_at: now,
+              } as any)
+              .eq("user_id", user.id);
+
+            // Critical entry in activity_log for visibility
+            await supabase.from("activity_log").insert({
+              user_id: user.id,
+              campaign_lead_id: action.campaign_lead_id,
+              action: "dm_navigation_anomaly_detected",
+              details: {
+                severity: "critical",
+                thread_header: currentHeader,
+                affected_action_ids: [action_queue_id, ...recentSame.map((r: any) => r.id)],
+                affected_lead_ids: affectedLeadIds,
+                telemetry_current: (result as any).telemetry,
+                telemetry_previous: recentSame.map((r: any) => r?.result?.telemetry || null),
+                auto_action: "extension_paused",
+                incident_reference: "2026-04-10_same_thread_bug",
+              },
+            });
+          }
+        }
+      } catch (anomalyErr) {
+        // Never let anomaly detection break the happy path — just log.
+        console.error("DM anomaly detection failed (non-fatal):", anomalyErr);
+      }
+    }
+
     const { data: currentLead } = await supabase.from("campaign_leads")
       .select("status, connection_verified, connection_verified_at")
       .eq("id", action.campaign_lead_id)
