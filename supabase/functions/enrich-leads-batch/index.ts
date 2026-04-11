@@ -429,12 +429,73 @@ serve(async (req) => {
           .select("id")
           .single();
 
+        // Extract previous position (index 1 of positions history)
+        const previousPos = Array.isArray(positions) && positions.length > 1 ? positions[1] : null;
+
+        // Extract first education details
+        const firstEdu = Array.isArray(educations) && educations.length > 0 ? educations[0] : null;
+        const educationDisplay = firstEdu
+          ? [firstEdu.degreeName || firstEdu.degree || "", firstEdu.fieldOfStudy || "", "at", firstEdu.schoolName || firstEdu.school || ""]
+              .filter(Boolean)
+              .join(" ")
+              .trim()
+          : null;
+
+        // Skills: keep first 20 as an array for profile_skills (generate-dm slices to 5)
+        const skillsArray = (Array.isArray(skills) ? skills : [])
+          .map((s: any) => typeof s === "string" ? s : (s?.name || ""))
+          .filter((s: string) => s && s.length > 0)
+          .slice(0, 20);
+
+        // Location (city, state, country)
+        const locationDisplay = p.location
+          ? [p.location.city, p.location.state, p.location.country].filter(Boolean).join(", ")
+          : null;
+
+        // Industry (Scrapin returns it at person level OR inside current position.company)
+        const industryDisplay = p.industry
+          || currentPos?.industry
+          || currentPos?.companyIndustry
+          || (currentPos?.company && typeof currentPos.company === "object" ? currentPos.company.industry : null)
+          || null;
+
+        // Build a structured snapshot JSON so generate-dm can read experience/education/skills.
+        // This is the 'profile_snapshot' field on campaign_leads that ai-prompts reads.
+        const structuredSnapshot = {
+          headline,
+          about,
+          location: locationDisplay,
+          industry: industryDisplay,
+          experience: (Array.isArray(positions) ? positions : []).map((pos: any) => ({
+            title: pos.title || "",
+            companyName: pos.companyName || pos.company || "",
+            description: pos.description || "",
+            startDate: pos.startEndDate?.start || null,
+            endDate: pos.startEndDate?.end || null,
+          })),
+          education: (Array.isArray(educations) ? educations : []).map((edu: any) => ({
+            schoolName: edu.schoolName || edu.school || "",
+            degreeName: edu.degreeName || edu.degree || "",
+            fieldOfStudy: edu.fieldOfStudy || edu.field || "",
+          })),
+          skills: skillsArray,
+          followerCount: followerCount || 0,
+          connectionCount: connectionCount || 0,
+        };
+
         const updateData: any = {
           profile_enriched_at: now,
           profile_headline: headline || null,
           profile_about: about || null,
           profile_current_title: currentPos?.title || null,
           profile_current_company: currentPos?.companyName || currentPos?.company || null,
+          profile_previous_title: previousPos?.title || null,
+          profile_previous_company: previousPos?.companyName || previousPos?.company || null,
+          profile_education: educationDisplay,
+          profile_skills: skillsArray.length > 0 ? skillsArray : null,
+          profile_snapshot: structuredSnapshot,
+          industry: industryDisplay,
+          location: locationDisplay,
           updated_at: now,
           error_message: null,
         };

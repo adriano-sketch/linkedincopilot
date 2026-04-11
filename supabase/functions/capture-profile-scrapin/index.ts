@@ -148,10 +148,66 @@ serve(async (req) => {
 
     if (snapshotError) throw snapshotError;
 
-    // Update campaign_lead
+    // Update campaign_lead with FULL enrichment so generate-dm has rich data.
+    // Previously this function only wrote snapshot_id/full_name and left all
+    // the profile_* columns NULL, which broke per-lead DM personalization.
     if (campaign_lead_id) {
+      const currentPos = Array.isArray(positions) && positions.length > 0 ? positions[0] : null;
+      const previousPos = Array.isArray(positions) && positions.length > 1 ? positions[1] : null;
+      const firstEdu = Array.isArray(educations) && educations.length > 0 ? educations[0] : null;
+      const educationDisplay = firstEdu
+        ? [firstEdu.degreeName || firstEdu.degree || "", firstEdu.fieldOfStudy || "", "at", firstEdu.schoolName || firstEdu.school || ""]
+            .filter(Boolean)
+            .join(" ")
+            .trim()
+        : null;
+      const skillsArray = (Array.isArray(skills) ? skills : [])
+        .map((s: any) => typeof s === "string" ? s : (s?.name || ""))
+        .filter((s: string) => s && s.length > 0)
+        .slice(0, 20);
+      const locationDisplay = p.location
+        ? [p.location.city, p.location.state, p.location.country].filter(Boolean).join(", ")
+        : null;
+      const industryDisplay = p.industry
+        || currentPos?.industry
+        || currentPos?.companyIndustry
+        || (currentPos?.company && typeof currentPos.company === "object" ? currentPos.company.industry : null)
+        || null;
+
+      const structuredSnapshot = {
+        headline,
+        about,
+        location: locationDisplay,
+        industry: industryDisplay,
+        experience: (Array.isArray(positions) ? positions : []).map((pos: any) => ({
+          title: pos.title || "",
+          companyName: pos.companyName || pos.company || "",
+          description: pos.description || "",
+          startDate: pos.startEndDate?.start || null,
+          endDate: pos.startEndDate?.end || null,
+        })),
+        education: (Array.isArray(educations) ? educations : []).map((edu: any) => ({
+          schoolName: edu.schoolName || edu.school || "",
+          degreeName: edu.degreeName || edu.degree || "",
+          fieldOfStudy: edu.fieldOfStudy || edu.field || "",
+        })),
+        skills: skillsArray,
+      };
+
       const updateData: any = {
         snapshot_id: snapshot.id,
+        profile_enriched_at: new Date().toISOString(),
+        profile_headline: headline || null,
+        profile_about: about || null,
+        profile_current_title: currentPos?.title || null,
+        profile_current_company: currentPos?.companyName || currentPos?.company || null,
+        profile_previous_title: previousPos?.title || null,
+        profile_previous_company: previousPos?.companyName || previousPos?.company || null,
+        profile_education: educationDisplay,
+        profile_skills: skillsArray.length > 0 ? skillsArray : null,
+        profile_snapshot: structuredSnapshot,
+        industry: industryDisplay,
+        location: locationDisplay,
         updated_at: new Date().toISOString(),
       };
       if (fullName) {
