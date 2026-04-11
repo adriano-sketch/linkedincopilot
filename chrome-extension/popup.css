@@ -324,3 +324,135 @@ body {
   padding: 8px 16px 12px;
   text-align: center;
 }
+
+/* Schedule Editor */
+.schedule-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--slate-300);
+  padding-top: 10px;
+}
+
+.schedule-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--navy);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+
+.schedule-toggle:hover {
+  color: var(--gold-dark);
+}
+
+.schedule-summary {
+  flex: 1;
+  text-align: right;
+  font-weight: 400;
+  color: var(--slate-500);
+  font-size: 11px;
+}
+
+.schedule-caret {
+  color: var(--slate-500);
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+
+.schedule-section.open .schedule-caret {
+  transform: rotate(180deg);
+}
+
+.schedule-panel {
+  padding: 8px 2px 4px;
+}
+
+.schedule-panel.hidden {
+  display: none;
+}
+
+.schedule-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate-700);
+  margin: 8px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.schedule-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.day-pill {
+  cursor: pointer;
+  user-select: none;
+}
+
+.day-pill input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.day-pill span {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 12px;
+  border: 1px solid var(--slate-300);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate-500);
+  background: var(--white);
+  transition: all 0.1s ease;
+}
+
+.day-pill input:checked + span {
+  background: var(--navy);
+  color: var(--white);
+  border-color: var(--navy);
+}
+
+.schedule-hours {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-hours input[type="time"] {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--slate-300);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--navy);
+  background: var(--white);
+}
+
+.hours-sep {
+  color: var(--slate-500);
+  font-size: 12px;
+}
+
+.schedule-error {
+  color: var(--red);
+  font-size: 11px;
+  margin-top: 6px;
+  min-height: 14px;
+}
+
+.schedule-save-btn {
+  margin-top: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+}

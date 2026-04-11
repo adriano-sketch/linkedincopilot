@@ -26,6 +26,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutLink2 = document.getElementById('logout-link-2');
   const openLinkedinBtn = document.getElementById('open-linkedin-btn');
 
+  // Schedule editor elements
+  const scheduleSection = document.querySelector('.schedule-section');
+  const scheduleToggle = document.getElementById('schedule-toggle');
+  const schedulePanel = document.getElementById('schedule-panel');
+  const scheduleSummary = document.getElementById('schedule-summary');
+  const scheduleStart = document.getElementById('schedule-start');
+  const scheduleEnd = document.getElementById('schedule-end');
+  const scheduleError = document.getElementById('schedule-error');
+  const scheduleSave = document.getElementById('schedule-save');
+  const dayCheckboxes = document.querySelectorAll('.day-pill input[data-day]');
+  const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+  const DAY_ORDER = ['mon','tue','wed','thu','fri','sat','sun'];
+
   const DASHBOARD_URL = 'https://linkedincopilot.vercel.app/dashboard';
 
   // Check current status on popup open
@@ -102,6 +115,85 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── Schedule Editor ──
+  if (scheduleToggle && schedulePanel) {
+    scheduleToggle.addEventListener('click', () => {
+      schedulePanel.classList.toggle('hidden');
+      scheduleSection.classList.toggle('open');
+    });
+  }
+
+  function renderScheduleSummary(days, start, end) {
+    const count = (days || []).length;
+    if (count === 0) {
+      scheduleSummary.textContent = 'No days active';
+      return;
+    }
+    let daysLabel;
+    if (count === 7) daysLabel = '7 days';
+    else if (count === 5 && ['mon','tue','wed','thu','fri'].every(d => days.includes(d))) daysLabel = 'Mon–Fri';
+    else if (count === 2 && days.includes('sat') && days.includes('sun')) daysLabel = 'Weekends';
+    else daysLabel = days.map(d => DAY_LABELS[d]).join('·');
+    scheduleSummary.textContent = `${daysLabel}, ${start}–${end}`;
+  }
+
+  function loadScheduleFromBackground() {
+    chrome.runtime.sendMessage({ type: 'GET_SCHEDULE' }, (resp) => {
+      if (!resp || !resp.success) return;
+      const days = Array.isArray(resp.active_days) ? resp.active_days : [];
+      const start = resp.active_hours_start || '08:00';
+      const end = resp.active_hours_end || '18:00';
+      dayCheckboxes.forEach(cb => { cb.checked = days.includes(cb.dataset.day); });
+      scheduleStart.value = start;
+      scheduleEnd.value = end;
+      renderScheduleSummary(days, start, end);
+    });
+  }
+
+  if (scheduleSave) {
+    scheduleSave.addEventListener('click', () => {
+      const selected = DAY_ORDER.filter(d => {
+        const cb = document.querySelector(`.day-pill input[data-day="${d}"]`);
+        return cb && cb.checked;
+      });
+      const start = scheduleStart.value || '08:00';
+      const end = scheduleEnd.value || '18:00';
+      scheduleError.textContent = '';
+
+      if (selected.length === 0) {
+        scheduleError.textContent = 'Pick at least one day.';
+        return;
+      }
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      if (isNaN(sh) || isNaN(eh) || (sh * 60 + (sm || 0)) >= (eh * 60 + (em || 0))) {
+        scheduleError.textContent = 'End must be after start.';
+        return;
+      }
+
+      scheduleSave.disabled = true;
+      scheduleSave.textContent = 'Saving…';
+      chrome.runtime.sendMessage(
+        { type: 'SAVE_SCHEDULE', active_days: selected, active_hours_start: start, active_hours_end: end },
+        (resp) => {
+          scheduleSave.disabled = false;
+          scheduleSave.textContent = 'Save schedule';
+          if (resp && resp.success) {
+            renderScheduleSummary(selected, start, end);
+            scheduleError.style.color = 'var(--green)';
+            scheduleError.textContent = 'Saved.';
+            setTimeout(() => { scheduleError.textContent = ''; scheduleError.style.color = ''; }, 2000);
+            // Refresh main status to reflect new active window
+            loadFullStatus();
+          } else {
+            scheduleError.style.color = '';
+            scheduleError.textContent = (resp && resp.error) || 'Save failed.';
+          }
+        }
+      );
+    });
+  }
+
   // ── View Management ──
 
   function hideAllViews() {
@@ -151,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       showStatusView();
+      loadScheduleFromBackground();
 
       const safety = status.safety || {};
       const counters = safety.counters || {};

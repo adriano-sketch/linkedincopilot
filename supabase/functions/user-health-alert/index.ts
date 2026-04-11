@@ -81,7 +81,7 @@ function inBusinessHours(
     const normDay = dayMap[weekday.slice(0, 3)] || weekday.slice(0, 3);
     const days = activeDays && activeDays.length > 0
       ? activeDays.map(d => d.toLowerCase())
-      : ["mon", "tue", "wed", "thu", "fri"];
+      : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
     if (!days.includes(normDay)) return false;
 
     const [sh, sm] = (startHour || "08:00").split(":").map(Number);

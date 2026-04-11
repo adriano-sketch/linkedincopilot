@@ -36,7 +36,7 @@ const STATUS_ORDER: Record<string, number> = {
 
 function randomBusinessTime(
   daysAhead: number = 1,
-  activeDays: string[] = ['mon','tue','wed','thu','fri'],
+  activeDays: string[] = ['mon','tue','wed','thu','fri','sat','sun'],
   startHour: string = '08:00',
   endHour: string = '18:00'
 ): string {
@@ -96,7 +96,7 @@ serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const userDays = extStatus?.active_days || ['mon','tue','wed','thu','fri'];
+    const userDays = extStatus?.active_days || ['mon','tue','wed','thu','fri','sat','sun'];
     const userStart = extStatus?.active_hours_start || '08:00';
     const userEnd = extStatus?.active_hours_end || '18:00';
     const rbt = (days: number = 1) => randomBusinessTime(days, userDays, userStart, userEnd);
@@ -168,9 +168,8 @@ serve(async (req) => {
               .from("extension_status")
               .update({
                 is_paused: true,
-                pause_reason: `dm_navigation_anomaly: 3 consecutive DMs landed in same thread "${currentHeader}"`,
-                paused_at: now,
-                updated_at: now,
+                auto_paused_at: now,
+                auto_paused_reason: `dm_navigation_anomaly: 3 consecutive DMs landed in same thread "${currentHeader}"`,
               } as any)
               .eq("user_id", user.id);
 

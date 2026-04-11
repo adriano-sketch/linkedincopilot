@@ -232,7 +232,7 @@ const LIMITS = {
   total_actions: 200,
   active_hours_start: 8,
   active_hours_end: 18,
-  active_days: [1, 2, 3, 4, 5], // 1=Mon..7=Sun
+  active_days: [1, 2, 3, 4, 5, 6, 7], // 1=Mon..7=Sun — LinkedIn ≠ email, 7 dias por default
   timezone: 'America/New_York',
   warmup_days: 0,
   warmup_multiplier: 1,
@@ -1461,6 +1461,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ error: error.message }));
     return true;
   }
+  if (message.type === 'GET_SCHEDULE') {
+    const DAY_MAP_R = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' };
+    const days = (LIMITS.active_days || []).map(n => DAY_MAP_R[n]).filter(Boolean);
+    sendResponse({
+      success: true,
+      active_days: days,
+      active_hours_start: typeof LIMITS.active_hours_start === 'string' ? LIMITS.active_hours_start : String(LIMITS.active_hours_start).padStart(2, '0') + ':00',
+      active_hours_end: typeof LIMITS.active_hours_end === 'string' ? LIMITS.active_hours_end : String(LIMITS.active_hours_end).padStart(2, '0') + ':00',
+    });
+    return false;
+  }
+  if (message.type === 'SAVE_SCHEDULE') {
+    handleSaveSchedule(message.active_days, message.active_hours_start, message.active_hours_end)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
   if (message.type === 'CHECK_LINKEDIN_WARNINGS') {
     if (message.warning) {
       console.error('[LC:Safety] LinkedIn warning detected:', message.warning);
@@ -1487,6 +1504,58 @@ async function handleLogin(email, password) {
 
 async function handleLogout() {
   await supabase.clearAuth();
+}
+
+async function handleSaveSchedule(activeDays, startHour, endHour) {
+  try {
+    const allowed = ['mon','tue','wed','thu','fri','sat','sun'];
+    const cleanDays = (Array.isArray(activeDays) ? activeDays : [])
+      .map(d => String(d).toLowerCase())
+      .filter(d => allowed.includes(d));
+    if (cleanDays.length === 0) {
+      return { success: false, error: 'Pick at least one day.' };
+    }
+    const timeRe = /^([01]?\d|2[0-3]):[0-5]\d$/;
+    if (!timeRe.test(startHour) || !timeRe.test(endHour)) {
+      return { success: false, error: 'Invalid time format.' };
+    }
+    const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+    if (toMin(startHour) >= toMin(endHour)) {
+      return { success: false, error: 'End must be after start.' };
+    }
+
+    // Persist to Supabase so it survives extension updates
+    if (supabase.accessToken && supabase.userId) {
+      const res = await fetch(
+        `${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}`,
+        {
+          method: 'PATCH',
+          headers: { ...supabase.getHeaders(), 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            active_days: cleanDays,
+            active_hours_start: startHour,
+            active_hours_end: endHour,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[LC] Failed to save schedule:', res.status, text);
+        return { success: false, error: `Server refused update (${res.status}).` };
+      }
+    }
+
+    // Update in-memory LIMITS so canExecute sees the new schedule immediately
+    const DAY_MAP = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 };
+    LIMITS.active_days = cleanDays.map(d => DAY_MAP[d]).filter(Boolean);
+    LIMITS.active_hours_start = startHour;
+    LIMITS.active_hours_end = endHour;
+    if (CONFIG.DEBUG) console.log('[Schedule] Updated:', { days: cleanDays, start: startHour, end: endHour });
+    return { success: true };
+  } catch (error) {
+    console.error('[LC] handleSaveSchedule error:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 async function handleTogglePause() {

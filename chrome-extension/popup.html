@@ -92,6 +92,35 @@
         </div>
 
         <button id="pause-btn" class="btn btn-secondary">Pause Automation</button>
+
+        <!-- Schedule Editor -->
+        <div class="schedule-section">
+          <button id="schedule-toggle" class="schedule-toggle" type="button">
+            <span>⏰ Messaging schedule</span>
+            <span id="schedule-summary" class="schedule-summary">—</span>
+            <span id="schedule-caret" class="schedule-caret">▾</span>
+          </button>
+          <div id="schedule-panel" class="schedule-panel hidden">
+            <div class="schedule-label">Active days</div>
+            <div class="schedule-days">
+              <label class="day-pill"><input type="checkbox" data-day="mon"><span>Mon</span></label>
+              <label class="day-pill"><input type="checkbox" data-day="tue"><span>Tue</span></label>
+              <label class="day-pill"><input type="checkbox" data-day="wed"><span>Wed</span></label>
+              <label class="day-pill"><input type="checkbox" data-day="thu"><span>Thu</span></label>
+              <label class="day-pill"><input type="checkbox" data-day="fri"><span>Fri</span></label>
+              <label class="day-pill"><input type="checkbox" data-day="sat"><span>Sat</span></label>
+              <label class="day-pill"><input type="checkbox" data-day="sun"><span>Sun</span></label>
+            </div>
+            <div class="schedule-label">Active hours (local)</div>
+            <div class="schedule-hours">
+              <input type="time" id="schedule-start" value="08:00">
+              <span class="hours-sep">→</span>
+              <input type="time" id="schedule-end" value="18:00">
+            </div>
+            <div id="schedule-error" class="schedule-error"></div>
+            <button id="schedule-save" class="btn btn-primary schedule-save-btn">Save schedule</button>
+          </div>
+        </div>
       </div>
       <div class="popup-footer">
         <a id="dashboard-link" href="#" class="dashboard-link">Open Dashboard →</a>

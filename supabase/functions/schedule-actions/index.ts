@@ -36,7 +36,7 @@ const ACTION_MESSAGE_FIELD: Record<string, string> = {
 const DAY_MAP: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 
 function randomBusinessTime(
-  activeDays: string[] = ['mon','tue','wed','thu','fri'],
+  activeDays: string[] = ['mon','tue','wed','thu','fri','sat','sun'],
   startHour = '08:00',
   endHour = '18:00',
   daysAhead = 1
@@ -358,7 +358,7 @@ serve(async (req) => {
 
         // Get user schedule
         const ext = extensionMap.get(lead.user_id);
-        const userDays = ext?.active_days || ['mon','tue','wed','thu','fri'];
+        const userDays = ext?.active_days || ['mon','tue','wed','thu','fri','sat','sun'];
         const userStart = ext?.active_hours_start || '08:00';
         const userEnd = ext?.active_hours_end || '18:00';
 
