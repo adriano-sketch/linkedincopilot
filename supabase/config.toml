@@ -50,3 +50,11 @@ verify_jwt = false
 verify_jwt = false
 [functions.watchdog]
 verify_jwt = false
+[functions.user-health-alert]
+verify_jwt = false
+[functions.campaign-metrics]
+verify_jwt = false
+[functions.analyze-icp-fit]
+verify_jwt = false
+[functions.classify-reply]
+verify_jwt = false
