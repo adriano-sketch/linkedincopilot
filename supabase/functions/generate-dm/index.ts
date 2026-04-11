@@ -9,6 +9,85 @@ const corsHeaders = {
 
 // Shared prompt + helpers live in _shared/ai-prompts.ts
 
+// ─────────────────────────────────────────────────────────────────────
+// DM strategy variants. Each variant gives the AI a *different* angle
+// of attack. We rotate across variants so we gather enough data to learn
+// which ones actually earn replies — per-user, per-campaign, per-vertical.
+//
+// Keep this list tight (5–7 variants) so each gets statistically meaningful
+// sample size. Every variant has:
+//   key: unique stable id (what we store + join on later)
+//   hook_type: one of curiosity / proof / pain / observation / peer
+//   structure: the skeleton the AI should follow
+//   length_bucket: short | medium — affects target char count
+// ─────────────────────────────────────────────────────────────────────
+interface Variant {
+  key: string;
+  hook_type: "curiosity" | "proof" | "pain" | "observation" | "peer";
+  structure: string;
+  length_bucket: "short" | "medium";
+  hint: string; // injected into the prompt userPrompt
+}
+
+const DM_VARIANTS: Variant[] = [
+  {
+    key: "curiosity_question_v1",
+    hook_type: "curiosity",
+    structure: "open_with_specific_detail → genuine_question_no_pitch",
+    length_bucket: "short",
+    hint: "Open by referencing ONE specific detail from their profile (a role, a company focus, an education marker). Then ask one genuine open-ended question tied to that detail. Do NOT mention your product or offer. Target 180–240 chars.",
+  },
+  {
+    key: "proof_point_v1",
+    hook_type: "proof",
+    structure: "peer_result → transfer_to_them → light_question",
+    length_bucket: "medium",
+    hint: "Lead with a concrete result a similar peer/company achieved (use a proof point from the campaign). Then pivot with 'wondering if that pattern could apply to [their context]' — and ask one soft question. Target 220–300 chars.",
+  },
+  {
+    key: "pain_mirror_v1",
+    hook_type: "pain",
+    structure: "name_the_friction → normalize_it → invite_reaction",
+    length_bucket: "medium",
+    hint: "Name a specific friction that someone in their role typically feels (draw from campaign pain points). Do not diagnose them — frame it as 'most [role]s I talk to are seeing X'. End with 'curious if that matches your experience'. Target 220–300 chars.",
+  },
+  {
+    key: "observation_v1",
+    hook_type: "observation",
+    structure: "specific_profile_observation → why_it_caught_attention → micro_question",
+    length_bucket: "short",
+    hint: "State something you genuinely observed about their profile that is NOT generic (a career transition, a rare skill combo, a post topic, an industry shift they rode). Explain in one sentence why it was interesting to you. End with a tiny question. Target 180–240 chars. NO pitch.",
+  },
+  {
+    key: "peer_reference_v1",
+    hook_type: "peer",
+    structure: "mention_peer_company → shared_context → invitation",
+    length_bucket: "medium",
+    hint: "Reference a relevant peer company or role they'd recognize (from their industry or competitive landscape). Position your DM as something you'd normally mention to peers in that space. End with a low-friction invitation to chat — not a meeting ask. Target 220–300 chars.",
+  },
+  {
+    key: "short_signal_v1",
+    hook_type: "curiosity",
+    structure: "one_line_signal → one_line_question",
+    length_bucket: "short",
+    hint: "Write ONLY two short lines. Line 1: a crisp signal tying you to their world (industry, role, stage). Line 2: a single direct question. Total < 180 chars. No greetings beyond first name. The power is brevity.",
+  },
+];
+
+/**
+ * Pick a variant using simple rotation biased by the lead id so that
+ * (a) distinct leads get distinct variants, and (b) the same lead regenerated
+ * deterministically picks the same variant (idempotent retries).
+ */
+function pickVariant(seed: string): Variant {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(h) % DM_VARIANTS.length;
+  return DM_VARIANTS[idx];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -208,8 +287,23 @@ serve(async (req) => {
       vertical: verticalContext,
     };
 
+    // Pick a DM strategy variant for this lead (deterministic by lead id so
+    // retries stay stable). We inject the variant hint into the DM prompt
+    // ONLY — the connection note variant space is too small to benefit.
+    const variant = pickVariant(campaign_lead_id);
+    const variantInjection = `
+
+══════ STRATEGY VARIANT FOR THIS DM ══════
+Variant key: ${variant.key}
+Hook type: ${variant.hook_type}
+Structure: ${variant.structure}
+Length bucket: ${variant.length_bucket}
+Guidance: ${variant.hint}
+Follow this variant's guidance for the FIRST DM. The follow-up should use a different angle (as always).`;
+
     const { systemPrompt: noteSystem, userPrompt: noteUser } = buildMessagePrompts(promptInputs, "note");
-    const { systemPrompt: dmSystem, userPrompt: dmUser } = buildMessagePrompts(promptInputs, "dm_followup");
+    const { systemPrompt: dmSystem, userPrompt: dmUserBase } = buildMessagePrompts(promptInputs, "dm_followup");
+    const dmUser = dmUserBase + variantInjection;
 
     const callAnthropic = async (model: string, system: string, user: string) => {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -282,20 +376,29 @@ serve(async (req) => {
     if (dmLen > 350) console.warn(`custom_dm over limit: ${dmLen} chars`);
     if (fuLen > 280) console.warn(`custom_followup over limit: ${fuLen} chars`);
 
-    // Save to generated_messages
+    // Save to generated_messages — include variant tagging so we can later
+    // correlate variant → reply rate.
     await supabase.from("generated_messages").insert({
       user_id,
       connection_note: args.connection_note,
       dm1: args.custom_dm,
       followup1: args.custom_followup,
-      reasoning_short: `${args.personalization_hook || ""} | ${args.reasoning || ""}`.substring(0, 500),
-    });
+      reasoning_short: `[${variant.key}] ${args.personalization_hook || ""} | ${args.reasoning || ""}`.substring(0, 500),
+      dm_variant: variant.key,
+      variant_meta: {
+        hook_type: variant.hook_type,
+        structure: variant.structure,
+        length_bucket: variant.length_bucket,
+        campaign_profile_id: campaignProfileId || null,
+      },
+    } as any);
 
     if (job) {
       await supabase.from("jobs").update({ status: "success" }).eq("id", job.id);
     }
 
-    // Update campaign_lead with generated messages
+    // Update campaign_lead with generated messages (and variant key for
+    // cheap reply-rate joins).
     // Set status to pending_approval so user can review before auto-run
     await supabase.from("campaign_leads")
       .update({
@@ -307,6 +410,7 @@ serve(async (req) => {
         status: "pending_approval",
         dm_generated_at: new Date().toISOString(),
         messages_generated_at: new Date().toISOString(),
+        dm_variant: variant.key,
         updated_at: new Date().toISOString(),
       } as any)
       .eq("id", campaign_lead_id);
@@ -321,6 +425,7 @@ serve(async (req) => {
       connection_note: args.connection_note,
       dm1: args.custom_dm,
       followup1: args.custom_followup,
+      dm_variant: variant.key,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
