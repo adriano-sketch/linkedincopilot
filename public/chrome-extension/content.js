@@ -399,9 +399,10 @@ async function sendMessage(messageText) {
   // ── STEP 5: Verify the message was actually sent ──
   // After clicking Send, LinkedIn removes the text from the composer if successful.
   // If the text is still there, the send failed silently.
+  // 2026-04-13 fix: increased attempts from 3→4, added thread-match fallback.
   let sendVerified = false;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await sleep(800 + attempt * 500);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await sleep(attempt === 0 ? 2000 : 1500 + attempt * 500);
     const remainingText = normalizeMessageText(readComposerText(messageInput));
     const expectedText = normalizeMessageText(messageText);
 
@@ -411,12 +412,32 @@ async function sendMessage(messageText) {
       break;
     }
 
-    // Text still in composer — try clicking send again
-    console.warn(`[LinkedIn Copilot] Send verification attempt ${attempt + 1}: text still in composer, retrying send`);
-    const retryBtn = findMessageSendButton(messageOverlay);
-    if (retryBtn && !retryBtn.disabled) {
-      retryBtn.click();
-      await sleep(1500);
+    // Text still in composer — try clicking send again (first 2 attempts only)
+    if (attempt < 2) {
+      console.warn(`[LinkedIn Copilot] Send verification attempt ${attempt + 1}: text still in composer, retrying send`);
+      const retryBtn = findMessageSendButton(messageOverlay);
+      if (retryBtn && !retryBtn.disabled) {
+        retryBtn.click();
+        await sleep(1500);
+      }
+    }
+  }
+
+  // Thread-match fallback for overlay: check if message appeared in the bubble list
+  if (!sendVerified) {
+    try {
+      const snippet = (messageText || '').substring(0, 50).toLowerCase();
+      const bubbles = messageOverlay?.querySelectorAll?.('.msg-s-event-listitem__body, [class*="msg-s-event"] p') || [];
+      const recent = Array.from(bubbles).slice(-5);
+      for (const b of recent) {
+        if ((b.textContent || '').trim().toLowerCase().includes(snippet)) {
+          sendVerified = true;
+          console.warn('[LinkedIn Copilot] ⚠️ Overlay composer not cleared but message found in thread — treating as success');
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn('[LinkedIn Copilot] Overlay thread-match check failed:', e.message);
     }
   }
 
@@ -917,22 +938,63 @@ async function composeOnMessagingPage(messageText, expectedName) {
 
   console.log('[LinkedIn Copilot] Clicking Send button:', sendButton.textContent.trim(), sendButton.className);
   sendButton.click();
-  await sleep(3000);
 
-  // Verify: check if composer was cleared (message sent)
-  const remainingText = (messageInput.textContent || '').trim();
-  if (remainingText.length > 0 && remainingText.length > messageText.length * 0.5) {
-    // Try clicking send again — scoped
-    console.warn('[LinkedIn Copilot] Text still in composer, retrying send');
-    const retryBtn = sendScope.querySelector('button.msg-form__send-button') || sendButton;
-    if (retryBtn && !retryBtn.disabled) {
-      retryBtn.click();
-      await sleep(2000);
+  // ── Robust send verification ──
+  // LinkedIn's compose field can take 3-8s to clear after a successful send.
+  // Previous logic waited 3s and threw if text remained → caused 9/14 false
+  // positive failures on 2026-04-13.  Now we:
+  //   1. Poll the composer for up to 8s (composer-cleared = definitive success)
+  //   2. If composer still has text, check thread for the message (thread-match)
+  //   3. Only throw if BOTH checks fail
+
+  let composerCleared = false;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await sleep(attempt === 0 ? 3000 : 2000);          // 3s, then 2s, 2s, 2s = 9s max
+    const remaining = (messageInput.textContent || '').trim();
+    if (remaining.length === 0 || remaining.length < messageText.length * 0.3) {
+      composerCleared = true;
+      break;
     }
-    const finalText = (messageInput.textContent || '').trim();
-    if (finalText.length > messageText.length * 0.5) {
-      throw new Error('Message may not have been sent — compose input still has content');
+    // On first retry, try clicking send again (scoped)
+    if (attempt === 0) {
+      console.warn('[LinkedIn Copilot] Text still in composer after 3s, retrying send');
+      const retryBtn = sendScope.querySelector('button.msg-form__send-button') || sendButton;
+      if (retryBtn && !retryBtn.disabled) {
+        retryBtn.click();
+      }
     }
+  }
+
+  // Thread-match fallback: even if composer didn't clear, check whether the
+  // message actually landed in the conversation thread.  We look for our
+  // text snippet inside the last few message bubbles.
+  let threadMatch = false;
+  if (!composerCleared) {
+    try {
+      const snippet = (messageText || '').substring(0, 50).toLowerCase();
+      const msgBubbles = document.querySelectorAll(
+        '.msg-s-event-listitem__body, .msg-s-message-group__msg, [class*="msg-s-event"] .msg-s-event-listitem__message-bubble'
+      );
+      // Check last 5 bubbles
+      const recentBubbles = Array.from(msgBubbles).slice(-5);
+      for (const bubble of recentBubbles) {
+        const bubbleText = (bubble.textContent || '').trim().toLowerCase();
+        if (bubbleText.includes(snippet)) {
+          threadMatch = true;
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn('[LinkedIn Copilot] Thread-match check failed:', e.message);
+    }
+  }
+
+  const sendVerified = composerCleared || threadMatch;
+  if (!sendVerified) {
+    throw new Error('Message may not have been sent — compose input still has content and message not found in thread');
+  }
+  if (!composerCleared && threadMatch) {
+    console.warn('[LinkedIn Copilot] ⚠️ Composer not cleared but message found in thread — treating as success');
   }
 
   console.log('[LinkedIn Copilot] ✅ Message sent successfully on messaging page');
