@@ -725,7 +725,31 @@ const queueProcessor = {
         console.log(`[QueueProcessor] Messaging redirect to: ${result.redirect}`);
         const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
         if (tab) {
-          const redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
+          let redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
+          // ── LinkedIn 2026-04 change ──
+          // The Message button's href is `/messaging/compose/?recipient=X&profileUrn=X`.
+          // When LinkedIn's own SPA handles a CLICK, it routes internally to
+          // `/messaging/thread/new/?recipient=X` and opens the compose overlay.
+          // But when we navigate to `/messaging/compose/` via window.location.href,
+          // LinkedIn cold-loads a blank compose page with NO recipient resolved
+          // and NO contenteditable — every send fails with editables=[].
+          // Transform the URL to match what LinkedIn does internally.
+          try {
+            const u = new URL(redirectUrl);
+            if (u.pathname === '/messaging/compose/' || u.pathname === '/messaging/compose') {
+              const recipient = u.searchParams.get('recipient');
+              if (recipient) {
+                const newUrl = new URL('https://www.linkedin.com/messaging/thread/new/');
+                newUrl.searchParams.set('recipient', recipient);
+                const ctx = u.searchParams.get('screenContext');
+                if (ctx) newUrl.searchParams.set('screenContext', ctx);
+                console.log(`[QueueProcessor] Rewriting compose URL for SPA-correct load: ${u.pathname} -> ${newUrl.pathname}`);
+                redirectUrl = newUrl.toString();
+              }
+            }
+          } catch (e) {
+            console.warn('[QueueProcessor] URL transform failed, using original:', e.message);
+          }
           // Use SPA-friendly navigation via window.location.href
           await chrome.scripting.executeScript({
             target: { tabId: tab.id },
