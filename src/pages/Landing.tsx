@@ -852,7 +852,7 @@ export default function Landing() {
               <div>
                 <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-gold-light mb-4">Legal</h4>
                 <ul className="space-y-2.5 text-sm text-gray-400">
-                  <li><span className="cursor-default">Privacy Policy</span></li>
+                  <li><Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
                   <li><span className="cursor-default">Terms of Service</span></li>
                 </ul>
               </div>
