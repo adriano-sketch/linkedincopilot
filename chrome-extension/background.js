@@ -1092,14 +1092,15 @@ const queueProcessor = {
         return; // Exit early — don't retry
       }
 
-      // ── NOT FIRST DEGREE (v0.2.4) ──
+      // ── NOT FIRST DEGREE (v0.2.4, improved v0.2.5) ──
       // The DOM check_connection_status reported is_connected=true but the Voyager API
       // rejects with RECIPIENT_NOT_FIRST_DEGREE_CONNECTION. This means the LinkedIn UI
-      // shows "1st" but the API disagrees. Regress the lead back to connection_sent
-      // and schedule a recheck in 24h instead of retrying send_dm infinitely.
+      // shows "1st" but the API disagrees. Count past failures: if 3+, mark as error
+      // (permanent — LinkedIn UI/API disagreement won't resolve). Otherwise regress
+      // to connection_sent for one more try in 24h.
       const isNotFirstDegree = /RECIPIENT_NOT_FIRST_DEGREE/i.test(error.message);
       if (isNotFirstDegree && (action.action_type === 'send_dm' || action.action_type === 'send_followup')) {
-        console.warn(`[QueueProcessor] NOT_FIRST_DEGREE for ${action.action_type} — regressing lead to connection_sent`);
+        console.warn(`[QueueProcessor] NOT_FIRST_DEGREE for ${action.action_type}`);
         try {
           await this.reportCompletion(action, false, null, `NOT_FIRST_DEGREE: ${error.message}`);
           await supabase.update('action_queue',
@@ -1107,34 +1108,69 @@ const queueProcessor = {
             `id=eq.${action.id}`
           );
           if (action.campaign_lead_id) {
-            // Regress lead to connection_sent — will trigger check_connection_status again
-            const nextCheck = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-            await supabase.update('campaign_leads',
-              {
-                status: 'connection_sent',
-                next_action_at: nextCheck,
-                error_message: `NOT_FIRST_DEGREE: DM rejected by API despite UI showing 1st-degree. Rechecking in 24h.`,
-              },
-              `id=eq.${action.campaign_lead_id}`
+            // Count how many NOT_FIRST_DEGREE failures this lead has accumulated
+            const { data: pastFailures } = await supabase.select(
+              'action_queue', 'id',
+              `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.failed&error_message=ilike.*FIRST_DEGREE*`
             );
-            // Cancel any other pending send_dm/send_followup for this lead
-            try {
+            const failCount = pastFailures ? pastFailures.length : 0;
+            console.log(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} has ${failCount} NOT_FIRST_DEGREE failures`);
+
+            if (failCount >= 3) {
+              // Permanent: LinkedIn UI/API disagreement won't self-resolve
+              console.warn(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} reached ${failCount} NOT_FIRST_DEGREE failures — marking as error`);
+              await supabase.update('campaign_leads',
+                {
+                  status: 'error',
+                  error_message: `NOT_FIRST_DEGREE: API rejects DM after ${failCount} attempts despite UI showing 1st-degree`,
+                  next_action_at: null,
+                },
+                `id=eq.${action.campaign_lead_id}`
+              );
+              // Cancel ALL pending actions for this lead
               const { data: pendingActions } = await supabase.select(
-                'action_queue',
-                'id',
-                `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending&action_type=in.(send_dm,send_followup)`
+                'action_queue', 'id',
+                `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending`
               );
               if (pendingActions && pendingActions.length > 0) {
                 for (const pa of pendingActions) {
                   await supabase.update('action_queue',
-                    { status: 'cancelled', error_message: 'Cancelled: lead regressed to connection_sent (NOT_FIRST_DEGREE)' },
+                    { status: 'cancelled', error_message: 'Lead marked as error (NOT_FIRST_DEGREE loop)' },
                     `id=eq.${pa.id}`
                   );
                 }
-                console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending DM/followup actions for lead`);
+                console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending actions for error lead`);
               }
-            } catch (cancelErr) {
-              console.warn('[QueueProcessor] Failed to cancel pending actions:', cancelErr.message);
+            } else {
+              // Still under threshold — regress to connection_sent for another try
+              const nextCheck = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+              await supabase.update('campaign_leads',
+                {
+                  status: 'connection_sent',
+                  next_action_at: nextCheck,
+                  error_message: `NOT_FIRST_DEGREE: DM rejected by API despite UI showing 1st-degree. Rechecking in 24h. (${failCount} failures)`,
+                },
+                `id=eq.${action.campaign_lead_id}`
+              );
+              // Cancel any other pending send_dm/send_followup for this lead
+              try {
+                const { data: pendingActions } = await supabase.select(
+                  'action_queue',
+                  'id',
+                  `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending&action_type=in.(send_dm,send_followup)`
+                );
+                if (pendingActions && pendingActions.length > 0) {
+                  for (const pa of pendingActions) {
+                    await supabase.update('action_queue',
+                      { status: 'cancelled', error_message: 'Cancelled: lead regressed to connection_sent (NOT_FIRST_DEGREE)' },
+                      `id=eq.${pa.id}`
+                    );
+                  }
+                  console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending DM/followup actions for lead`);
+                }
+              } catch (cancelErr) {
+                console.warn('[QueueProcessor] Failed to cancel pending actions:', cancelErr.message);
+              }
             }
           }
         } catch (reportErr) {
