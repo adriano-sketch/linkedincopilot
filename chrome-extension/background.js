@@ -1092,6 +1092,58 @@ const queueProcessor = {
         return; // Exit early — don't retry
       }
 
+      // ── NOT FIRST DEGREE (v0.2.4) ──
+      // The DOM check_connection_status reported is_connected=true but the Voyager API
+      // rejects with RECIPIENT_NOT_FIRST_DEGREE_CONNECTION. This means the LinkedIn UI
+      // shows "1st" but the API disagrees. Regress the lead back to connection_sent
+      // and schedule a recheck in 24h instead of retrying send_dm infinitely.
+      const isNotFirstDegree = /RECIPIENT_NOT_FIRST_DEGREE/i.test(error.message);
+      if (isNotFirstDegree && (action.action_type === 'send_dm' || action.action_type === 'send_followup')) {
+        console.warn(`[QueueProcessor] NOT_FIRST_DEGREE for ${action.action_type} — regressing lead to connection_sent`);
+        try {
+          await this.reportCompletion(action, false, null, `NOT_FIRST_DEGREE: ${error.message}`);
+          await supabase.update('action_queue',
+            { status: 'failed', error_message: `NOT_FIRST_DEGREE: ${error.message}` },
+            `id=eq.${action.id}`
+          );
+          if (action.campaign_lead_id) {
+            // Regress lead to connection_sent — will trigger check_connection_status again
+            const nextCheck = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            await supabase.update('campaign_leads',
+              {
+                status: 'connection_sent',
+                next_action_at: nextCheck,
+                error_message: `NOT_FIRST_DEGREE: DM rejected by API despite UI showing 1st-degree. Rechecking in 24h.`,
+              },
+              `id=eq.${action.campaign_lead_id}`
+            );
+            // Cancel any other pending send_dm/send_followup for this lead
+            try {
+              const { data: pendingActions } = await supabase.select(
+                'action_queue',
+                'id',
+                `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending&action_type=in.(send_dm,send_followup)`
+              );
+              if (pendingActions && pendingActions.length > 0) {
+                for (const pa of pendingActions) {
+                  await supabase.update('action_queue',
+                    { status: 'cancelled', error_message: 'Cancelled: lead regressed to connection_sent (NOT_FIRST_DEGREE)' },
+                    `id=eq.${pa.id}`
+                  );
+                }
+                console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending DM/followup actions for lead`);
+              }
+            } catch (cancelErr) {
+              console.warn('[QueueProcessor] Failed to cancel pending actions:', cancelErr.message);
+            }
+          }
+        } catch (reportErr) {
+          console.error(`[QueueProcessor] Failed to report NOT_FIRST_DEGREE:`, reportErr.message);
+        }
+        this.isProcessing = false;
+        return;
+      }
+
       // ── INMAIL NOT AVAILABLE (v0.2.3) ──
       // Both conversationUrn AND messaging page fallback failed — this lead
       // cannot receive messages via any method. Mark as skipped_inmail so
