@@ -237,7 +237,7 @@ serve(async (req) => {
     // when users have multiple active campaigns with large lead volumes.
     const { data: leads, error: leadsError } = await supabase
       .from("campaign_leads")
-      .select("id, user_id, linkedin_url, status, connection_note, custom_dm, custom_followup, dm_text, follow_up_text, connection_sent_at, campaign_profile_id, dm_approved")
+      .select("id, user_id, linkedin_url, status, connection_note, custom_dm, custom_followup, dm_text, follow_up_text, connection_sent_at, campaign_profile_id, dm_approved, followup_sent_at")
       .in("status", activeStatuses)
       .in("campaign_profile_id", activeCampaignIds)
       .lte("next_action_at", now)
@@ -432,6 +432,19 @@ serve(async (req) => {
             console.log(`Skipping lead ${lead.id}: campaign ${lead.campaign_profile_id.slice(0,8)}… hit per-campaign limit (${alreadySent}/${perCampaignLimit})`);
             continue;
           }
+        }
+
+        // ── ONE FOLLOW-UP LIMIT ──
+        // If this lead already had a follow-up sent, never send another one.
+        // The user takes over manually after the follow-up.
+        if (actionType === "send_followup" && (lead as any).followup_sent_at) {
+          console.log(`Skipping lead ${lead.id}: followup already sent at ${(lead as any).followup_sent_at} — one followup max`);
+          addSkip("followup_already_sent");
+          // Clear next_action_at to stop the loop
+          await supabase.from("campaign_leads")
+            .update({ next_action_at: null, updated_at: now } as any)
+            .eq("id", lead.id);
+          continue;
         }
 
         // ── Per-lead DM approval gate ──

@@ -19,6 +19,13 @@ if (window.__linkedinCopilotLoaded) {
         .catch(error => sendResponse({ success: false, error: error.message }));
       return true; // Keep channel open for async response
     }
+    if (message.type === 'SEND_VIA_CONVERSATION_URN') {
+      // Called by background.js after extracting threadId from messaging page URL
+      sendMessageViaConversationUrn(message.threadId, message.messageText)
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
+    }
   });
 }
 
@@ -40,6 +47,8 @@ async function handleAction(action) {
       return await sendMessage(action.message_text);
     case 'compose_on_messaging_page':
       return await composeOnMessagingPage(action.message_text, action.expected_name);
+    case 'find_and_click_message_button':
+      return await findAndClickMessageButton();
     case 'check_connection_status':
       return await checkConnectionStatus();
     case 'check_reply_status':
@@ -264,11 +273,227 @@ async function sendConnectionRequest(noteText) {
 }
 
 // ══════════════════════════════════════════════
+// VOYAGER API — Direct message send (bypasses DOM entirely)
+// ══════════════════════════════════════════════
+
+// Cache the user's own mailbox URN across calls within one page lifecycle
+let _cachedMailboxUrn = null;
+
+/**
+ * Fetch the logged-in user's mailbox URN from LinkedIn's /me endpoint.
+ * Returns something like "urn:li:fsd_profile:ACoAAA...".
+ */
+async function getMyMailboxUrn() {
+  if (_cachedMailboxUrn) return _cachedMailboxUrn;
+  const csrf = getCsrfToken();
+  if (!csrf) throw new Error('VOYAGER_NO_CSRF: Could not extract JSESSIONID from cookies');
+  const resp = await fetch('/voyager/api/me', {
+    headers: {
+      'csrf-token': csrf,
+      'accept': 'application/vnd.linkedin.normalized+json+2.1',
+    },
+    credentials: 'include',
+  });
+  if (!resp.ok) throw new Error(`VOYAGER_ME_FAILED: /me returned ${resp.status}`);
+  const json = await resp.json();
+  const mini = (json.included || []).find(i => i.publicIdentifier);
+  if (!mini || !mini.entityUrn) throw new Error('VOYAGER_ME_PARSE: Could not find entityUrn in /me response');
+  // entityUrn is "urn:li:fs_miniProfile:ACoAAA..." — convert to fsd_profile
+  const profileId = mini.entityUrn.replace('urn:li:fs_miniProfile:', '');
+  _cachedMailboxUrn = `urn:li:fsd_profile:${profileId}`;
+  console.log('[LinkedIn Copilot] Resolved own mailboxUrn:', _cachedMailboxUrn);
+  return _cachedMailboxUrn;
+}
+
+/**
+ * Extract CSRF token from JSESSIONID cookie.
+ */
+function getCsrfToken() {
+  const m = document.cookie.match(/JSESSIONID=["']?([^;"']+)/);
+  return m ? m[1].replace(/"/g, '') : null;
+}
+
+/**
+ * Generate a pseudo-random tracking ID (base64, ~16 chars) like LinkedIn's client.
+ */
+function generateTrackingId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).substring(0, 16);
+}
+
+/**
+ * Send a DM via LinkedIn's Voyager REST API, completely bypassing DOM compose.
+ *
+ * @param {string} recipientProfileId — The profile ID part of the recipient URN
+ *        (e.g., "ACoAAB9xdv4B..." extracted from the Message <a> href)
+ * @param {string} messageText — The message body to send
+ * @returns {object} — { success, via, messageUrn?, conversationUrn?, ... }
+ */
+async function sendMessageViaVoyagerAPI(recipientProfileId, messageText) {
+  const mailboxUrn = await getMyMailboxUrn();
+  const recipientUrn = `urn:li:fsd_profile:${recipientProfileId}`;
+  const csrf = getCsrfToken();
+  if (!csrf) throw new Error('VOYAGER_NO_CSRF');
+  if (recipientUrn === mailboxUrn) throw new Error('VOYAGER_SELF_SEND: Recipient URN matches own mailbox — refusing to send to self');
+
+  const originToken = crypto.randomUUID ? crypto.randomUUID() : generateTrackingId();
+  const body = {
+    dedupeByClientGeneratedToken: false,
+    hostRecipientUrns: [recipientUrn],
+    mailboxUrn: mailboxUrn,
+    message: {
+      body: { attributes: [], text: messageText },
+      originToken: originToken,
+      renderContentUnions: [],
+    },
+    trackingId: generateTrackingId(),
+  };
+
+  console.log('[LinkedIn Copilot] Voyager API createMessage →', recipientUrn);
+  const resp = await fetch('/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage', {
+    method: 'POST',
+    headers: {
+      'csrf-token': csrf,
+      'accept': 'application/vnd.linkedin.normalized+json+2.1',
+      'content-type': 'application/json; charset=UTF-8',
+      'x-restli-protocol-version': '2.0.0',
+    },
+    body: JSON.stringify(body),
+    credentials: 'include',
+  });
+
+  const respText = await resp.text();
+  let respJson;
+  try { respJson = JSON.parse(respText); } catch (_) { respJson = { raw: respText.substring(0, 500) }; }
+
+  if (!resp.ok) {
+    const code = respJson?.data?.code || `HTTP_${resp.status}`;
+    console.error('[LinkedIn Copilot] Voyager createMessage failed:', resp.status, code, respText.substring(0, 300));
+    // Surface specific LinkedIn limits
+    if (resp.status === 429 || /RATE_LIMIT|TOO_MANY/i.test(code)) {
+      throw new Error(`LINKEDIN_LIMIT: Voyager API rate limited (${resp.status} ${code})`);
+    }
+    throw new Error(`VOYAGER_SEND_FAILED: ${resp.status} ${code}`);
+  }
+
+  // Extract conversation/message URN from response for telemetry
+  let conversationUrn = null;
+  let messageUrn = null;
+  try {
+    const included = respJson?.included || [];
+    const msg = included.find(i => i.$type && /MessengerMessage/i.test(i.$type));
+    messageUrn = msg?.entityUrn || msg?.['*entityUrn'] || null;
+    const convo = included.find(i => i.$type && /Conversation/i.test(i.$type));
+    conversationUrn = convo?.entityUrn || convo?.['*entityUrn'] || null;
+  } catch (_) {}
+
+  console.log('[LinkedIn Copilot] ✅ Voyager API send success. Conversation:', conversationUrn, 'Message:', messageUrn);
+  return {
+    success: true,
+    via: 'voyager_api',
+    conversationUrn,
+    messageUrn,
+  };
+}
+
+/**
+ * Send a message via Voyager API using conversationUrn (bypasses InMail restriction).
+ *
+ * When a conversation thread was created by a connection-request note, LinkedIn treats
+ * it as InMail and blocks the standard hostRecipientUrns approach with 422
+ * NOT_ALLOWED_PREMIUM_INMAIL_SUBSEQUENT_REPLY.
+ *
+ * The workaround: put conversationUrn INSIDE the message object and omit
+ * hostRecipientUrns entirely — this is the same payload LinkedIn's own web client uses.
+ *
+ * @param {string} threadId — The thread ID from the messaging URL (e.g. "2-MTEwOGFm...")
+ * @param {string} messageText — The message body to send
+ * @returns {object} — { success, via, conversationUrn?, messageUrn? }
+ */
+async function sendMessageViaConversationUrn(threadId, messageText) {
+  const mailboxUrn = await getMyMailboxUrn();
+  const csrf = getCsrfToken();
+  if (!csrf) throw new Error('VOYAGER_NO_CSRF');
+
+  // Extract the profile ID from the mailboxUrn (urn:li:fsd_profile:XXXXX)
+  const myProfileId = mailboxUrn.replace('urn:li:fsd_profile:', '');
+  const conversationUrn = `urn:li:msg_conversation:(urn:li:fsd_profile:${myProfileId},${threadId})`;
+  const originToken = crypto.randomUUID ? crypto.randomUUID() : generateTrackingId();
+
+  const body = {
+    message: {
+      body: { attributes: [], text: messageText },
+      renderContentUnions: [],
+      conversationUrn: conversationUrn,
+      originToken: originToken,
+    },
+    mailboxUrn: mailboxUrn,
+    trackingId: generateTrackingId(),
+    dedupeByClientGeneratedToken: false,
+  };
+
+  console.log('[LinkedIn Copilot] Voyager API createMessage (conversationUrn) →', conversationUrn);
+  const resp = await fetch('/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage', {
+    method: 'POST',
+    headers: {
+      'csrf-token': csrf,
+      'accept': 'application/vnd.linkedin.normalized+json+2.1',
+      'content-type': 'application/json; charset=UTF-8',
+      'x-restli-protocol-version': '2.0.0',
+    },
+    body: JSON.stringify(body),
+    credentials: 'include',
+  });
+
+  const respText = await resp.text();
+  let respJson;
+  try { respJson = JSON.parse(respText); } catch (_) { respJson = { raw: respText.substring(0, 500) }; }
+
+  if (!resp.ok) {
+    const code = respJson?.data?.code || `HTTP_${resp.status}`;
+    console.error('[LinkedIn Copilot] Voyager conversationUrn send failed:', resp.status, code, respText.substring(0, 300));
+    if (resp.status === 429 || /RATE_LIMIT|TOO_MANY/i.test(code)) {
+      throw new Error(`LINKEDIN_LIMIT: Voyager API rate limited (${resp.status} ${code})`);
+    }
+    throw new Error(`VOYAGER_CONVERSATION_SEND_FAILED: ${resp.status} ${code}`);
+  }
+
+  // Extract URNs from response for telemetry
+  let responseConversationUrn = null;
+  let messageUrn = null;
+  try {
+    const included = respJson?.included || [];
+    const msg = included.find(i => i.$type && /MessengerMessage/i.test(i.$type));
+    messageUrn = msg?.entityUrn || msg?.['*entityUrn'] || null;
+    const convo = included.find(i => i.$type && /Conversation/i.test(i.$type));
+    responseConversationUrn = convo?.entityUrn || convo?.['*entityUrn'] || null;
+  } catch (_) {}
+
+  console.log('[LinkedIn Copilot] ✅ Voyager conversationUrn send success. Conversation:', responseConversationUrn, 'Message:', messageUrn);
+  return {
+    success: true,
+    via: 'voyager_api_conversation_urn',
+    conversationUrn: responseConversationUrn || conversationUrn,
+    messageUrn,
+  };
+}
+
+// ══════════════════════════════════════════════
 // SEND MESSAGE (DM / Follow-up)
 // ══════════════════════════════════════════════
 async function sendMessage(messageText) {
   if (!messageText || messageText.trim().length === 0) {
     throw new Error('No message text provided');
+  }
+
+  // ── SAFETY: Verify we are on a profile page, NOT a messaging/thread page ──
+  // Cross-contamination root cause: if a previous action left the tab on /messaging/thread/...,
+  // findMessageButton() can pick up links belonging to a different conversation and send
+  // the message to the wrong person via Voyager API.
+  const currentPath = window.location.pathname;
+  if (!currentPath.startsWith('/in/')) {
+    throw new Error(`WRONG_PAGE: sendMessage requires a profile page (/in/...) but current URL is ${currentPath}. Aborting to prevent cross-contamination.`);
   }
 
   await sleep(1000 + Math.random() * 1000);
@@ -310,21 +535,79 @@ async function sendMessage(messageText) {
     throw new Error(`Message button not found (url=${window.location.pathname}, heading=${pName}, buttons=${JSON.stringify(btnTexts)})`);
   }
 
-  // LinkedIn 2026: Message is an <a> link that navigates to /messaging/ page
-  // instead of opening an overlay. Return redirect to background.js which handles
-  // navigation and re-injection (clicking directly destroys content script context).
+  // LinkedIn 2026-04: Message is an <a> link with href like
+  //   /messaging/compose/?recipient=ACoAAB...&profileUrn=...&interop=msgOverlay
+  // Full-page navigation to this URL does NOT resolve the recipient (2026-04 layout
+  // change), and synthetic .click() from content script is not trusted by LinkedIn's
+  // SPA router. Both approaches fail with RECIPIENT_MISMATCH or blank compose.
   //
-  // CRITICAL: Only follow /messaging/compose/... or /messaging/thread/new/... URLs.
-  // A plain /messaging/ href is the global-nav inbox icon — following that opens
-  // whichever thread was last active, which caused the 2026-04-10 incident where
-  // 16 DMs all landed in the same (wrong) thread because findMessageButton fell
-  // through to that selector. See isValidMessageHref().
+  // v0.1.6 FIX: Send the message directly via LinkedIn's Voyager REST API — no DOM
+  // interaction needed. Falls back to the old redirect approach if the API call fails.
   if (messageButton.tagName === 'A') {
     if (!isValidMessageHref(messageButton.href)) {
       throw new Error(`Refused to redirect to non-compose messaging href: "${messageButton.href}" (url=${window.location.pathname})`);
     }
-    console.log('[LinkedIn Copilot] Message button is <a> link, returning redirect:', messageButton.href);
-    return { success: false, action: 'send_dm', redirect: messageButton.href, note: 'messaging_redirect', profileName };
+
+    // Extract recipient profile ID from href
+    let recipientProfileId = null;
+    try {
+      const u = new URL(messageButton.href, 'https://www.linkedin.com');
+      recipientProfileId = u.searchParams.get('recipient');
+    } catch (_) {}
+
+    if (recipientProfileId) {
+      try {
+        console.log('[LinkedIn Copilot] Message button is <a> link — using Voyager API to send directly');
+        const apiResult = await sendMessageViaVoyagerAPI(recipientProfileId, messageText);
+
+        // If InMail thread detected, bubble the retry signal up to background.js
+        if (apiResult && apiResult.note === 'inmail_thread_retry_needed') {
+          console.warn('[LinkedIn Copilot] InMail retry signal — passing to background.js');
+          return apiResult; // background.js checks for this note
+        }
+
+        return {
+          success: true,
+          action: 'send_dm',
+          note: 'sent_via_voyager_api',
+          telemetry: {
+            url_path: window.location.pathname,
+            thread_header: profileName || null,
+            expected_name: profileName || null,
+            text_preview: (messageText || '').substring(0, 40),
+            sent_at_client: new Date().toISOString(),
+            voyager_conversation: apiResult.conversationUrn || null,
+            voyager_message: apiResult.messageUrn || null,
+          },
+        };
+      } catch (voyagerErr) {
+        console.error('[LinkedIn Copilot] Voyager API send failed:', voyagerErr.message);
+
+        // ── InMail thread detected: return retry signal instead of throwing ──
+        // background.js will navigate to /messaging/thread/new/?recipient=ID,
+        // extract the threadId from the URL, and resend via conversationUrn.
+        const isInmailBlock = /NOT_ALLOWED_PREMIUM_INMAIL/i.test(voyagerErr.message);
+        if (isInmailBlock) {
+          console.warn('[LinkedIn Copilot] InMail thread — returning retry signal for conversationUrn flow');
+          return {
+            success: false,
+            note: 'inmail_thread_retry_needed',
+            recipientProfileId: recipientProfileId,
+            error: voyagerErr.message,
+          };
+        }
+
+        // Propagate ALL other Voyager errors directly — the redirect/DOM fallback is broken
+        // in LinkedIn's 2026-04 layout and always fails with RECIPIENT_MISMATCH.
+        throw voyagerErr;
+      }
+    } else {
+      console.warn('[LinkedIn Copilot] Message <a> href has no ?recipient= param, cannot use Voyager API. href:', messageButton.href);
+    }
+
+    // If we get here, the <a> link had no extractable recipient ID.
+    // The redirect approach is broken in 2026-04, so throw instead of silently failing.
+    throw new Error(`VOYAGER_NO_RECIPIENT: Message button is <a> but no recipient param in href (url=${window.location.pathname})`);
   }
 
   messageButton.click();
@@ -713,6 +996,41 @@ function detectUnableToReceiveBanner(scope) {
     if (text.includes(p)) return p;
   }
   return null;
+}
+
+// ── FIND AND CLICK MESSAGE BUTTON (v0.2.3) ──
+// Used by InMail fallback: clicks the Message button on a profile page so that
+// LinkedIn navigates to /messaging/thread/... where composeOnMessagingPage can
+// take over. Returns success with the resulting URL.
+async function findAndClickMessageButton() {
+  // Safety: must be on a profile page
+  const currentPath = window.location.pathname;
+  if (!currentPath.startsWith('/in/')) {
+    throw new Error(`WRONG_PAGE: findAndClickMessageButton requires /in/ but on ${currentPath}`);
+  }
+
+  let messageButton = null;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    messageButton = findMessageButton();
+    if (messageButton) break;
+    await sleep(1500);
+  }
+
+  if (!messageButton) {
+    throw new Error('Message button not found on profile page');
+  }
+
+  console.log('[LinkedIn Copilot] Clicking Message button for InMail fallback:', messageButton.tagName, messageButton.href || '(button)');
+
+  // If it's an <a> link, navigate directly
+  if (messageButton.tagName === 'A' && messageButton.href) {
+    window.location.href = messageButton.href;
+  } else {
+    messageButton.click();
+  }
+
+  await sleep(2000);
+  return { success: true, action: 'find_and_click_message_button', url: window.location.href };
 }
 
 async function composeOnMessagingPage(messageText, expectedName) {
@@ -1110,6 +1428,12 @@ async function checkConnectionStatus() {
 // when our DM hadn't rendered yet.
 // ══════════════════════════════════════════════
 async function checkReplyStatus(action) {
+  // ── SAFETY: Verify we are on a profile page ──
+  const currentPath = window.location.pathname;
+  if (!currentPath.startsWith('/in/')) {
+    throw new Error(`WRONG_PAGE: checkReplyStatus requires a profile page (/in/...) but current URL is ${currentPath}`);
+  }
+
   const leadUrl = action?.action_data?.linkedin_url || action?.linkedin_url || "";
   // Extract the lead's LinkedIn slug from the URL — we'll match it against
   // profile links inside the chat thread to classify who sent each message.

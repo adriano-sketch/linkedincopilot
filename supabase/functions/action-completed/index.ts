@@ -27,6 +27,7 @@ const STATUS_ORDER: Record<string, number> = {
   follow_up_due: 12,
   followup_sent: 13,
   replied: 14,
+  skipped_inmail: 15,
   connection_rejected: 15,
   error: 15,
   skipped: 15,
@@ -455,13 +456,36 @@ serve(async (req) => {
           if (result?.reply_text) {
             leadUpdate.reply_text = String(result.reply_text).slice(0, 4000);
           }
-          leadUpdate.next_action_at = null;
-          // Fire-and-forget classification — we populate the leadUpdate
-          // first, then kick classify-reply after the main update commits
-          // (see fireClassifyReply() call below).
+          leadUpdate.next_action_at = null; // Stop all automation — user takes over
         } else {
-          leadUpdate.status = "waiting_reply";
-          leadUpdate.next_action_at = now; // Trigger follow-up immediately
+          // ── ONE FOLLOW-UP LIMIT ──
+          // If we already sent a follow-up (followup_sent_at is set), do NOT
+          // regress to waiting_reply — that would trigger another follow-up.
+          // Instead, keep checking for replies on a schedule until we give up.
+          const { data: leadForFollowup } = await supabase.from("campaign_leads")
+            .select("followup_sent_at, dm_sent_at")
+            .eq("id", action.campaign_lead_id)
+            .single();
+
+          if (leadForFollowup?.followup_sent_at) {
+            // Follow-up already sent — just schedule next reply check, don't send another followup
+            console.log(`Lead ${action.campaign_lead_id}: followup already sent at ${leadForFollowup.followup_sent_at}, NOT triggering another. Scheduling next check.`);
+            // Check if it's been > 7 days since followup — if so, stop checking
+            const followupDate = new Date(leadForFollowup.followup_sent_at);
+            const daysSinceFollowup = (Date.now() - followupDate.getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSinceFollowup > 7) {
+              leadUpdate.status = "followup_sent"; // Keep as followup_sent
+              leadUpdate.next_action_at = null; // Stop checking — lead is cold
+              console.log(`Lead ${action.campaign_lead_id}: >7 days since followup with no reply — stopping automation`);
+            } else {
+              // Don't change status — keep as followup_sent
+              leadUpdate.next_action_at = rbt(1); // Check again tomorrow
+            }
+          } else {
+            // No follow-up sent yet — trigger one
+            leadUpdate.status = "waiting_reply";
+            leadUpdate.next_action_at = now;
+          }
         }
         break;
 
