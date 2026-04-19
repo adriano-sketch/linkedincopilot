@@ -1174,23 +1174,62 @@ const queueProcessor = {
         return;
       }
 
-      // ── INMAIL BYPASS FAILURE ──
+      // ── INMAIL BYPASS FAILURE (v0.2.5 — auto-skip after 3 failures) ──
       // If the conversationUrn bypass was attempted but failed with a non-recoverable
-      // error (timeout, script crash, etc). Mark as failed for investigation.
+      // error (timeout, script crash, etc). Count past INMAIL failures for this lead:
+      // if 3+, escalate to skipped_inmail so the pipeline stops retrying.
       const isInmailError = /INMAIL_BYPASS_FAILED|NOT_ALLOWED_PREMIUM_INMAIL/i.test(error.message);
       if (isInmailError) {
         console.warn(`[QueueProcessor] InMail bypass failed for ${action.action_type}: ${error.message}`);
         try {
+          // Mark this action as failed
           await this.reportCompletion(action, false, null, `INMAIL_FAILED: ${error.message}`);
           await supabase.update('action_queue',
             { status: 'failed', error_message: `INMAIL_FAILED: ${error.message}` },
             `id=eq.${action.id}`
           );
+
           if (action.campaign_lead_id) {
-            await supabase.update('campaign_leads',
-              { error_message: `InMail bypass failed: ${error.message}` },
-              `id=eq.${action.campaign_lead_id}`
+            // Count how many INMAIL failures this lead has accumulated
+            const { data: pastFailures } = await supabase.select(
+              'action_queue', 'id',
+              `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.failed&error_message=ilike.*INMAIL*`
             );
+            const failCount = pastFailures ? pastFailures.length : 0;
+            console.log(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} has ${failCount} INMAIL failures`);
+
+            if (failCount >= 3) {
+              // Escalate: mark lead as skipped_inmail and cancel pending actions
+              console.warn(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} reached ${failCount} INMAIL failures — marking as skipped_inmail`);
+              await supabase.update('campaign_leads',
+                {
+                  status: 'skipped_inmail',
+                  error_message: `Auto-skipped after ${failCount} INMAIL failures: ${error.message}`,
+                  next_action_at: null,
+                },
+                `id=eq.${action.campaign_lead_id}`
+              );
+              // Cancel any remaining pending actions for this lead
+              const { data: pendingActions } = await supabase.select(
+                'action_queue', 'id',
+                `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending`
+              );
+              if (pendingActions && pendingActions.length > 0) {
+                for (const pa of pendingActions) {
+                  await supabase.update('action_queue',
+                    { status: 'cancelled', error_message: 'Lead escalated to skipped_inmail' },
+                    `id=eq.${pa.id}`
+                  );
+                }
+                console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending actions for skipped_inmail lead`);
+              }
+            } else {
+              // Not yet at threshold — just record the error on the lead
+              await supabase.update('campaign_leads',
+                { error_message: `InMail bypass failed (${failCount}x): ${error.message}` },
+                `id=eq.${action.campaign_lead_id}`
+              );
+            }
           }
         } catch (reportErr) {
           console.error(`[QueueProcessor] Failed to report InMail failure:`, reportErr.message);
