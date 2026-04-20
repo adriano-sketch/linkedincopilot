@@ -735,7 +735,7 @@ export default function Landing() {
       </section>
 
       {/* SECTION 8: FAQ (light) */}
-      <section id="faq" itemScope itemType="https://schema.org/FAQPage" className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
+      <section id="faq" className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-2xl relative z-10">
           <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-center mb-4">
             Frequently Asked <span className="text-gradient-gold">Questions</span>
