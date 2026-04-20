@@ -434,10 +434,27 @@ serve(async (req) => {
           "degree_badge_1st",
         ]);
 
+        // v0.2.7: "medium" confidence (e.g., multi message buttons) should NOT
+        // be treated as definitively connected — re-check tomorrow instead.
+        const isStrongConfidence = result?.confidence === "strong";
+        const isMediumConfidence = result?.confidence === "medium";
+
         const strongConnected = result?.is_connected === true && (
-          result?.confidence === "strong" ||
-          (note && (strongNotes.has(note) || note.includes("1st") || note.includes("first_degree")))
+          isStrongConfidence ||
+          (note && !isMediumConfidence && (strongNotes.has(note) || note.includes("1st") || note.includes("first_degree")))
         );
+
+        // Medium confidence: detected 1st-degree but with suspicious signals
+        // (e.g., multiple "Message" buttons suggesting InMail + regular).
+        // Re-check tomorrow instead of immediately promoting to connected.
+        if (isMediumConfidence && result?.is_connected === true) {
+          console.warn(`Medium-confidence connection detection for lead ${action.campaign_lead_id}: ${note}`);
+          leadUpdate.connection_verified = false;
+          leadUpdate.connection_verified_at = now;
+          leadUpdate.connection_verification_note = `medium_confidence: ${note}`;
+          leadUpdate.next_action_at = rbt(1); // Re-check tomorrow
+          break;
+        }
 
         if (strongConnected) {
           leadUpdate.status = "connected";

@@ -323,6 +323,75 @@ function generateTrackingId() {
 }
 
 /**
+ * Verify connection degree via Voyager API before sending DM.
+ * Extracts the vanity name from the current URL (/in/vanity-name/) and
+ * queries LinkedIn's profile API for the network distance.
+ *
+ * @returns {{ isFirstDegree: boolean|null, distance: string|null, raw: any }}
+ *          isFirstDegree = null means we couldn't verify (proceed anyway)
+ */
+async function verifyConnectionDegreeViaAPI() {
+  const csrf = getCsrfToken();
+  if (!csrf) return { isFirstDegree: null, distance: null };
+
+  // Extract vanity name from current URL
+  const pathMatch = window.location.pathname.match(/^\/in\/([^/]+)/);
+  if (!pathMatch) return { isFirstDegree: null, distance: null };
+  const vanityName = pathMatch[1];
+
+  try {
+    // Use the identity/profiles endpoint which includes networkDistance
+    const resp = await fetch(`/voyager/api/identity/profiles/${vanityName}/networkinfo`, {
+      headers: {
+        'csrf-token': csrf,
+        'accept': 'application/vnd.linkedin.normalized+json+2.1',
+      },
+      credentials: 'include',
+    });
+
+    if (resp.ok) {
+      const json = await resp.json();
+      // LinkedIn returns distance as { value: "DISTANCE_1" | "DISTANCE_2" | "DISTANCE_3" | "OUT_OF_NETWORK" }
+      const distValue = json?.data?.distance?.value || json?.distance?.value || null;
+      if (distValue) {
+        const isFirst = distValue === 'DISTANCE_1';
+        console.log(`[LinkedIn Copilot] Voyager networkinfo: ${vanityName} → distance=${distValue}, isFirstDegree=${isFirst}`);
+        return { isFirstDegree: isFirst, distance: distValue, raw: json };
+      }
+    }
+
+    // Fallback: try the dash profiles endpoint
+    const resp2 = await fetch(`/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${vanityName}`, {
+      headers: {
+        'csrf-token': csrf,
+        'accept': 'application/vnd.linkedin.normalized+json+2.1',
+      },
+      credentials: 'include',
+    });
+
+    if (resp2.ok) {
+      const json2 = await resp2.json();
+      // Look for distance in included items
+      const included = json2?.included || [];
+      for (const item of included) {
+        const dist = item?.distance?.value || item?.networkDistance?.value;
+        if (dist) {
+          const isFirst = dist === 'DISTANCE_1';
+          console.log(`[LinkedIn Copilot] Voyager dash/profiles: ${vanityName} → distance=${dist}, isFirstDegree=${isFirst}`);
+          return { isFirstDegree: isFirst, distance: dist, raw: { source: 'dash_profiles' } };
+        }
+      }
+    }
+
+    console.warn(`[LinkedIn Copilot] verifyConnectionDegreeViaAPI: could not determine degree for ${vanityName}`);
+    return { isFirstDegree: null, distance: null };
+  } catch (err) {
+    console.warn('[LinkedIn Copilot] verifyConnectionDegreeViaAPI error:', err.message);
+    return { isFirstDegree: null, distance: null };
+  }
+}
+
+/**
  * Send a DM via LinkedIn's Voyager REST API, completely bypassing DOM compose.
  *
  * @param {string} recipientProfileId — The profile ID part of the recipient URN
@@ -556,6 +625,28 @@ async function sendMessage(messageText) {
     } catch (_) {}
 
     if (recipientProfileId) {
+      // ── PRE-FLIGHT: Verify connection degree via API before sending ──
+      // This prevents sending DMs to non-1st-degree connections that the DOM
+      // detection incorrectly identified as connected (false positives from InMail
+      // "Message" buttons + "1st" text matching non-degree content).
+      try {
+        const degreeCheck = await verifyConnectionDegreeViaAPI();
+        if (degreeCheck.isFirstDegree === false) {
+          console.error(`[LinkedIn Copilot] PRE-FLIGHT BLOCK: Recipient is ${degreeCheck.distance}, not 1st-degree. Refusing to send DM.`);
+          throw new Error(`RECIPIENT_NOT_FIRST_DEGREE_CONNECTION: Pre-flight API check shows distance=${degreeCheck.distance}. Lead is NOT actually connected.`);
+        }
+        if (degreeCheck.isFirstDegree === true) {
+          console.log('[LinkedIn Copilot] Pre-flight OK: Recipient confirmed as 1st-degree connection');
+        } else {
+          console.log('[LinkedIn Copilot] Pre-flight: Could not verify degree, proceeding anyway');
+        }
+      } catch (preFlightErr) {
+        if (/RECIPIENT_NOT_FIRST_DEGREE/i.test(preFlightErr.message)) {
+          throw preFlightErr; // Rethrow the definitive block
+        }
+        console.warn('[LinkedIn Copilot] Pre-flight degree check failed (non-blocking):', preFlightErr.message);
+      }
+
       try {
         console.log('[LinkedIn Copilot] Message button is <a> link — using Voyager API to send directly');
         const apiResult = await sendMessageViaVoyagerAPI(recipientProfileId, messageText);
@@ -1377,11 +1468,31 @@ async function checkConnectionStatus() {
   const CONNECTED = ['connected', 'conectado', 'conectada', 'connecté', 'connectée', 'connesso', 'connessa'];
   const REMOVE = ['remove connection', 'remover conexão', 'remover conexao', 'retirer la relation', 'eliminar conexión', 'eliminar conexion'];
 
-  const degreeTexts = [...profileSection.querySelectorAll('span, li, div')]
+  // ── Degree badge detection (strict) ──
+  // Only match "1st" in SHORT text elements (≤ 12 chars) — the actual badge is tiny
+  // (e.g., "1st", "· 1st", "1st degree", "1º grau"). This avoids false positives
+  // from longer text like "Endorsed by 1st-degree connections" or "1st to react".
+  const allTextEls = [...profileSection.querySelectorAll('span, li, div')];
+  const shortTexts = allTextEls
     .map((el) => normalize(el.textContent || ''))
-    .filter((txt) => txt && txt.length <= 48);
-  const degreeBlob = degreeTexts.join(' | ');
-  const hasFirstDegree = /(\b1st\b|\b1º\b|\b1er\b|\b1\.? grau\b|\b1\.? grado\b|\b1\.? degree\b)/i.test(degreeBlob);
+    .filter((txt) => txt && txt.length <= 12);
+  const shortBlob = shortTexts.join(' | ');
+  const hasFirstDegree = /(\b1st\b|\b1º\b|\b1er\b|\b1\.? grau\b|\b1\.? grado\b|\b1\.? degree\b)/i.test(shortBlob);
+
+  // Also check for NON-first degree badges — if found, definitely NOT connected
+  const allTexts = allTextEls
+    .map((el) => normalize(el.textContent || ''))
+    .filter((txt) => txt && txt.length <= 20);
+  const allBlob = allTexts.join(' | ');
+  const hasNonFirstDegree = /(\b2nd\b|\b3rd\b|\b2º\b|\b3º\b|\b2e\b|\b3e\b|\b2\.? grau\b|\b3\.? grau\b)/i.test(allBlob);
+
+  // If a 2nd/3rd degree badge is found, this person is definitively NOT a 1st-degree connection
+  if (hasNonFirstDegree) {
+    const msgAvail = hasAction(MESSAGE);
+    return { success: true, action: 'check_connection_status', is_connected: false, note: msgAvail ? 'non_first_degree_with_message' : 'non_first_degree_badge', confidence: 'strong',
+      debug: { url: window.location.href, profileName: normalize(profileNameEl.textContent), buttonsFound: profileButtons.length, buttonTexts: buttonData.map(b => b.text).slice(0, 6), hasFirstDegree, hasNonFirstDegree, shortBlobSample: shortBlob.substring(0, 100), profileSectionTag: profileSection.tagName, profileSectionClass: profileSection.className }
+    };
+  }
 
   if (hasAction(PENDING)) {
     return { success: true, action: 'check_connection_status', is_connected: false, note: 'pending', confidence: 'weak' };
@@ -1397,7 +1508,17 @@ async function checkConnectionStatus() {
   }
   if (hasAction(MESSAGE)) {
     if (hasFirstDegree) {
-      return { success: true, action: 'check_connection_status', is_connected: true, note: 'message_button_1st', confidence: 'strong' };
+      // Extra guard: if we found multiple "message" buttons, one might be InMail
+      const msgButtonCount = buttonData.filter(b => b.text === 'message' || b.text === 'mensagem' || b.text === 'mensaje').length;
+      if (msgButtonCount >= 2) {
+        // Suspicious: likely has both InMail "Message" and regular actions — downgrade confidence
+        return { success: true, action: 'check_connection_status', is_connected: true, note: 'message_button_1st_multi', confidence: 'medium',
+          debug: { url: window.location.href, profileName: normalize(profileNameEl.textContent), buttonsFound: profileButtons.length, buttonTexts: buttonData.map(b => b.text).slice(0, 6), hasFirstDegree, hasNonFirstDegree, msgButtonCount, shortBlobSample: shortBlob.substring(0, 100), profileSectionTag: profileSection.tagName, profileSectionClass: profileSection.className }
+        };
+      }
+      return { success: true, action: 'check_connection_status', is_connected: true, note: 'message_button_1st', confidence: 'strong',
+        debug: { url: window.location.href, profileName: normalize(profileNameEl.textContent), buttonsFound: profileButtons.length, buttonTexts: buttonData.map(b => b.text).slice(0, 6), hasFirstDegree, hasNonFirstDegree, shortBlobSample: shortBlob.substring(0, 100), profileSectionTag: profileSection.tagName, profileSectionClass: profileSection.className }
+      };
     }
     return { success: true, action: 'check_connection_status', is_connected: false, note: 'message_without_1st', confidence: 'weak' };
   }
