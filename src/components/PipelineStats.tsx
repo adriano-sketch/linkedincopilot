@@ -48,7 +48,7 @@ const PIPELINE_STAGES = [
     key: 'dm_sent',
     label: 'DM Sent',
     color: 'text-purple-600',
-    statuses: ['dm_queued', 'dm_sent', 'waiting_reply', 'follow_up_due', 'follow_up_sent'],
+    statuses: ['dm_queued', 'dm_sent', 'waiting_reply', 'follow_up_due', 'follow_up_sent', 'followup_sent'],
     emoji: '💬',
   },
   {
@@ -69,7 +69,7 @@ const PIPELINE_STAGES = [
     key: 'excluded',
     label: 'Excluded',
     color: 'text-red-500',
-    statuses: ['icp_rejected', 'skipped', 'do_not_contact', 'connection_rejected', 'error'],
+    statuses: ['icp_rejected', 'skipped', 'skipped_inmail', 'do_not_contact', 'connection_rejected', 'error'],
     emoji: '🚫',
   },
 ];
@@ -110,8 +110,8 @@ export const STAGE_STATUS_MAP: Record<string, string[]> = {
   connection_sent: ['connection_sent'],
   connected: ['connected', 'connection_accepted'],
   pending_approval: ['dm_ready', 'ready_for_dm'],
-  dm_sent: ['dm_queued', 'dm_sent', 'waiting_reply', 'follow_up_due', 'follow_up_sent'],
+  dm_sent: ['dm_queued', 'dm_sent', 'waiting_reply', 'follow_up_due', 'follow_up_sent', 'followup_sent'],
   replied: ['replied'],
   ghost: ['ghost'],
-  excluded: ['icp_rejected', 'skipped', 'do_not_contact', 'connection_rejected', 'error'],
+  excluded: ['icp_rejected', 'skipped', 'skipped_inmail', 'do_not_contact', 'connection_rejected', 'error'],
 };
