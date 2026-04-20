@@ -203,6 +203,29 @@ serve(async (req) => {
       .eq("id", action.campaign_lead_id)
       .single();
 
+    // ── TERMINAL STATUS GUARD ──
+    // If the lead is in a terminal status (error, skipped, skipped_inmail, etc.),
+    // no action completion should change it. This prevents race conditions where
+    // a manual DB cleanup sets a lead to error/skipped but a pending action
+    // completes afterwards and reverts it back to an active status.
+    const TERMINAL_STATUSES = new Set([
+      "error", "skipped", "skipped_inmail", "do_not_contact", "icp_rejected",
+    ]);
+    if (currentLead && TERMINAL_STATUSES.has(currentLead.status)) {
+      console.warn(
+        `BLOCKED action-completed for terminal lead ${action.campaign_lead_id}: ` +
+        `status="${currentLead.status}", action=${action.action_type}. No changes applied.`
+      );
+      // Mark the action as completed/failed in the queue but don't touch the lead
+      return new Response(JSON.stringify({
+        success: true,
+        blocked: true,
+        reason: `Lead is in terminal status "${currentLead.status}" — no changes applied`,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // If failed, handle retry
     if (!success) {
       const retryCount = (action.retry_count || 0) + 1;
@@ -313,22 +336,42 @@ serve(async (req) => {
         if (POST_CONNECTION_ACTIONS.has(action.action_type)) {
           // Keep current status (e.g. 'connected'), record the error,
           // and schedule next_action_at to the next business day so that
-          // schedule-actions can re-enqueue the DM. Previously this set
-          // next_action_at=null which orphaned connected leads forever —
-          // they'd stay in 'connected' with no ability to ever reach dm_sent
-          // until someone manually re-enqueued the action.
-          // Using rbt(1) (tomorrow's business window) gives a human-scale
-          // backoff while ensuring the pipeline does self-heal.
-          const nextRetryAt = rbt(1);
-          await supabase.from("campaign_leads")
-            .update({
-              error_message: `${action.action_type} failed: ${error_message || "Max retries reached"}`,
-              retry_count: 0, // Reset so the next attempt gets a fresh retry budget
-              next_action_at: nextRetryAt,
-              updated_at: now,
-            } as any)
-            .eq("id", action.campaign_lead_id);
-          console.log(`Lead ${action.campaign_lead_id}: ${action.action_type} max retries — preserved status, rescheduled for ${nextRetryAt}`);
+          // schedule-actions can re-enqueue the DM.
+          //
+          // SAFETY: count total failed actions of this type for this lead.
+          // If we've exceeded 5 failures, the error is persistent (e.g.
+          // NOT_FIRST_DEGREE, INMAIL issues) — mark as error and stop.
+          const { count: totalFailures } = await supabase
+            .from("action_queue")
+            .select("id", { count: "exact", head: true })
+            .eq("campaign_lead_id", action.campaign_lead_id)
+            .eq("action_type", action.action_type)
+            .eq("status", "failed");
+
+          const failTotal = totalFailures || 0;
+          if (failTotal >= 5) {
+            // Persistent failure — mark as error to stop the loop
+            console.warn(`Lead ${action.campaign_lead_id}: ${action.action_type} failed ${failTotal} times total — marking as error`);
+            await supabase.from("campaign_leads")
+              .update({
+                status: "error",
+                error_message: `${action.action_type} failed ${failTotal} times: ${error_message || "Persistent failure"}`,
+                next_action_at: null,
+                updated_at: now,
+              } as any)
+              .eq("id", action.campaign_lead_id);
+          } else {
+            const nextRetryAt = rbt(1);
+            await supabase.from("campaign_leads")
+              .update({
+                error_message: `${action.action_type} failed: ${error_message || "Max retries reached"}`,
+                retry_count: 0, // Reset so the next attempt gets a fresh retry budget
+                next_action_at: nextRetryAt,
+                updated_at: now,
+              } as any)
+              .eq("id", action.campaign_lead_id);
+            console.log(`Lead ${action.campaign_lead_id}: ${action.action_type} max retries (${failTotal} total) — preserved status, rescheduled for ${nextRetryAt}`);
+          }
         } else {
           // Pre-connection actions: safe to mark as error
           await supabase.from("campaign_leads")
