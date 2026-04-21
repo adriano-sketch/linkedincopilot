@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Status → next action mapping
+// Status → next action mapping (OUTREACH mode)
 // Day 0: visit_profile → Day 1: follow_profile → Day 2: send_connection_request
 const STATUS_TO_ACTION: Record<string, string> = {
   ready: "visit_profile",
@@ -21,6 +21,17 @@ const STATUS_TO_ACTION: Record<string, string> = {
   // and never transition to "replied". The dashboard reply count would
   // systematically under-report by ~50% for any campaign that uses follow-ups.
   followup_sent: "check_reply_status",
+};
+
+// Status → next action mapping (GROWTH mode)
+// visit_profile → find_latest_post → like_post → (generate comment server-side)
+// → comment_ready → post_comment → engagement_done (waits 7 days, then repeats)
+const GROWTH_STATUS_TO_ACTION: Record<string, string> = {
+  ready: "visit_profile",
+  visiting_profile: "find_latest_post",
+  post_found: "like_post",
+  post_liked: "post_comment",          // comment_text must be generated first
+  engagement_done: "visit_profile",    // Weekly repeat — revisit and engage again
 };
 
 // Actions that involve sending a message — restricted to business hours
@@ -112,7 +123,12 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
     const todayDateStr = new Date().toISOString().slice(0, 10);
-    const activeStatuses = Object.keys(STATUS_TO_ACTION);
+    // Combine both outreach and growth active statuses
+    const allActiveStatuses = [
+      ...Object.keys(STATUS_TO_ACTION),
+      ...Object.keys(GROWTH_STATUS_TO_ACTION),
+    ];
+    const activeStatuses = [...new Set(allActiveStatuses)];
 
     // Get all extension_status to know user schedules
     const { data: allExtensions } = await supabase
@@ -150,15 +166,19 @@ serve(async (req) => {
       (allExtensions || []).map(e => [e.user_id, e])
     );
 
-    // Get active campaigns only (include stage approval flags)
+    // Get active campaigns only (include stage approval flags + campaign mode)
     const { data: activeCampaigns } = await supabase
       .from("campaign_profiles")
-      .select("id, auto_approve_dms, stage_connection_approved, stage_dm_approved, stage_followup_approved")
+      .select("id, auto_approve_dms, stage_connection_approved, stage_dm_approved, stage_followup_approved, campaign_mode")
       .eq("status", "active");
 
     const activeCampaignIds = (activeCampaigns || []).map(c => c.id);
     const campaignAutoApprove = new Map(
       (activeCampaigns || []).map(c => [c.id, c.auto_approve_dms === true])
+    );
+    // Campaign mode map: campaign_id → 'outreach' | 'growth'
+    const campaignModeMap = new Map(
+      (activeCampaigns || []).map(c => [c.id, (c as any).campaign_mode || "outreach"])
     );
     // Stage approval maps
     const campaignStageConnection = new Map(
@@ -237,7 +257,7 @@ serve(async (req) => {
     // when users have multiple active campaigns with large lead volumes.
     const { data: leads, error: leadsError } = await supabase
       .from("campaign_leads")
-      .select("id, user_id, linkedin_url, status, connection_note, custom_dm, custom_followup, dm_text, follow_up_text, connection_sent_at, campaign_profile_id, dm_approved, followup_sent_at")
+      .select("id, user_id, linkedin_url, status, connection_note, custom_dm, custom_followup, dm_text, follow_up_text, connection_sent_at, campaign_profile_id, dm_approved, followup_sent_at, comment_text, post_url, post_content")
       .in("status", activeStatuses)
       .in("campaign_profile_id", activeCampaignIds)
       .lte("next_action_at", now)
@@ -271,11 +291,14 @@ serve(async (req) => {
       const PRIORITY_ORDER: Record<string, number> = {
         send_dm: 0,
         send_followup: 0,
+        post_comment: 1,    // Growth: posting comments is high-value
         send_connection_request: 1,
+        like_post: 2,       // Growth: liking is quick
         check_connection_status: 2,
         check_reply_status: 2,
+        find_latest_post: 3, // Growth: finding posts
         follow_profile: 3,
-        visit_profile: 4,  // New visits have lowest priority — advance existing leads first
+        visit_profile: 4,    // New visits have lowest priority
       };
       const sortedLeads = [...leads].sort((a, b) => {
         const aAction = STATUS_TO_ACTION[a.status] || '';
@@ -312,7 +335,8 @@ serve(async (req) => {
       // ── Per-user caps: separate caps for checks vs warm-up vs other actions
       const LIGHTWEIGHT_ACTIONS = new Set(["check_connection_status", "check_reply_status"]);
       const WARMUP_ACTIONS = new Set(["visit_profile", "follow_profile"]);
-      const ALWAYS_ON_ACTIONS = new Set(["check_connection_status", "check_reply_status", "visit_profile", "follow_profile"]);
+      const GROWTH_ACTIONS = new Set(["find_latest_post", "like_post", "post_comment"]);
+      const ALWAYS_ON_ACTIONS = new Set(["check_connection_status", "check_reply_status", "visit_profile", "follow_profile", "find_latest_post", "like_post", "post_comment"]);
       const MAX_PENDING_CHECKS = 40;  // Lightweight checks
       const MAX_PENDING_WARMUP = 40;  // Warm-up actions (visit/follow)
       // Heavy actions (connection requests, DMs, follow-ups).
@@ -341,8 +365,34 @@ serve(async (req) => {
         // Skip if extension not connected
         if (!connectedUsers.has(lead.user_id)) { addSkip("no_extension"); continue; }
 
-        const actionType = STATUS_TO_ACTION[lead.status];
+        // Resolve action type based on campaign mode (outreach vs growth)
+        const campaignMode = campaignModeMap.get(lead.campaign_profile_id) || "outreach";
+        const statusMap = campaignMode === "growth" ? GROWTH_STATUS_TO_ACTION : STATUS_TO_ACTION;
+        const actionType = statusMap[lead.status];
         if (!actionType) { addSkip("no_action_type"); continue; }
+
+        // Growth mode: skip outreach-specific gates (connection/DM/followup approval)
+        // Growth leads need comment generation before post_comment
+        if (campaignMode === "growth") {
+          // If status is post_liked but no comment_text yet, trigger generation
+          if (lead.status === "post_liked" && !(lead as any).comment_text) {
+            const generateUrl = `${supabaseUrl}/functions/v1/generate-comment`;
+            fetch(generateUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                campaign_lead_id: lead.id,
+                user_id: lead.user_id,
+              }),
+            }).catch(err => console.error(`generate-comment error for lead ${lead.id}:`, err));
+            console.log(`Triggered comment generation for growth lead ${lead.id}`);
+            addSkip("growth_generating_comment");
+            continue;
+          }
+        }
 
         // Cap: separate limits for lightweight checks vs other actions
         if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
@@ -500,6 +550,10 @@ serve(async (req) => {
         if (messageField) {
           messageText = (lead as any)[messageField] || lead.dm_text || lead.follow_up_text || null;
         }
+        // Growth mode: pass comment_text for post_comment, post_url for like_post/post_comment
+        if (actionType === "post_comment" && (lead as any).comment_text) {
+          messageText = (lead as any).comment_text;
+        }
 
         // ── Throttled scheduling: spread actions across remaining business hours ──
         const slotKey = `${lead.user_id}:${actionType}`;
@@ -523,13 +577,18 @@ serve(async (req) => {
           scheduledFor = computeThrottledTime(slotIndex, userStart, userEnd);
         }
 
+        // For growth actions that target a post, use the post URL instead of profile URL
+        const actionUrl = (actionType === "like_post" || actionType === "post_comment") && (lead as any).post_url
+          ? (lead as any).post_url
+          : lead.linkedin_url;
+
         const { error: insertError } = await supabase
           .from("action_queue")
           .insert({
             user_id: lead.user_id,
             campaign_lead_id: lead.id,
             action_type: actionType,
-            linkedin_url: lead.linkedin_url,
+            linkedin_url: actionUrl,
             message_text: messageText,
             scheduled_for: scheduledFor,
             // Priority ordering (lower = higher priority, picked first by extension):
@@ -542,8 +601,8 @@ serve(async (req) => {
             // the scheduler had pending checks. Monitoring is important but
             // should never block a customer-facing message.
             priority: (actionType === "send_dm" || actionType === "send_followup") ? 1
-              : actionType === "send_connection_request" ? 2
-              : LIGHTWEIGHT_ACTIONS.has(actionType) ? 3
+              : (actionType === "send_connection_request" || actionType === "post_comment") ? 2
+              : (LIGHTWEIGHT_ACTIONS.has(actionType) || actionType === "like_post") ? 3
               : 5,
             status: "pending",
           });

@@ -14,7 +14,7 @@ import {
   Zap, ArrowRight, Target, Eye, UserPlus, MessageSquare, Clock,
   Upload, Bot, BarChart3, RefreshCw, ShieldCheck, Shield,
   Check, ChevronRight, Star, Sparkles, Globe, Lock, Quote,
-  Ghost,
+  Ghost, TrendingUp, Heart, MessageCircle, Repeat,
 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
 import { motion } from 'framer-motion';
@@ -66,6 +66,13 @@ export default function Landing() {
     { num: '\u2464', title: 'AI Writes Your DMs', desc: 'When they accept, Claude Sonnet reads their full profile and crafts a unique message. You approve, then send.' },
   ];
 
+  const growthSteps = [
+    { num: '\u2460', title: 'Pick Target Profiles', desc: 'Add LinkedIn URLs of thought leaders or ICP profiles in your niche. These are the accounts whose audience you want to tap into.' },
+    { num: '\u2461', title: 'AI Finds Their Posts', desc: 'The extension visits each profile and finds their latest content automatically — articles, posts, shared content.' },
+    { num: '\u2462', title: 'Smart Engagement', desc: 'Likes are sent first, then Claude Haiku generates a thoughtful comment referencing specific points in the post. Never generic, always relevant.' },
+    { num: '\u2463', title: 'Weekly Cycles', desc: 'Every 7 days, the cycle repeats with fresh content. Your account stays active and visible in your niche without manual effort.' },
+  ];
+
   const painPoints = [
     { emoji: '\uD83C\uDFAF', title: 'GENERIC MESSAGES', desc: '"Hi {firstName}, I\'d love to connect..." Sound familiar? Your prospects get 20 of these a day. Yours gets deleted with the rest. Claude Sonnet writes messages that reference their actual career, company, and background, so they know you actually looked.' },
     { emoji: '\uD83E\uDD16', title: 'WRONG PEOPLE', desc: 'You\'re sending connection requests to people who will never buy from you. Generic titles like "CEO" match every industry. Our Claude Haiku ICP check filters out mismatches before a single request is sent, so every connection counts.' },
@@ -80,6 +87,8 @@ export default function Landing() {
     { icon: Check, title: 'AI-Powered ICP Check', desc: 'Before any outreach starts, Claude Haiku compares each lead against your ideal customer profile using real LinkedIn data. Mismatches get filtered out automatically.' },
     { icon: Eye, title: 'Ghost Profile Detection', desc: 'Not everyone on LinkedIn is actually active. Our AI detects ghost profiles \u2014 accounts with minimal data, no skills, no about section, few connections \u2014 and automatically skips them. Zero credits wasted on people who will never see your message.' },
     { icon: BarChart3, title: 'One Dashboard', desc: 'Leads, messages, follow-ups, replies, your entire pipeline on one screen. Approve DMs one by one or in batch. Nothing sends without your say-so.' },
+    { icon: TrendingUp, title: 'Growth Mode', desc: 'Build your LinkedIn presence on autopilot. The extension engages with target profiles\' content — likes, AI-generated comments — making you visible to their audience. Perfect for new accounts or expanding your reach.' },
+    { icon: MessageCircle, title: 'AI Comments', desc: 'Claude Haiku writes contextual comments that reference specific points in the post. Five style variants rotate automatically — questions, experiences, challenges — so you never sound repetitive.' },
   ];
 
   const trustCards = [
@@ -109,6 +118,9 @@ export default function Landing() {
     { q: 'Can I edit the AI messages before sending?', a: 'Always. You maintain full control \u2014 you can approve, edit, regenerate, or reject any message. Nothing is ever sent without your explicit approval. You can review messages one by one or use batch approval.' },
     { q: 'How does LinkedIn Copilot compare to manual outreach?', a: 'Manual LinkedIn outreach typically allows 15-20 personalized messages per day and takes 2-3 hours. LinkedIn Copilot automates the entire sequence \u2014 profile visits, follows, connection requests, and personalized DMs \u2014 processing up to 40 leads per day with AI-written messages that reference each prospect\'s actual background.' },
     { q: 'What are Ghost Profiles and why does LinkedIn Copilot skip them?', a: 'Ghost profiles are LinkedIn accounts with minimal activity \u2014 no about section, few skills, no education, barely any connections. These users rarely check LinkedIn and will never see your connection request or message. LinkedIn Copilot automatically detects and skips ghost profiles so you don\'t waste credits or daily limits on people who aren\'t actually active on the platform.' },
+    { q: 'What is Growth Mode?', a: 'Growth Mode is a separate campaign type designed to build your LinkedIn authority over time. Instead of sending connection requests and DMs, Growth Mode engages with content posted by thought leaders in your niche. It visits their profiles, finds their latest posts, likes them, and posts AI-generated contextual comments. This makes your profile visible to their audience and helps grow your follower count, connection quality, and overall LinkedIn presence organically.' },
+    { q: 'How does AI comment generation work?', a: 'When Growth Mode finds a post from one of your target profiles, Claude Haiku reads the full post content and generates a contextual comment. The AI rotates between five distinct comment styles \u2014 observation with a question, personal experience, expanding on a point, respectful challenge, and data-backed insight \u2014 so your engagement always looks natural and varied. Comments reference specific details from the post and never use generic phrases like "Great post!" or "Love this!".' },
+    { q: 'Can I use Outreach and Growth modes together?', a: 'Yes. You can run Outreach campaigns and Growth campaigns simultaneously from the same LinkedIn account. They operate independently \u2014 Growth Mode engages with content from thought leaders in your niche, while Outreach Mode handles connection requests and personalized DMs to your leads. Using both together is a powerful strategy: Growth Mode warms up your profile and builds credibility, while Outreach Mode converts that credibility into conversations.' },
   ];
 
   const pricing = [
@@ -127,6 +139,7 @@ export default function Landing() {
         'Only outreach-ready leads count as credits',
         'Chrome extension included',
         'Full automation sequence',
+        'Growth Mode: 10 target profiles',
         'Manual DM approval only',
       ],
       cta: 'Start Free',
@@ -147,8 +160,9 @@ export default function Landing() {
         'Smart filtering: ghost detection + ICP validation',
         'Only outreach-ready leads count as credits',
         'Chrome extension with smart limits',
+        'Growth Mode: unlimited target profiles',
+        'AI-generated comments with 5 style variants',
         'Batch DM approval',
-        'Auto-capture LinkedIn profiles',
         'Priority support',
       ],
       cta: 'Start 7-day trial',
@@ -164,6 +178,8 @@ export default function Landing() {
     { feature: 'Lead enrichment', free: 'Included', pro: 'Included' },
     { feature: 'ICP validation', free: 'Included', pro: 'Included' },
     { feature: 'Ghost profile detection', free: 'Included', pro: 'Included' },
+    { feature: 'Growth Mode profiles', free: '10', pro: 'Unlimited' },
+    { feature: 'AI comments', free: 'Included', pro: 'Included (5 style variants)' },
     { feature: 'Approval flow', free: 'Manual only', pro: 'Batch + auto-run' },
     { feature: 'Chrome extension limits', free: 'Standard', pro: 'Smart limits' },
     { feature: 'Support', free: 'Community', pro: 'Priority' },
@@ -216,7 +232,7 @@ export default function Landing() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/[0.12] text-gold-light text-[10px] sm:text-[11px] font-display font-bold uppercase tracking-[0.18em] mb-6 border border-primary/50"
           >
             <span className="badge-dot" />
-            Powered by Claude Sonnet &middot; Haiku ICP Validation &middot; 30+ Languages
+            Outreach + Growth Modes &middot; Claude AI &middot; 30+ Languages
           </motion.div>
           <SplitFlapText
             className="font-display uppercase tracking-tight mb-5 leading-tight text-white max-w-[900px] mx-auto"
@@ -235,7 +251,7 @@ export default function Landing() {
             className="text-base sm:text-lg leading-relaxed max-w-[680px] mx-auto mb-9 px-2"
             style={{ color: 'rgba(255,255,255,0.78)', textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}
           >
-            An AI-powered LinkedIn automation tool that reads your prospect's actual profile and crafts B2B outreach messages they can't ignore. Not templates. Not spam. Precision.
+            Two modes, one platform. <strong>Outreach Mode</strong> reads profiles and crafts messages they can't ignore. <strong>Growth Mode</strong> builds your authority through AI-powered engagement. Not templates. Not spam. Precision.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -284,20 +300,87 @@ export default function Landing() {
               What Is <span className="text-gradient-gold">LinkedIn Automation?</span>
             </h2>
             <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks &mdash; sending connection requests, follow-ups, and personalized direct messages at scale. Unlike basic tools that rely on {'{firstName}'} templates, <strong>LinkedIn Copilot</strong> is an AI-powered B2B LinkedIn automation platform that reads each prospect's full profile (about section, career history, education, skills) and generates truly personalized messages using Claude Sonnet. Every lead is validated against your Ideal Customer Profile using Claude Haiku before any outreach begins, ensuring you only connect with qualified prospects.
+              LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks &mdash; sending connection requests, follow-ups, and personalized direct messages at scale. Unlike basic tools that rely on {'{firstName}'} templates, <strong>LinkedIn Copilot</strong> is an AI-powered B2B LinkedIn automation platform with two distinct modes: <strong>Outreach Mode</strong> reads each prospect's full profile and generates truly personalized messages using Claude Sonnet, while <strong>Growth Mode</strong> builds your LinkedIn authority by engaging with thought leaders' content through AI-generated comments. Every lead is validated against your Ideal Customer Profile using Claude Haiku before any outreach begins, ensuring you only connect with qualified prospects.
             </p>
           </motion.div>
         </div>
       </section>
 
+      {/* SECTION: TWO MODES */}
+      <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
+        <div className="container mx-auto max-w-5xl relative z-10">
+          <motion.div {...fadeUp} className="text-center mb-14">
+            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-3">
+              Two Modes. <span className="text-gradient-gold">One Platform.</span>
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Whether you're closing deals or building presence, LinkedIn Copilot adapts to your goal.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            <motion.div {...stagger(0)}>
+              <Card className="h-full border-2 border-primary/40 bg-amber-50/30 rounded-2xl shadow-sm hover-float">
+                <CardContent className="p-6 sm:p-8">
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 border border-primary/30">
+                    <Target className="w-6 h-6 text-primary" />
+                  </div>
+                  <h3 className="font-display font-bold uppercase tracking-wide text-lg mb-3">Outreach Mode</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                    Import leads from any source, validate them against your ICP, and send AI-personalized connection requests and DMs. The full outreach sequence runs on autopilot with human-like delays.
+                  </p>
+                  <ul className="space-y-2 text-sm text-gray-600">
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> CSV import from any lead source</li>
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> AI ICP validation + ghost detection</li>
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> Claude Sonnet writes unique DMs per lead</li>
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> Visit &rarr; Follow &rarr; Connect &rarr; DM &rarr; Follow-up</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div {...stagger(1)}>
+              <Card className="h-full border-2 border-emerald-400/40 bg-emerald-50/30 rounded-2xl shadow-sm hover-float relative overflow-hidden">
+                <div className="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-display font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> New
+                </div>
+                <CardContent className="p-6 sm:p-8">
+                  <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/30">
+                    <TrendingUp className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <h3 className="font-display font-bold uppercase tracking-wide text-lg mb-3">Growth Mode</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                    Build your LinkedIn authority by engaging with thought leaders' content. The AI likes posts, writes contextual comments, and makes your profile visible to their audience — on autopilot, every week.
+                  </p>
+                  <ul className="space-y-2 text-sm text-gray-600">
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> Target thought leaders in your niche</li>
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> AI finds and engages with latest posts</li>
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> Claude Haiku writes contextual comments</li>
+                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> Weekly engagement cycles on autopilot</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* SECTION 2: HOW IT WORKS (light) */}
-      <section ref={howRef} id="how-it-works" className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
+      <section ref={howRef} id="how-it-works" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-16">
             <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight">
               How It <span className="text-gradient-gold">Works</span>
             </h2>
-            <p className="text-lg text-gray-600 mt-3 max-w-2xl mx-auto">5 steps. 10 minutes to set up. Then it runs on autopilot.</p>
+            <p className="text-lg text-gray-600 mt-3 max-w-2xl mx-auto">Two modes, same simplicity. Set up in minutes, then it runs on autopilot.</p>
+          </motion.div>
+
+          <motion.div {...fadeUp} className="mb-8">
+            <h3 className="text-xl font-display font-bold uppercase tracking-wide text-center mb-2">
+              <Target className="w-5 h-5 inline-block mr-2 text-primary" />
+              Outreach Mode
+            </h3>
+            <p className="text-sm text-gray-500 text-center mb-6">5 steps to precision outreach</p>
           </motion.div>
 
           {/* Desktop: horizontal */}
@@ -334,6 +417,53 @@ export default function Landing() {
                 )}
               </motion.div>
             ))}
+          </div>
+
+          {/* Growth Mode Steps */}
+          <div className="mt-16 pt-16 border-t border-border/40">
+            <motion.div {...fadeUp} className="mb-8">
+              <h3 className="text-xl font-display font-bold uppercase tracking-wide text-center mb-2">
+                <TrendingUp className="w-5 h-5 inline-block mr-2 text-emerald-600" />
+                Growth Mode
+              </h3>
+              <p className="text-sm text-gray-500 text-center mb-6">4 steps to build your LinkedIn authority</p>
+            </motion.div>
+
+            {/* Desktop: horizontal */}
+            <div className="hidden md:block">
+              <div className="grid grid-cols-4 gap-8 relative">
+                <div className="absolute top-[40px] left-[12%] right-[12%] h-[2px] bg-gradient-to-r from-emerald-400/20 via-emerald-400/60 to-emerald-400/20 z-0" />
+                {growthSteps.map((s, i) => (
+                  <motion.div key={i} {...stagger(i)} className="flex flex-col items-center text-center relative z-10">
+                    <div className="w-20 h-20 rounded-full bg-emerald-50 border-2 border-emerald-400 flex items-center justify-center text-2xl font-display font-extrabold text-emerald-600 mb-4 shadow-soft">
+                      {s.num}
+                    </div>
+                    <h3 className="font-display font-bold text-xs uppercase tracking-wider mb-1.5">{s.title}</h3>
+                    <p className="text-xs text-muted-foreground leading-snug max-w-[180px]">{s.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile: vertical */}
+            <div className="md:hidden space-y-0">
+              {growthSteps.map((s, i) => (
+                <motion.div key={i} {...stagger(i)} className="relative">
+                  <div className="flex items-center gap-4 py-4">
+                    <div className="w-14 h-14 rounded-full bg-emerald-50 border-2 border-emerald-400 flex items-center justify-center text-lg font-display font-extrabold text-emerald-600 shrink-0">
+                      {s.num}
+                    </div>
+                    <div>
+                      <h3 className="font-display font-bold text-sm uppercase tracking-wider">{s.title}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">{s.desc}</p>
+                    </div>
+                  </div>
+                  {i < growthSteps.length - 1 && (
+                    <div className="ml-7 w-[2px] h-3 bg-gradient-to-b from-emerald-400/40 to-transparent" />
+                  )}
+                </motion.div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -440,6 +570,11 @@ export default function Landing() {
                       <td className="py-3 pr-3 text-muted-foreground">Message Quality</td>
                       <td className="py-3 px-3">"Hi {'{firstName}'}, I noticed you work at {'{company}'}..."</td>
                       <td className="py-3 pl-3 bg-amber-50/60">Mentions specific details from their profile, role, and company context</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 pr-3 text-muted-foreground">Account Growth</td>
+                      <td className="py-3 px-3">Not available</td>
+                      <td className="py-3 pl-3 bg-amber-50/60">Growth Mode: AI engages with target profiles' content weekly</td>
                     </tr>
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">Pricing</td>
@@ -793,7 +928,7 @@ export default function Landing() {
                 Ready to Fly?
               </h2>
               <p className="text-slate-300 text-sm mb-8 max-w-lg mx-auto">
-                Stop sending LinkedIn messages that sound like everyone else's. Start sending ones that prove you actually looked, powered by Claude Sonnet, validated by Claude Haiku, delivered with military precision.
+                Stop sending LinkedIn messages that sound like everyone else's. Outreach Mode sends messages that prove you actually looked. Growth Mode builds your authority on autopilot. Powered by Claude AI, delivered with precision.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button

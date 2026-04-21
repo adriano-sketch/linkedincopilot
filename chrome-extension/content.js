@@ -53,6 +53,15 @@ async function handleAction(action) {
       return await checkConnectionStatus();
     case 'check_reply_status':
       return await checkReplyStatus(action);
+
+    // ── Growth Mode Actions ──
+    case 'find_latest_post':
+      return await findLatestPost();
+    case 'like_post':
+      return await likePost(action.post_url);
+    case 'post_comment':
+      return await postComment(action.post_url, action.message_text);
+
     default:
       throw new Error(`Unknown action: ${action.action_type}`);
   }
@@ -1663,6 +1672,440 @@ function extractLinkedinSlug(url) {
   if (!url) return null;
   const m = url.match(/\/in\/([^/?#]+)/i);
   return m ? decodeURIComponent(m[1]).toLowerCase() : null;
+}
+
+// ══════════════════════════════════════════════
+// GROWTH MODE — FIND LATEST POST
+// ──────────────────────────────────────────────
+// Navigates to the "recent activity" / posts section of a profile
+// and extracts the most recent post's URL and text content.
+// ══════════════════════════════════════════════
+async function findLatestPost() {
+  // Verify we're on a profile page
+  const currentPath = window.location.pathname;
+  if (!currentPath.startsWith('/in/')) {
+    throw new Error(`WRONG_PAGE: findLatestPost requires /in/... but got ${currentPath}`);
+  }
+
+  await sleep(1000 + Math.random() * 1500);
+
+  // Strategy 1: Look for "Activity" / "Recent Activity" section on the profile
+  // LinkedIn shows a "Show all activity" or "See all posts" link
+  const activitySelectors = [
+    'a[href*="/recent-activity/"]',
+    'a[href*="/recent-activity/all/"]',
+    'a[href*="/recent-activity/shares/"]',
+    'a[href*="/detail/recent-activity/"]',
+  ];
+
+  let activityLink = null;
+  for (const sel of activitySelectors) {
+    activityLink = document.querySelector(sel);
+    if (activityLink) break;
+  }
+
+  // If no activity link found, try scrolling down to find the activity section
+  if (!activityLink) {
+    for (let i = 0; i < 5; i++) {
+      window.scrollBy(0, 600);
+      await sleep(800);
+      for (const sel of activitySelectors) {
+        activityLink = document.querySelector(sel);
+        if (activityLink) break;
+      }
+      if (activityLink) break;
+    }
+  }
+
+  // Extract the vanity name for the activity URL
+  const vanityMatch = currentPath.match(/^\/in\/([^/]+)/);
+  const vanityName = vanityMatch ? vanityMatch[1] : null;
+
+  if (!activityLink && vanityName) {
+    // Navigate directly to the activity page
+    const activityUrl = `https://www.linkedin.com/in/${vanityName}/recent-activity/all/`;
+    console.log('[LinkedIn Copilot] No activity link found, navigating directly to:', activityUrl);
+    window.location.href = activityUrl;
+    await sleep(3000 + Math.random() * 2000);
+    await waitForLinkedInReady();
+  } else if (activityLink) {
+    activityLink.click();
+    await sleep(3000 + Math.random() * 2000);
+    await waitForLinkedInReady();
+  }
+
+  // Now we should be on the activity page — find the latest post
+  await sleep(1500);
+
+  // LinkedIn activity feed: each post is in a container with data-urn or
+  // inside .feed-shared-update-v2 or similar
+  const postSelectors = [
+    '.feed-shared-update-v2',
+    '[data-urn*="activity"]',
+    '.profile-creator-shared-feed-update__container',
+    '.occludable-update',
+  ];
+
+  let postEl = null;
+  for (const sel of postSelectors) {
+    const posts = document.querySelectorAll(sel);
+    if (posts.length > 0) {
+      postEl = posts[0]; // First = most recent
+      break;
+    }
+  }
+
+  if (!postEl) {
+    // Try scrolling once more
+    window.scrollBy(0, 400);
+    await sleep(1500);
+    for (const sel of postSelectors) {
+      const posts = document.querySelectorAll(sel);
+      if (posts.length > 0) {
+        postEl = posts[0];
+        break;
+      }
+    }
+  }
+
+  if (!postEl) {
+    return {
+      success: true,
+      action: 'find_latest_post',
+      found: false,
+      note: 'no_posts_found',
+      url: window.location.href,
+    };
+  }
+
+  // Extract post text
+  const textEl = postEl.querySelector(
+    '.feed-shared-text, .break-words, .update-components-text, [dir="ltr"]'
+  );
+  const postText = textEl ? textEl.textContent.trim().substring(0, 1500) : '';
+
+  // Extract post URL (the activity/post permalink)
+  let postUrl = null;
+  const postLink = postEl.querySelector(
+    'a[href*="/feed/update/"], a[href*="/posts/"], a[href*="/pulse/"]'
+  );
+  if (postLink) {
+    postUrl = postLink.href.split('?')[0]; // Clean URL
+  }
+
+  // Fallback: try data-urn attribute
+  if (!postUrl) {
+    const urnEl = postEl.closest('[data-urn]') || postEl.querySelector('[data-urn]');
+    const urn = urnEl ? urnEl.getAttribute('data-urn') : null;
+    if (urn) {
+      // Convert urn:li:activity:12345 → /feed/update/urn:li:activity:12345
+      postUrl = `https://www.linkedin.com/feed/update/${urn}`;
+    }
+  }
+
+  // Extract post author (to verify it's actually their post, not a reshare)
+  const authorEl = postEl.querySelector(
+    '.update-components-actor__name, .feed-shared-actor__name, [data-anonymize="person-name"]'
+  );
+  const postAuthor = authorEl ? authorEl.textContent.trim() : null;
+
+  // Extract engagement metrics if visible
+  const likesEl = postEl.querySelector(
+    '.social-details-social-counts__reactions-count, [aria-label*="reaction"], [aria-label*="like"]'
+  );
+  const likesText = likesEl ? likesEl.textContent.trim() : null;
+
+  const commentsEl = postEl.querySelector(
+    '.social-details-social-counts__comments, [aria-label*="comment"]'
+  );
+  const commentsText = commentsEl ? commentsEl.textContent.trim() : null;
+
+  console.log(`[LinkedIn Copilot] Found latest post: ${postUrl}, author: ${postAuthor}, text: ${postText.substring(0, 80)}...`);
+
+  return {
+    success: true,
+    action: 'find_latest_post',
+    found: true,
+    post_url: postUrl,
+    post_content: postText,
+    post_author: postAuthor,
+    engagement: { likes: likesText, comments: commentsText },
+    note: postUrl ? 'post_found' : 'post_found_no_url',
+  };
+}
+
+// ══════════════════════════════════════════════
+// GROWTH MODE — LIKE POST
+// ──────────────────────────────────────────────
+// Likes the most recent visible post on the current page.
+// Can be called on a profile activity page or on a specific post URL.
+// ══════════════════════════════════════════════
+async function likePost(postUrl) {
+  await sleep(1000 + Math.random() * 1500);
+
+  // If we're on the post URL directly, find the like button
+  // If we're on the activity page, like the first post
+
+  const postContainers = document.querySelectorAll(
+    '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update, .profile-creator-shared-feed-update__container'
+  );
+
+  let targetPost = postContainers.length > 0 ? postContainers[0] : document;
+
+  // If we have a specific post URL and we're on that page, the main content is the post
+  if (postUrl && window.location.href.includes('/feed/update/')) {
+    targetPost = document;
+  }
+
+  // Find the Like button — LinkedIn uses various structures
+  const likeSelectors = [
+    'button[aria-label*="Like" i]:not([aria-label*="Unlike" i])',
+    'button[aria-label*="Gostei" i]:not([aria-label*="Descurtir" i])',
+    'button[aria-label*="Me gusta" i]',
+    'button[aria-label*="J\'aime" i]',
+    'button.react-button:not(.react-button--active)',
+    'button[data-reaction-type] span.react-button__text',
+  ];
+
+  let likeBtn = null;
+  for (const sel of likeSelectors) {
+    const candidates = targetPost.querySelectorAll(sel);
+    for (const btn of candidates) {
+      if (btn.offsetParent === null) continue; // Skip hidden
+      // Check it's not already liked (active state)
+      const isActive = btn.classList.contains('react-button--active') ||
+                       btn.getAttribute('aria-pressed') === 'true';
+      if (!isActive) {
+        likeBtn = btn;
+        break;
+      }
+    }
+    if (likeBtn) break;
+  }
+
+  // Fallback: find any reaction button that's not active
+  if (!likeBtn) {
+    const allButtons = targetPost.querySelectorAll('button');
+    for (const btn of allButtons) {
+      if (btn.offsetParent === null) continue;
+      const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+      const text = (btn.textContent || '').toLowerCase().trim();
+      if ((label.includes('like') || label.includes('gost') || text === 'like' || text === 'gostei') &&
+          !label.includes('unlike') && !label.includes('descurtir') &&
+          btn.getAttribute('aria-pressed') !== 'true') {
+        likeBtn = btn;
+        break;
+      }
+    }
+  }
+
+  if (!likeBtn) {
+    // Already liked or button not found
+    return {
+      success: true,
+      action: 'like_post',
+      liked: false,
+      note: 'like_button_not_found_or_already_liked',
+      url: window.location.href,
+    };
+  }
+
+  // Scroll the button into view and click
+  likeBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await sleep(500 + Math.random() * 500);
+
+  likeBtn.click();
+  await sleep(1500 + Math.random() * 1000);
+
+  // Verify it was liked (button should now be active)
+  const isNowActive = likeBtn.classList.contains('react-button--active') ||
+                      likeBtn.getAttribute('aria-pressed') === 'true';
+
+  console.log(`[LinkedIn Copilot] Like post result: ${isNowActive ? 'liked' : 'uncertain'}`);
+
+  return {
+    success: true,
+    action: 'like_post',
+    liked: true,
+    confirmed: isNowActive,
+    url: window.location.href,
+  };
+}
+
+// ══════════════════════════════════════════════
+// GROWTH MODE — POST COMMENT
+// ──────────────────────────────────────────────
+// Posts a comment on a LinkedIn post. Assumes we're already on the
+// post page or the activity feed with the target post visible.
+// ══════════════════════════════════════════════
+async function postComment(postUrl, commentText) {
+  if (!commentText || commentText.trim().length === 0) {
+    throw new Error('No comment text provided');
+  }
+
+  await sleep(1000 + Math.random() * 1500);
+
+  // Find the first post container
+  const postContainers = document.querySelectorAll(
+    '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update'
+  );
+  const targetPost = postContainers.length > 0 ? postContainers[0] : document;
+
+  // Step 1: Click the "Comment" button to open the comment box
+  const commentBtnSelectors = [
+    'button[aria-label*="Comment" i]',
+    'button[aria-label*="Comentar" i]',
+    'button[aria-label*="Commenter" i]',
+    'button[aria-label*="Comentario" i]',
+  ];
+
+  let commentBtn = null;
+  for (const sel of commentBtnSelectors) {
+    const candidates = targetPost.querySelectorAll(sel);
+    for (const btn of candidates) {
+      if (btn.offsetParent === null) continue;
+      commentBtn = btn;
+      break;
+    }
+    if (commentBtn) break;
+  }
+
+  // Fallback: text-based search
+  if (!commentBtn) {
+    const allButtons = targetPost.querySelectorAll('button');
+    for (const btn of allButtons) {
+      if (btn.offsetParent === null) continue;
+      const text = (btn.textContent || '').toLowerCase().trim();
+      if (text === 'comment' || text === 'comentar' || text === 'commenter') {
+        commentBtn = btn;
+        break;
+      }
+    }
+  }
+
+  if (!commentBtn) {
+    throw new Error('Comment button not found on post');
+  }
+
+  commentBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await sleep(500 + Math.random() * 500);
+  commentBtn.click();
+  await sleep(2000 + Math.random() * 1500);
+
+  // Step 2: Find the comment input (contenteditable div or textarea)
+  const commentInputSelectors = [
+    '.comments-comment-box__form .ql-editor',
+    '.comments-comment-texteditor .ql-editor',
+    '[contenteditable="true"][data-placeholder*="comment" i]',
+    '[contenteditable="true"][data-placeholder*="comentar" i]',
+    '[contenteditable="true"][aria-label*="comment" i]',
+    '[contenteditable="true"][role="textbox"]',
+    '.editor-content [contenteditable="true"]',
+  ];
+
+  let commentInput = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    for (const sel of commentInputSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.offsetParent !== null) {
+        commentInput = el;
+        break;
+      }
+    }
+    if (commentInput) break;
+    await sleep(1000);
+  }
+
+  if (!commentInput) {
+    throw new Error('Comment input not found after clicking comment button');
+  }
+
+  // Step 3: Focus and type the comment with human-like delays
+  commentInput.focus();
+  await sleep(300);
+
+  // Clear any existing content
+  commentInput.innerHTML = '';
+  await sleep(200);
+
+  // Type character by character with random delays for human-like behavior
+  const text = commentText.trim();
+  for (let i = 0; i < text.length; i++) {
+    // Insert text progressively
+    commentInput.textContent = text.substring(0, i + 1);
+    // Dispatch input event so LinkedIn's React picks it up
+    commentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Random typing speed: fast for most chars, occasional pause
+    if (i % 20 === 0 && i > 0) {
+      await sleep(200 + Math.random() * 400); // Thinking pause
+    } else {
+      await sleep(30 + Math.random() * 70);
+    }
+  }
+
+  // Final input event
+  commentInput.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(1000 + Math.random() * 500);
+
+  // Step 4: Find and click the Submit/Post button for the comment
+  const submitSelectors = [
+    '.comments-comment-box__submit-button',
+    'button.comments-comment-box__submit-button',
+    'button[aria-label*="Post comment" i]',
+    'button[aria-label*="Publicar" i]',
+    'button[aria-label*="Publier" i]',
+    'button[type="submit"]',
+  ];
+
+  let submitBtn = null;
+  for (const sel of submitSelectors) {
+    const candidates = document.querySelectorAll(sel);
+    for (const btn of candidates) {
+      if (btn.offsetParent === null) continue;
+      if (btn.disabled) continue;
+      submitBtn = btn;
+      break;
+    }
+    if (submitBtn) break;
+  }
+
+  // Fallback: find "Post" button near the comment input
+  if (!submitBtn) {
+    const commentBox = commentInput.closest('.comments-comment-box, .comments-comment-texteditor, form');
+    if (commentBox) {
+      const btns = commentBox.querySelectorAll('button');
+      for (const btn of btns) {
+        const text = (btn.textContent || '').toLowerCase().trim();
+        if ((text === 'post' || text === 'publicar' || text === 'publier' || text === 'submit') && !btn.disabled) {
+          submitBtn = btn;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!submitBtn) {
+    throw new Error('Comment submit button not found or disabled');
+  }
+
+  submitBtn.click();
+  await sleep(2500 + Math.random() * 1500);
+
+  // Step 5: Verify comment was posted (comment box should be empty or closed)
+  const inputAfter = document.querySelector(commentInputSelectors[0]) || commentInput;
+  const inputText = (inputAfter.textContent || '').trim();
+  const success = inputText.length === 0 || inputText !== text;
+
+  console.log(`[LinkedIn Copilot] Comment posted: ${success ? 'yes' : 'uncertain'}, text preview: "${text.substring(0, 50)}..."`);
+
+  return {
+    success: true,
+    action: 'post_comment',
+    posted: success,
+    comment_preview: text.substring(0, 100),
+    url: window.location.href,
+  };
 }
 
 // ══════════════════════════════════════════════

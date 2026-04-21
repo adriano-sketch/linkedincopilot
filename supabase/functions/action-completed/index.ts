@@ -27,6 +27,11 @@ const STATUS_ORDER: Record<string, number> = {
   follow_up_due: 12,
   followup_sent: 13,
   replied: 14,
+  // Growth mode statuses
+  post_found: 5,
+  post_liked: 6,
+  engagement_done: 7,
+  // Terminal statuses
   skipped_inmail: 15,
   connection_rejected: 15,
   error: 15,
@@ -554,6 +559,43 @@ serve(async (req) => {
         leadUpdate.followup_sent_at = now;
         // Same fix as send_dm: check for replies next business day, not 4 days later.
         leadUpdate.next_action_at = rbt(1);
+        break;
+
+      // ── Growth Mode Actions ──
+      case "find_latest_post": {
+        if (result?.found === true) {
+          leadUpdate.status = "post_found";
+          leadUpdate.post_url = result.post_url || null;
+          leadUpdate.post_content = result.post_content ? String(result.post_content).slice(0, 2000) : null;
+          leadUpdate.next_action_at = rbt(0); // Like immediately
+        } else {
+          // No posts found — skip this engagement cycle, try again in 7 days
+          leadUpdate.status = "engagement_done";
+          leadUpdate.next_action_at = rbt(7);
+          leadUpdate.error_message = "No posts found on profile activity page";
+        }
+        break;
+      }
+
+      case "like_post":
+        leadUpdate.status = "post_liked";
+        leadUpdate.post_liked_at = now;
+        // Next: generate comment (handled by schedule-actions calling generate-comment)
+        leadUpdate.next_action_at = rbt(0);
+        break;
+
+      case "post_comment":
+        leadUpdate.status = "engagement_done";
+        leadUpdate.comment_posted_at = now;
+        leadUpdate.last_engagement_at = now;
+        leadUpdate.engagement_count = (currentLead?.engagement_count || 0) + 1;
+        // Schedule next engagement cycle in 7 days
+        leadUpdate.next_action_at = rbt(7);
+        // Clear post data for next cycle
+        leadUpdate.post_url = null;
+        leadUpdate.post_content = null;
+        leadUpdate.comment_text = null;
+        leadUpdate.comment_approved = false;
         break;
     }
 

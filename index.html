@@ -46,7 +46,7 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "LinkedIn Copilot",
-      "description": "AI-powered LinkedIn outreach automation tool that enriches leads, validates ICP with Claude Haiku, and generates personalized connection notes and DMs with Claude Sonnet. Chrome extension with safe daily limits.",
+      "description": "AI-powered LinkedIn automation platform with two modes: Outreach Mode for personalized connection notes and DMs using Claude Sonnet, and Growth Mode for building authority through AI-generated content engagement. ICP validation with Claude Haiku. Chrome extension with safe daily limits.",
       "url": "https://linkedincopilot.io",
       "applicationCategory": "BusinessApplication",
       "operatingSystem": "Web",
@@ -76,7 +76,7 @@
         "worstRating": "1",
         "ratingCount": "150"
       },
-      "featureList": "AI-personalized DMs, ICP validation, ghost profile detection, warm-up automation, 30+ languages, CSV import, Chrome extension",
+      "featureList": "AI-personalized DMs, Growth Mode with AI comments, ICP validation, ghost profile detection, warm-up automation, 30+ languages, CSV import, Chrome extension",
       "screenshot": "https://linkedincopilot.io/og-image.png"
     }
     </script>
@@ -233,6 +233,30 @@
           "acceptedAnswer": {
             "@type": "Answer",
             "text": "Ghost profiles are LinkedIn accounts with minimal activity — no about section, few skills, no education, barely any connections. These users rarely check LinkedIn and will never see your connection request or message. LinkedIn Copilot automatically detects and skips ghost profiles so you don't waste credits on people who aren't active on the platform."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is Growth Mode in LinkedIn Copilot?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Growth Mode is a campaign type designed to build your LinkedIn authority. Instead of sending connection requests and DMs, it engages with content posted by thought leaders in your niche — visiting profiles, finding their latest posts, liking them, and posting AI-generated contextual comments. This makes your profile visible to their audience and grows your follower count and LinkedIn presence organically."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does AI comment generation work in LinkedIn Copilot?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "When Growth Mode finds a post from a target profile, Claude Haiku reads the full post content and generates a contextual comment. The AI rotates between five distinct styles — observation with a question, personal experience, expanding on a point, respectful challenge, and data-backed insight — so engagement always looks natural and varied. Comments reference specific details from the post and never use generic phrases."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use Outreach and Growth modes together?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. You can run Outreach and Growth campaigns simultaneously from the same LinkedIn account. Growth Mode warms up your profile and builds credibility by engaging with thought leaders' content, while Outreach Mode converts that credibility into conversations through personalized connection requests and DMs."
           }
         }
       ]
