@@ -107,7 +107,14 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const SCRAPIN_API_KEY = Deno.env.get("SCRAPIN_API_KEY");
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    const ANTHROPIC_MODEL_NOTE = Deno.env.get("ANTHROPIC_MODEL_NOTE")
+      || Deno.env.get("ANTHROPIC_MODEL_ICP")
+      || Deno.env.get("ANTHROPIC_MODEL")
+      || "claude-haiku-4-5";
+    const ANTHROPIC_MODEL_DM = Deno.env.get("ANTHROPIC_MODEL_DM")
+      || Deno.env.get("ANTHROPIC_MODEL")
+      || "claude-sonnet-4-6";
 
     const authHeader = req.headers.get("authorization");
     if (!authHeader) throw new Error("Missing authorization header");
@@ -394,7 +401,7 @@ serve(async (req) => {
           continue;
         }
 
-        if (!LOVABLE_API_KEY) {
+        if (!ANTHROPIC_API_KEY) {
           await supabase.from("campaign_leads")
             .update({ status: "enriched", updated_at: new Date().toISOString() } as any)
             .eq("id", lead.id);
@@ -445,36 +452,54 @@ Location: ${lead.location || "N/A"}
 
 Sign messages as "${senderFirstName}".`;
 
-        try {
-          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const callAnthropic = async (model: string, system: string, user: string) => {
+          const response = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
+              "x-api-key": ANTHROPIC_API_KEY,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
             },
             body: JSON.stringify({
-              model: "openai/gpt-5-mini",
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt },
-              ],
-              temperature: 0.75,
+              model,
+              max_tokens: 800,
+              temperature: 0.7,
+              system,
+              messages: [{ role: "user", content: user }],
             }),
           });
 
-          if (!aiResponse.ok) {
-            const errText = await aiResponse.text();
-            throw new Error(`AI API error: ${aiResponse.status} ${errText}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Anthropic API error: ${response.status} ${errorText}`);
           }
 
-          const aiData = await aiResponse.json();
-          const content = aiData.choices?.[0]?.message?.content || "";
+          const aiData = await response.json();
+          const contentBlocks = Array.isArray(aiData.content) ? aiData.content : [];
+          const content = contentBlocks
+            .filter((b: any) => b && b.type === "text")
+            .map((b: any) => b.text || "")
+            .join("")
+            .trim();
+          if (!content) throw new Error("No text in AI response");
 
-          // Parse JSON from response
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) throw new Error("No JSON in AI response");
+          let jsonStr = content.trim();
+          if (jsonStr.startsWith("```")) {
+            jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+          }
+          if (!jsonStr.startsWith("{")) {
+            const start = jsonStr.indexOf("{");
+            const end = jsonStr.lastIndexOf("}");
+            if (start !== -1 && end !== -1) {
+              jsonStr = jsonStr.slice(start, end + 1);
+            }
+          }
+          if (!jsonStr.startsWith("{")) throw new Error("No JSON in AI response");
+          return JSON.parse(jsonStr);
+        };
 
-          const messages = JSON.parse(jsonMatch[0]);
+        try {
+          const messages = await callAnthropic(ANTHROPIC_MODEL_DM, systemPrompt, userPrompt);
 
           // Validate lengths
           let connectionNote = messages.connection_note || "";
