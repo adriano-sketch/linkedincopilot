@@ -322,6 +322,7 @@ export type Database = {
           apollo_search_config: Json | null
           auto_approve_dms: boolean | null
           campaign_angle: string | null
+          campaign_mode: string
           campaign_objective: string
           created_at: string | null
           custom_vertical: boolean | null
@@ -359,6 +360,7 @@ export type Database = {
           apollo_search_config?: Json | null
           auto_approve_dms?: boolean | null
           campaign_angle?: string | null
+          campaign_mode?: string
           campaign_objective?: string
           created_at?: string | null
           custom_vertical?: boolean | null
@@ -396,6 +398,7 @@ export type Database = {
           apollo_search_config?: Json | null
           auto_approve_dms?: boolean | null
           campaign_angle?: string | null
+          campaign_mode?: string
           campaign_objective?: string
           created_at?: string | null
           custom_vertical?: boolean | null

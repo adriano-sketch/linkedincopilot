@@ -129,6 +129,11 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
           <DialogTitle>Edit Campaign</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {(campaign as any)?.campaign_mode === 'growth' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-700 font-medium flex items-center gap-2">
+              <span>📈</span> Growth Mode Campaign
+            </div>
+          )}
           <div><Label>Name</Label><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
           <div>
             <Label>Objective</Label>

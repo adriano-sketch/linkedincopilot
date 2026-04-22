@@ -11,7 +11,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { toast } from 'sonner';
 import {
   ArrowRight, ArrowLeft, Rocket, Target, Upload,
-  X, Plus, ChevronDown, Check, Loader2, AlertTriangle, Shield, Info, FileSpreadsheet
+  X, Plus, ChevronDown, Check, Loader2, AlertTriangle, Shield, Info, FileSpreadsheet,
+  TrendingUp, MessageCircle, Heart,
 } from 'lucide-react';
 import { useProfile } from '@/hooks/useProfile';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -29,6 +30,7 @@ import {
 
 export interface CampaignFormData {
   name: string;
+  campaign_mode: 'outreach' | 'growth';
   campaign_objective: string;
   value_proposition: string;
   proof_points: string;
@@ -73,6 +75,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
 
   const [form, setForm] = useState<CampaignFormData>({
     name: initialData?.name || '',
+    campaign_mode: (initialData as any)?.campaign_mode || 'outreach',
     campaign_objective: initialData?.campaign_objective || '',
     value_proposition: initialData?.value_proposition || '',
     proof_points: initialData?.proof_points || '',
@@ -102,6 +105,13 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   const [csvImporting, setCsvImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
   const [launching, setLaunching] = useState(false);
+
+  // Growth mode state
+  const [growthProfileUrl, setGrowthProfileUrl] = useState('');
+  const [growthProfiles, setGrowthProfiles] = useState<string[]>([]);
+  const [growthImporting, setGrowthImporting] = useState(false);
+
+  const isGrowth = form.campaign_mode === 'growth';
 
   const handleToggleVertical = (vertical: Vertical) => {
     setSelectedVerticals(prev => {
@@ -134,28 +144,105 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   const validateStep = (): boolean => {
     switch (step) {
       case 0:
-        if (!form.name || !form.campaign_objective) { toast.error('Fill campaign name and objective'); return false; }
+        if (!form.name) { toast.error('Fill campaign name'); return false; }
+        if (isGrowth) {
+          if (!form.dm_tone) { toast.error('Select a comment tone'); return false; }
+          return true;
+        }
+        if (!form.campaign_objective) { toast.error('Select a campaign objective'); return false; }
         if (!form.dm_tone) { toast.error('Select a message tone'); return false; }
         return true;
       case 1:
+        if (isGrowth) return true; // Growth skips vertical step
         if (!form.vertical_id && !form.custom_vertical) { toast.error('Select a target vertical'); return false; }
         return true;
       default: return true;
     }
   };
 
+  const addGrowthProfile = () => {
+    const url = growthProfileUrl.trim();
+    if (!url) return;
+    if (!url.includes('linkedin.com/in/')) {
+      toast.error('Enter a valid LinkedIn profile URL (e.g. linkedin.com/in/username)');
+      return;
+    }
+    const normalized = url.startsWith('http') ? url : `https://www.${url}`;
+    if (growthProfiles.includes(normalized)) {
+      toast.error('Profile already added');
+      return;
+    }
+    setGrowthProfiles(prev => [...prev, normalized]);
+    setGrowthProfileUrl('');
+  };
+
+  const importGrowthProfiles = async () => {
+    if (!createdCampaignId || !user || growthProfiles.length === 0) return;
+    setGrowthImporting(true);
+    try {
+      const payload = growthProfiles.map(url => {
+        const vanity = url.split('/in/')[1]?.replace(/\/$/, '') || '';
+        return {
+          user_id: user.id,
+          campaign_profile_id: createdCampaignId,
+          linkedin_url: url,
+          full_name: vanity.replace(/-/g, ' '),
+          source: 'manual',
+          status: 'ready',
+        };
+      });
+      const { data: inserted, error } = await supabase
+        .from('campaign_leads')
+        .upsert(payload, { onConflict: 'user_id,linkedin_url', ignoreDuplicates: true })
+        .select('id');
+      if (error) throw error;
+      setImportedCount(inserted?.length || 0);
+      toast.success(`${inserted?.length || 0} target profiles imported`);
+    } catch (e) {
+      toast.error('Import failed: ' + (e instanceof Error ? e.message : 'Unknown'));
+    } finally { setGrowthImporting(false); }
+  };
+
   const handleNext = async () => {
     if (!validateStep()) return;
+
+    // Growth mode: step 0 → create campaign, then go to step 1 (profiles)
+    if (isGrowth && step === 0 && !createdCampaignId && user) {
+      try {
+        const { data, error } = await supabase.from('campaign_profiles').insert({
+          user_id: user.id,
+          name: form.name,
+          campaign_mode: 'growth',
+          campaign_objective: 'build_relationship',
+          dm_tone: form.dm_tone,
+          message_language: form.message_language,
+          is_default: form.is_default,
+          is_template: false,
+          lead_source: 'manual',
+          status: 'draft',
+        } as any).select('id').single();
+        if (error) throw error;
+        setCreatedCampaignId(data.id);
+        queryClient.invalidateQueries({ queryKey: ['campaign_profiles'] });
+        toast.success('Growth campaign created — now add target profiles');
+      } catch (e) {
+        toast.error('Failed to create campaign');
+        return;
+      }
+      setStep(1);
+      return;
+    }
 
     if (step === 1 && !createdCampaignId && user) {
       try {
         const { data, error } = await supabase.from('campaign_profiles').insert({
           user_id: user.id,
           name: form.name,
-          campaign_objective: form.campaign_objective,
+          campaign_mode: form.campaign_mode,
+          campaign_objective: isGrowth ? 'build_relationship' : form.campaign_objective,
           value_proposition: form.value_proposition,
           proof_points: form.proof_points,
-          icp_description: form.icp_description,
+          icp_description: isGrowth ? 'Growth mode — engage with target profiles\' content' : form.icp_description,
           icp_titles: form.icp_titles,
           icp_locations: form.icp_locations,
           icp_industries: form.icp_industries,
@@ -169,11 +256,11 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           vertical_id: form.vertical_id,
           custom_vertical: form.custom_vertical,
           campaign_angle: form.campaign_angle || null,
-          lead_source: 'csv',
+          lead_source: isGrowth ? 'manual' : 'csv',
           generic_titles_no_filter: form.generic_titles_no_filter,
           message_language: form.message_language,
           status: 'draft',
-        }).select('id').single();
+        } as any).select('id').single();
         if (error) throw error;
         setCreatedCampaignId(data.id);
         queryClient.invalidateQueries({ queryKey: ['campaign_profiles'] });
@@ -328,23 +415,28 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     } finally { setLaunching(false); }
   };
 
-  const STEP_TITLES = ['Name & Strategy', 'Select Vertical', 'Import CSV'];
-  const STEP_ICONS = [Rocket, Target, Upload];
+  const STEP_TITLES = isGrowth
+    ? ['Mode & Strategy', 'Add Target Profiles']
+    : ['Name & Strategy', 'Select Vertical', 'Import CSV'];
+  const STEP_ICONS = isGrowth
+    ? [TrendingUp, Target]
+    : [Rocket, Target, Upload];
+  const totalSteps = isGrowth ? 2 : 3;
   const StepIcon = STEP_ICONS[step] || Upload;
 
   return (
     <div className="w-full max-w-lg mx-auto">
-      <StepBar current={step} total={3} />
+      <StepBar current={step} total={totalSteps} />
       <Card>
         <CardHeader>
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
-            <StepIcon className="w-5 h-5 text-primary" />
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${isGrowth ? 'bg-emerald-500/10' : 'bg-primary/10'}`}>
+            <StepIcon className={`w-5 h-5 ${isGrowth ? 'text-emerald-600' : 'text-primary'}`} />
           </div>
-          <CardTitle>Step {step + 1} of 3 — {STEP_TITLES[step]}</CardTitle>
+          <CardTitle>Step {step + 1} of {totalSteps} — {STEP_TITLES[step]}</CardTitle>
           <CardDescription>
-            {step === 0 && "What's this campaign about?"}
-            {step === 1 && "Select your target vertical so our AI can validate leads."}
-            {step === 2 && "Upload your CSV file with LinkedIn profile URLs."}
+            {step === 0 && (isGrowth ? "Set up your Growth campaign." : "What's this campaign about?")}
+            {step === 1 && (isGrowth ? "Add LinkedIn profiles to engage with." : "Select your target vertical so our AI can validate leads.")}
+            {step === 2 && !isGrowth && "Upload your CSV file with LinkedIn profile URLs."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -352,30 +444,60 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           {/* STEP 0: Name & Strategy */}
           {step === 0 && (
             <>
+              {/* Campaign Mode Selector */}
               <div>
-                <Label>Campaign Name *</Label>
-                <Input placeholder="e.g. Dental Practices - Orlando" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                <Label className="mb-2 block">Campaign Mode *</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setForm({ ...form, campaign_mode: 'outreach' })}
+                    className={`p-4 rounded-lg border text-left transition-all ${form.campaign_mode === 'outreach' ? 'border-primary bg-primary/5 ring-2 ring-primary' : 'border-border hover:border-primary/50'}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Target className="w-5 h-5 text-primary" />
+                      <p className="font-semibold text-sm">Outreach</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Send personalized connection requests & DMs to convert leads into conversations.</p>
+                  </button>
+                  <button type="button" onClick={() => setForm({ ...form, campaign_mode: 'growth', campaign_objective: 'build_relationship' })}
+                    className={`p-4 rounded-lg border text-left transition-all relative ${form.campaign_mode === 'growth' ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500' : 'border-border hover:border-emerald-400/50'}`}>
+                    <div className="absolute -top-2 -right-2 bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full">New</div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <TrendingUp className="w-5 h-5 text-emerald-600" />
+                      <p className="font-semibold text-sm">Growth</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Build authority by engaging with thought leaders' posts — likes & AI comments on autopilot.</p>
+                  </button>
+                </div>
               </div>
 
               <div>
-                <Label className="mb-2 block">Campaign Objective *</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {CAMPAIGN_OBJECTIVES.map(obj => (
-                    <button key={obj.value} type="button" onClick={() => setForm({ ...form, campaign_objective: obj.value })}
-                      className={`p-3 rounded-lg border text-left transition-all ${form.campaign_objective === obj.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}>
-                      <span className="text-lg">{obj.icon}</span>
-                      <p className="font-medium text-sm mt-1">{obj.label}</p>
-                      <p className="text-xs text-muted-foreground">{obj.desc}</p>
-                    </button>
-                  ))}
-                </div>
+                <Label>Campaign Name *</Label>
+                <Input placeholder={isGrowth ? "e.g. Growth — Marketing Agency Leaders" : "e.g. Dental Practices - Orlando"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               </div>
+
+              {/* Outreach-only fields */}
+              {!isGrowth && (
+                <>
+                  <div>
+                    <Label className="mb-2 block">Campaign Objective *</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {CAMPAIGN_OBJECTIVES.map(obj => (
+                        <button key={obj.value} type="button" onClick={() => setForm({ ...form, campaign_objective: obj.value })}
+                          className={`p-3 rounded-lg border text-left transition-all ${form.campaign_objective === obj.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}>
+                          <span className="text-lg">{obj.icon}</span>
+                          <p className="font-medium text-sm mt-1">{obj.label}</p>
+                          <p className="text-xs text-muted-foreground">{obj.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div>
-                <Label className="mb-2 block">Message Tone *</Label>
+                <Label className="mb-2 block">{isGrowth ? 'Comment Tone *' : 'Message Tone *'}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {TONE_OPTIONS.map(tone => (
                     <button key={tone.value} type="button" onClick={() => setForm({ ...form, dm_tone: tone.value })}
-                      className={`p-3 rounded-lg border text-left transition-all ${form.dm_tone === tone.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}>
+                      className={`p-3 rounded-lg border text-left transition-all ${form.dm_tone === tone.value ? (isGrowth ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-primary bg-primary/5 ring-1 ring-primary') : 'border-border hover:border-primary/50'}`}>
                       <span className="text-lg">{tone.icon}</span>
                       <p className="font-medium text-sm mt-1">{tone.label}</p>
                       <p className="text-xs text-muted-foreground">{tone.desc}</p>
@@ -383,8 +505,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                   ))}
                 </div>
               </div>
+
               <div>
-                <Label className="mb-2 block">Message Language *</Label>
+                <Label className="mb-2 block">{isGrowth ? 'Comment Language *' : 'Message Language *'}</Label>
                 <Select value={form.message_language} onValueChange={v => setForm({ ...form, message_language: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select language" />
@@ -400,27 +523,50 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground mt-1">GPT-5 will write all 3 messages natively in this language.</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isGrowth ? 'AI will write comments in this language.' : 'AI will write all messages natively in this language.'}
+                </p>
               </div>
-              <div>
-                <Label>Value Proposition</Label>
-                <Textarea placeholder="Why should they care? Focus on benefit to the lead." value={form.value_proposition} onChange={e => setForm({ ...form, value_proposition: e.target.value.slice(0, 300) })} rows={2} />
-                <CharCounter value={form.value_proposition} max={300} />
-              </div>
-              <div>
-                <Label>Campaign Angle (optional)</Label>
-                <Input placeholder="e.g. HIPAA compliance for dental" value={form.campaign_angle} onChange={e => setForm({ ...form, campaign_angle: e.target.value })} />
-              </div>
-              <div>
-                <Label>Example DM (optional)</Label>
-                <Textarea placeholder="Paste a DM that worked well. The AI learns your style." value={form.dm_example} onChange={e => setForm({ ...form, dm_example: e.target.value.slice(0, 500) })} rows={3} />
-                <CharCounter value={form.dm_example} max={500} />
-              </div>
+
+              {/* Growth mode info box */}
+              {isGrowth && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm space-y-2">
+                  <div className="flex items-start gap-2">
+                    <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-emerald-800">How Growth Mode works</p>
+                      <p className="text-xs text-emerald-700 mt-1">
+                        Add LinkedIn profiles of thought leaders in your niche. Every week, the extension will visit their profile, find their latest post, like it, and post an AI-generated comment that references specific points from their content. This builds your visibility in their audience.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Outreach-only: value prop, angle, example DM */}
+              {!isGrowth && (
+                <>
+                  <div>
+                    <Label>Value Proposition</Label>
+                    <Textarea placeholder="Why should they care? Focus on benefit to the lead." value={form.value_proposition} onChange={e => setForm({ ...form, value_proposition: e.target.value.slice(0, 300) })} rows={2} />
+                    <CharCounter value={form.value_proposition} max={300} />
+                  </div>
+                  <div>
+                    <Label>Campaign Angle (optional)</Label>
+                    <Input placeholder="e.g. HIPAA compliance for dental" value={form.campaign_angle} onChange={e => setForm({ ...form, campaign_angle: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Example DM (optional)</Label>
+                    <Textarea placeholder="Paste a DM that worked well. The AI learns your style." value={form.dm_example} onChange={e => setForm({ ...form, dm_example: e.target.value.slice(0, 500) })} rows={3} />
+                    <CharCounter value={form.dm_example} max={500} />
+                  </div>
+                </>
+              )}
             </>
           )}
 
-          {/* STEP 1: Select Vertical */}
-          {step === 1 && (
+          {/* STEP 1: Select Vertical (Outreach only) */}
+          {step === 1 && !isGrowth && (
             <>
               <div>
                 <Label className="mb-2 block">Select Your Target Vertical</Label>
@@ -506,8 +652,64 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
             </>
           )}
 
-          {/* STEP 2: Import CSV */}
-          {step === 2 && (
+          {/* STEP 1 (Growth): Add Target Profiles */}
+          {step === 1 && isGrowth && (
+            <>
+              {importedCount > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                  <p className="text-sm font-medium text-emerald-800">✅ {importedCount} target profiles imported</p>
+                  <p className="text-xs text-emerald-700 mt-1">The extension will engage with their content weekly.</p>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Add LinkedIn profile URLs of thought leaders or accounts whose audience you want to reach. The AI will engage with their latest posts every week.
+                </p>
+
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="https://www.linkedin.com/in/username"
+                    value={growthProfileUrl}
+                    onChange={e => setGrowthProfileUrl(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGrowthProfile(); } }}
+                    className="flex-1"
+                  />
+                  <Button variant="outline" size="sm" onClick={addGrowthProfile} className="shrink-0">
+                    <Plus className="w-4 h-4 mr-1" /> Add
+                  </Button>
+                </div>
+
+                {growthProfiles.length > 0 && (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {growthProfiles.map((url, i) => {
+                      const vanity = url.split('/in/')[1]?.replace(/\/$/, '') || url;
+                      return (
+                        <div key={i} className="flex items-center gap-2 bg-emerald-50/50 border border-emerald-200/50 rounded-lg px-3 py-2">
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="text-sm flex-1 truncate">{vanity}</span>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setGrowthProfiles(prev => prev.filter((_, j) => j !== i))}>
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">{growthProfiles.length} profile{growthProfiles.length !== 1 ? 's' : ''} added</p>
+
+                {growthProfiles.length > 0 && importedCount === 0 && (
+                  <Button onClick={importGrowthProfiles} disabled={growthImporting} className="w-full bg-emerald-600 hover:bg-emerald-700">
+                    {growthImporting ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Importing...</> : `Import ${growthProfiles.length} target profiles`}
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* STEP 2: Import CSV (Outreach only) */}
+          {step === 2 && !isGrowth && (
             <>
               {importedCount > 0 && (
                 <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
@@ -627,12 +829,17 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
             ) : onCancel ? (
               <Button variant="ghost" onClick={onCancel}>Cancel</Button>
             ) : <div />}
-            {step === 2 ? (
-              <Button onClick={() => { if (importedCount > 0) handleLaunch(); else toast.error('Import at least 1 lead first'); }} disabled={launching} size="lg">
+            {(isGrowth ? step === 1 : step === 2) ? (
+              <Button
+                onClick={() => { if (importedCount > 0) handleLaunch(); else toast.error(isGrowth ? 'Import at least 1 target profile first' : 'Import at least 1 lead first'); }}
+                disabled={launching}
+                size="lg"
+                className={isGrowth ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              >
                 {launching ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Launching...</> : <><Rocket className="w-4 h-4 mr-1" /> Launch Campaign</>}
               </Button>
             ) : (
-              <Button onClick={handleNext}>Next <ArrowRight className="w-4 h-4 ml-1" /></Button>
+              <Button onClick={handleNext} className={isGrowth ? 'bg-emerald-600 hover:bg-emerald-700' : ''}>Next <ArrowRight className="w-4 h-4 ml-1" /></Button>
             )}
           </div>
         </CardContent>

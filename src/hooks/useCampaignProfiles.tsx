@@ -9,6 +9,7 @@ export interface CampaignProfile {
   name: string;
   is_default: boolean;
   is_template: boolean;
+  campaign_mode: string;
   campaign_objective: string;
   value_proposition: string | null;
   proof_points: string | null;

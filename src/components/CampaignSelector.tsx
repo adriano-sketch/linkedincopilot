@@ -40,7 +40,7 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
               <SelectLabel className="text-xs text-muted-foreground">Active / Paused</SelectLabel>
               {activeCampaigns.map(c => (
                 <SelectItem key={c.id} value={c.id}>
-                  {getVerticalIcon(c.vertical_id)}{c.name} {c.status === 'paused' ? '⏸' : '🟢'} {c.is_default && '⭐'}
+                  {(c as any).campaign_mode === 'growth' ? '📈 ' : getVerticalIcon(c.vertical_id)}{c.name} {c.status === 'paused' ? '⏸' : '🟢'} {c.is_default && '⭐'}
                 </SelectItem>
               ))}
             </SelectGroup>
