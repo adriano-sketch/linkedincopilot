@@ -12,22 +12,22 @@ export default function ExtensionStatusBar() {
   const { extensionStatus, isLoading } = useExtensionStatus();
   const [toggling, setToggling] = useState(false);
 
-  if (isLoading || !extensionStatus) {
+  if (!isLoading && !extensionStatus) {
     return (
       <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/80 bg-gradient-card shadow-card">
         <WifiOff className="w-4 h-4 text-muted-foreground" />
         <span className="text-sm text-muted-foreground">Extension not connected</span>
         <a
-          href="https://chrome.google.com/webstore"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/setup-guide"
           className="text-xs text-primary hover:underline ml-auto"
         >
-          Install Extension
+          Connect extension →
         </a>
       </div>
     );
   }
+
+  if (isLoading || !extensionStatus) return <div role="status" className="text-xs text-muted-foreground py-3">Checking extension connection…</div>;
 
   const isOnline = extensionStatus.is_connected &&
     extensionStatus.last_heartbeat_at &&
@@ -54,7 +54,7 @@ export default function ExtensionStatusBar() {
 
   return (
     <div className="relative flex items-center gap-4 px-4 py-3 rounded-xl border border-border/80 bg-gradient-card shadow-card flex-wrap">
-      <span className="absolute inset-x-0 top-0 h-0.5 bg-gradient-gold opacity-60" />
+
       {/* Connection status */}
       <div className="flex items-center gap-2">
         {isOnline ? (

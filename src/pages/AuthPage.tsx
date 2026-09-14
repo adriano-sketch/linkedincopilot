@@ -4,10 +4,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, Mail, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import logoImg from '@/assets/logo.png';
+import Brand from '@/components/Brand';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function AuthPage() {
@@ -16,7 +15,7 @@ export default function AuthPage() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'recovery'>('signup');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'recovery'>(() => { const initial = searchParams.get('mode') || searchParams.get('type'); return initial === 'signin' || initial === 'recovery' ? initial : 'signup'; });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [recoveryPassword, setRecoveryPassword] = useState('');
@@ -33,7 +32,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     const urlMode = searchParams.get('mode') || searchParams.get('type');
-    if (urlMode === 'recovery') setMode('recovery');
+    if (urlMode === 'recovery' || urlMode === 'signin' || urlMode === 'signup') setMode(urlMode);
   }, [searchParams]);
 
   useEffect(() => {
@@ -48,16 +47,16 @@ export default function AuthPage() {
     }
     setPasswordError('');
     setSubmitting(true);
+    try {
     const fn = mode === 'signup' ? signUpWithEmail : signInWithEmail;
-    const result = await fn(email, password);
-    const error = (result as any)?.error;
-    setSubmitting(false);
+    const result: Awaited<ReturnType<typeof signUpWithEmail>> = await fn(email, password);
+    const error = result?.error;
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
       return;
     }
     if (mode === 'signup') {
-      const session = (result as any)?.data?.session ?? null;
+      const session = result.data?.session ?? null;
       if (!session) {
         toast({
           title: 'Check your email to confirm',
@@ -68,22 +67,32 @@ export default function AuthPage() {
         toast({ title: 'Account created', description: 'Welcome to LinkedIn Copilot.' });
       }
     }
+    } catch (error) {
+      toast({ title: 'Unable to continue', description: error instanceof Error ? error.message : 'Check your connection and try again.', variant: 'destructive' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
     setSubmitting(true);
+    try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth?mode=recovery`,
     });
-    setSubmitting(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
       return;
     }
     toast({ title: 'Reset email sent', description: 'Check your inbox for the reset link.' });
     setMode('signin');
+    } catch (error) {
+      toast({ title: 'Unable to continue', description: error instanceof Error ? error.message : 'Check your connection and try again.', variant: 'destructive' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleRecoverySubmit = async (e: React.FormEvent) => {
@@ -96,8 +105,8 @@ export default function AuthPage() {
     }
     setPasswordError('');
     setSubmitting(true);
+    try {
     const { error } = await supabase.auth.updateUser({ password: recoveryPassword });
-    setSubmitting(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
       return;
@@ -106,29 +115,27 @@ export default function AuthPage() {
     setRecoveryPassword('');
     setRecoveryConfirm('');
     setMode('signin');
+    } catch (error) {
+      toast({ title: 'Unable to continue', description: error instanceof Error ? error.message : 'Check your connection and try again.', variant: 'destructive' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
-      <button onClick={() => navigate('/')} className="absolute top-6 left-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Back
-      </button>
-
-      <div className="flex items-center gap-2 mb-8">
-        <img src={logoImg} alt="LinkedIn Copilot" className="h-10 w-auto" />
-      </div>
-
-      <Card className="w-full max-w-sm shadow-lg">
-        <CardContent className="p-6">
-          <h1 className="text-xl font-bold text-center mb-1">
+    <div className="auth-layout">
+      <aside className="auth-story"><Brand light /><div className="auth-story-main"><p className="eyebrow">CONTEXT BEFORE CONTACT</p><h2>A better starting point<br />for every conversation.</h2><p>Bring your knowledge of your customers. Let Copilot help connect it to the people you want to reach.</p><div className="auth-story-card"><span>THE WORKFLOW</span><p>Understand the person.<br />Find the relevance.<br />Review the message.</p></div></div><p>Thoughtful outreach. With your judgment in the loop.</p></aside>
+      <section className="auth-form-side"><button onClick={() => navigate('/')} className="auth-back"><ArrowLeft className="w-3 h-3" /> Back to website</button>
+      <div className="auth-form-card"><div className="auth-mobile-brand"><Brand /></div>
+          <h1 className="mb-1">
             {mode === 'signup' && 'Create your account'}
             {mode === 'signin' && 'Welcome back'}
             {mode === 'forgot' && 'Reset your password'}
             {mode === 'recovery' && 'Set a new password'}
           </h1>
-          <p className="text-sm text-muted-foreground text-center mb-6">
-            {mode === 'signup' && 'Get started with LinkedIn Copilot'}
-            {mode === 'signin' && 'Sign in to your account'}
+          <p className="auth-subtitle">
+            {mode === 'signup' && 'Start with 50 outreach credits. No credit card required.'}
+            {mode === 'signin' && 'Your prospects, drafts and campaigns are waiting.'}
             {mode === 'forgot' && 'We will email you a reset link'}
             {mode === 'recovery' && 'Choose a strong password to continue'}
           </p>
@@ -137,13 +144,14 @@ export default function AuthPage() {
             <form onSubmit={handleEmailSubmit} className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <Input id="email" type="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="Min. 8 chars, 1 uppercase, 1 number" value={password} onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }} minLength={8} required />
-                {passwordError && <p className="text-xs text-destructive">{passwordError}</p>}
+                <Input id="password" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'} value={password} onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }} minLength={mode === 'signup' ? 8 : undefined} required />
+                {passwordError && <p role="alert" className="text-xs text-destructive">{passwordError}</p>}
               </div>
+              {mode === 'signup' && <p className="text-xs text-muted-foreground">Use 8+ characters, an uppercase letter and a number.</p>}
               <Button type="submit" className="w-full bg-gold hover:opacity-90 text-navy font-semibold" disabled={submitting}>
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Mail className="w-4 h-4 mr-2" />}
                 {mode === 'signup' ? 'Create Account' : 'Sign In'}
@@ -164,7 +172,7 @@ export default function AuthPage() {
             <form onSubmit={handleForgotSubmit} className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="reset-email">Email</Label>
-                <Input id="reset-email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <Input id="reset-email" type="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               <Button type="submit" className="w-full bg-gold hover:opacity-90 text-navy font-semibold" disabled={submitting}>
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Mail className="w-4 h-4 mr-2" />}
@@ -205,7 +213,7 @@ export default function AuthPage() {
                   minLength={8}
                   required
                 />
-                {passwordError && <p className="text-xs text-destructive">{passwordError}</p>}
+                {passwordError && <p role="alert" className="text-xs text-destructive">{passwordError}</p>}
               </div>
               <Button type="submit" className="w-full bg-gold hover:opacity-90 text-navy font-semibold" disabled={submitting}>
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Mail className="w-4 h-4 mr-2" />}
@@ -222,8 +230,8 @@ export default function AuthPage() {
               </button>
             </p>
           )}
-        </CardContent>
-      </Card>
+        <p className="text-[11px] text-muted-foreground mt-8 text-center">Your data and your workspace. <a href="/privacy" className="underline">Privacy policy</a></p>
+      </div></section>
     </div>
   );
 }

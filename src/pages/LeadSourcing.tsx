@@ -1,3 +1,4 @@
+import AppShell from '@/components/AppShell';
 import { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
@@ -148,13 +149,9 @@ export default function LeadSourcing() {
   const resetDateFormatted = cycleResetDate ? new Date(cycleResetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 p-4">
-      <div className="max-w-4xl mx-auto space-y-4">
-        <div className="flex items-center gap-3">
-          <Link to="/dashboard"><Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button></Link>
-          <h1 className="text-2xl font-bold">Add Leads</h1>
-        </div>
-
+    <AppShell title="Import prospects">
+      <div className="workspace-heading"><div><p className="eyebrow">YOUR WORKSPACE</p><h1>Import prospects</h1><p>Bring your list. Check the details. Add the right people to your campaign.</p></div></div>
+      <div className="max-w-4xl space-y-5">
         {/* Lead Credits Banner */}
         <Card className={isExhausted ? 'border-destructive/50 bg-destructive/5' : isLow ? 'border-warning/50 bg-warning/5' : ''}>
           <CardContent className="py-4">
@@ -313,6 +310,6 @@ export default function LeadSourcing() {
         )}
       </div>
       <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
-    </div>
+    </AppShell>
   );
 }

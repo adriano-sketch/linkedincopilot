@@ -1,4 +1,3 @@
-import { Card, CardContent } from '@/components/ui/card';
 
 interface PipelineStatsProps {
   counts: Record<string, number>;
@@ -38,15 +37,15 @@ const PIPELINE_STAGES = [
   },
   {
     key: 'pending_approval',
-    label: 'Pending',
+    label: 'Review',
     color: 'text-orange-500',
-    statuses: ['dm_ready', 'ready_for_dm'],
+    statuses: ['pending_approval', 'dm_ready', 'ready_for_dm', 'dm_pending_approval'],
     highlight: true,
     emoji: '📬',
   },
   {
     key: 'dm_sent',
-    label: 'DM Sent',
+    label: 'DM stage',
     color: 'text-purple-600',
     statuses: ['dm_queued', 'dm_sent', 'waiting_reply', 'follow_up_due', 'follow_up_sent', 'followup_sent'],
     emoji: '💬',
@@ -60,7 +59,7 @@ const PIPELINE_STAGES = [
   },
   {
     key: 'ghost',
-    label: 'Ghosts',
+    label: 'Limited data',
     color: 'text-slate-500',
     statuses: ['ghost'],
     emoji: '👻',
@@ -75,29 +74,29 @@ const PIPELINE_STAGES = [
 ];
 
 export default function PipelineStats({ counts, onStageClick, activeFilter, qualifiedTotal }: PipelineStatsProps) {
-  const total = Object.values(counts).reduce((s, v) => s + v, 0);
-  const pctBase = qualifiedTotal != null && qualifiedTotal > 0 ? qualifiedTotal : total;
 
   return (
-    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+    <div className="grid grid-cols-3 sm:grid-cols-5 xl:grid-cols-9 gap-2">
       {PIPELINE_STAGES.map(stage => {
         const count = stage.statuses.reduce((sum, s) => sum + (counts[s as keyof typeof counts] || 0), 0);
         const isActive = activeFilter === stage.key;
-        const shouldHighlight = (stage as any).highlight && count > 0;
-        const pct = pctBase > 0 ? Math.round((count / pctBase) * 100) : 0;
+        const shouldHighlight = stage.highlight && count > 0;
         return (
-          <Card
+          <button
+            type="button"
+            aria-pressed={isActive}
+            aria-label={`${stage.label}: ${count} prospects. Filter prospects.`}
             key={stage.key}
-            className={`cursor-pointer transition-all hover:shadow-md ${isActive ? 'ring-2 ring-primary' : ''} ${shouldHighlight ? 'border-orange-400 bg-orange-50 dark:bg-orange-950/20' : ''}`}
+            className={`rounded-lg border border-border bg-white text-left transition-all hover:border-primary ${isActive ? 'ring-2 ring-primary' : ''} ${shouldHighlight ? 'border-orange-400 bg-orange-50 dark:bg-orange-950/20' : ''}`}
             onClick={() => onStageClick?.(isActive ? null : stage.key)}
           >
-            <CardContent className="p-3 text-center">
-              <p className="text-lg mb-0.5">{stage.emoji}</p>
-              <p className={`text-xl font-bold ${stage.color}`}>{count}</p>
-              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{stage.label}</p>
-              {pct > 0 && <p className="text-[9px] text-muted-foreground mt-0.5">{pct}%</p>}
-            </CardContent>
-          </Card>
+            <div className="p-3">
+
+              <p className="text-2xl font-medium tracking-tight text-foreground">{count}</p>
+              <p className="text-[10px] text-muted-foreground mt-2">{stage.label}</p>
+
+            </div>
+          </button>
         );
       })}
     </div>
@@ -109,7 +108,7 @@ export const STAGE_STATUS_MAP: Record<string, string[]> = {
   warming: ['visiting_profile', 'following', 'queued_for_connection'],
   connection_sent: ['connection_sent'],
   connected: ['connected', 'connection_accepted'],
-  pending_approval: ['dm_ready', 'ready_for_dm'],
+  pending_approval: ['pending_approval', 'dm_ready', 'ready_for_dm', 'dm_pending_approval'],
   dm_sent: ['dm_queued', 'dm_sent', 'waiting_reply', 'follow_up_due', 'follow_up_sent', 'followup_sent'],
   replied: ['replied'],
   ghost: ['ghost'],

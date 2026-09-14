@@ -1,3 +1,5 @@
+import Brand from '@/components/Brand';
+import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,7 +15,7 @@ import {
   User, ArrowRight, ArrowLeft, Chrome, Check, Loader2, AlertTriangle, RefreshCw
 } from 'lucide-react';
 
-const STEPS = ['Your Profile', 'Install Extension'];
+const STEPS = ['Your perspective', 'Connect your browser'];
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -24,6 +26,7 @@ export default function Onboarding() {
   const [extensionDetected, setExtensionDetected] = useState(false);
   const [waitingForExtension, setWaitingForExtension] = useState(false);
   const [waitStarted, setWaitStarted] = useState<number | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
 
   const [form, setForm] = useState({
     sender_name: '',
@@ -97,21 +100,22 @@ export default function Onboarding() {
     }
   };
 
-  const timedOut = waitStarted && Date.now() - waitStarted > 60000;
+  useEffect(() => {
+    setTimedOut(false);
+    if (!waitingForExtension || !waitStarted) return;
+    const timer = window.setTimeout(() => setTimedOut(true), Math.max(0, 60000 - (Date.now() - waitStarted)));
+    return () => window.clearTimeout(timer);
+  }, [waitStarted, waitingForExtension]);
 
-  if (isLoading) return null;
+  if (authLoading || isLoading) return <div className="min-h-screen flex items-center justify-center" role="status"><Loader2 className="animate-spin mr-2" /> Loading your workspace…</div>;
 
   const stepIndicator = (
-    <div className="flex gap-2 mb-6">
-      {STEPS.map((_, i) => (
-        <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= step ? 'bg-primary' : 'bg-border'}`} />
-      ))}
-    </div>
+    <ol className="wizard-steps" aria-label="Setup progress">{STEPS.map((label, i) => <li key={label} aria-current={i === step ? 'step' : undefined} className={i < step ? 'completed' : ''}><span>0{i + 1}</span>{label}</li>)}</ol>
   );
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
+    <div className="onboarding-page"><header><Brand /><Link to="/help">Need a hand? ↗</Link></header>
+      <div className="onboarding-content"><div className="onboarding-intro"><p className="eyebrow">MAKE COPILOT YOUR OWN</p><h1>Good outreach starts with you.</h1><p>A little context about your business helps shape every message.</p></div>
         {stepIndicator}
         <Card>
           <CardHeader>
@@ -121,8 +125,8 @@ export default function Onboarding() {
             </div>
             <CardTitle>Step {step + 1} of 2 — {STEPS[step]}</CardTitle>
             <CardDescription>
-              {step === 0 && "Tell us about you and your company."}
-              {step === 1 && "Install the Chrome Extension to automate LinkedIn actions."}
+              {step === 0 && "Give Copilot the perspective behind your outreach. You can update this later."}
+              {step === 1 && "Connect the extension that runs campaign actions in your browser."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -132,23 +136,23 @@ export default function Onboarding() {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Name *</Label>
-                    <Input placeholder="Your name" value={form.sender_name} onChange={e => setForm({ ...form, sender_name: e.target.value })} />
+                    <Label htmlFor="sender_name">Name *</Label>
+                    <Input placeholder="Your name" id="sender_name" value={form.sender_name} onChange={e => setForm({ ...form, sender_name: e.target.value })} />
                   </div>
                   <div>
-                    <Label>Title *</Label>
-                    <Input placeholder="e.g. Founder, Sales Director" value={form.sender_title} onChange={e => setForm({ ...form, sender_title: e.target.value })} />
+                    <Label htmlFor="sender_title">Title *</Label>
+                    <Input placeholder="e.g. Founder, Sales Director" id="sender_title" value={form.sender_title} onChange={e => setForm({ ...form, sender_title: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <Label>Company *</Label>
-                  <Input placeholder="Your company name" value={form.company_name} onChange={e => setForm({ ...form, company_name: e.target.value })} />
+                  <Label htmlFor="company_name">Company *</Label>
+                  <Input placeholder="Your company name" id="company_name" value={form.company_name} onChange={e => setForm({ ...form, company_name: e.target.value })} />
                 </div>
                 <div>
-                  <Label>Description</Label>
+                  <Label htmlFor="company_description">Description</Label>
                   <Textarea
                     placeholder="What does your company do? This helps the AI write better messages."
-                    value={form.company_description}
+                    id="company_description" value={form.company_description}
                     onChange={e => setForm({ ...form, company_description: e.target.value.slice(0, 1000) })}
                     rows={4}
                   />
@@ -173,7 +177,7 @@ export default function Onboarding() {
                     <div className="bg-muted/50 rounded-lg p-4 space-y-3">
                       <p className="text-sm font-medium">How to install:</p>
                       <ol className="text-sm text-muted-foreground space-y-2 list-decimal pl-4">
-                        <li>Download the extension files from your dashboard</li>
+                        <li><a className="underline text-foreground" href="/linkedincopilot-extension.zip" download>Download the extension ZIP</a> and extract it</li>
                         <li>Open <code className="bg-muted px-1 rounded">chrome://extensions</code></li>
                         <li>Enable "Developer mode" (top right)</li>
                         <li>Click "Load unpacked" and select the extension folder</li>
@@ -227,12 +231,10 @@ export default function Onboarding() {
               {step === 1 && (
                 <div className="flex gap-2">
                   {!extensionDetected && (
-                    <Button variant="ghost" onClick={handleComplete} disabled={updateProfile.isPending}>
-                      Skip for now
-                    </Button>
+                    <p className="max-w-40 text-xs text-muted-foreground">You can finish setup later. Execution needs a connected extension.</p>
                   )}
                   <Button onClick={handleComplete} disabled={updateProfile.isPending}>
-                    {extensionDetected ? 'Go to Dashboard →' : 'Continue →'}
+                    {extensionDetected ? 'Open workspace →' : 'Set up later →'}
                   </Button>
                 </div>
               )}

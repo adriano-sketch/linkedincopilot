@@ -30,11 +30,11 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
     <div className="flex items-center gap-2 flex-wrap">
       <span className="text-sm font-medium text-muted-foreground">Campaign:</span>
       <Select value={selectedCampaignId || 'all'} onValueChange={v => onSelect(v === 'all' ? null : v)}>
-        <SelectTrigger className="w-[260px]">
-          <SelectValue placeholder="All Active Campaigns" />
+        <SelectTrigger aria-label="Selected campaign" className="w-[260px] max-w-full">
+          <SelectValue placeholder="Choose a campaign" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All Active Campaigns</SelectItem>
+          <SelectItem value="all" disabled>Choose a campaign</SelectItem>
           {activeCampaigns.length > 0 && (
             <SelectGroup>
               <SelectLabel className="text-xs text-muted-foreground">Active / Paused</SelectLabel>
@@ -66,7 +66,7 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
         </Button>
       )}
       {selectedCampaignId && (
-        <Button variant="ghost" size="sm" onClick={onEditCampaign}>
+        <Button variant="ghost" size="sm" aria-label="Edit selected campaign" onClick={onEditCampaign}>
           <Settings className="w-3 h-3" />
         </Button>
       )}

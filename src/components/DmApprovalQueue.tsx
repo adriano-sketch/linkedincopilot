@@ -1,9 +1,10 @@
+import ProspectContext from '@/components/ProspectContext';
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -165,7 +166,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
     if (!editingLead || !campaignProfileId) return;
     setApproving(true);
     try {
-      const editData: any = {};
+      const editData: Record<string, string> = {};
       if (editField === 'connection_note') editData.connection_note = editText;
       if (editField === 'dm') { editData.custom_dm = editText; editData.dm_text = editText; }
       if (editField === 'followup') { editData.custom_followup = editText; editData.follow_up_text = editText; }
@@ -203,8 +204,8 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
     samples: CampaignLead[],
     approveLabel: string,
   ) => (
-    <div className="flex items-center justify-between pb-2">
-      <div className="flex items-center gap-2">
+    <div className="flex items-start justify-between gap-4 flex-wrap pb-2">
+      <div className="flex items-center flex-wrap gap-2">
         <CardTitle className="text-lg">{label}</CardTitle>
         {isApproved ? (
           <Badge variant="default" className="gap-1 bg-emerald-600"><CheckCircle2 className="w-3 h-3" /> Approved</Badge>
@@ -214,7 +215,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
           <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">{samples.length} samples ready</Badge>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center flex-wrap gap-2">
         {!isApproved && onEditCampaign && (
           <Button
             size="sm"
@@ -222,7 +223,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
             onClick={onEditCampaign}
             className="gap-1"
           >
-            <Edit2 className="w-3 h-3" /> Edit Wizard
+            <Edit2 className="w-3 h-3" /> Edit campaign
           </Button>
         )}
         {stage === 'connection' && !isApproved && samples.length > 0 && (
@@ -264,33 +265,25 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
     const isDmPending = lead.status === 'dm_pending_approval' && messageField === 'dm';
 
     return (
-      <div key={`${lead.id}-${messageField}`} className="p-4 hover:bg-muted/30 transition-colors">
-        <div className="flex items-start gap-3">
+      <article key={`${lead.id}-${messageField}`} className="approval-message-card">
+        <ProspectContext lead={lead} />
+        <div className="approval-draft">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-medium text-sm">{displayName(lead)}</span>
-              {lead.title && <span className="text-xs text-muted-foreground">— {lead.title}</span>}
-              {lead.company && <span className="text-xs text-muted-foreground">@ {lead.company}</span>}
-              {isDmPending && (
-                <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-300">
-                  ⏳ Awaiting approval
-                </Badge>
-              )}
-            </div>
+            <div className="flex items-center justify-between gap-2 flex-wrap"><p className="eyebrow mb-0">{messageField === 'connection_note' ? 'Connection note' : messageField === 'dm' ? 'Direct message' : 'Follow-up'} · Draft</p><Badge variant="outline">{isApproved && !isDmPending ? 'Stage enabled' : 'Review needed'}</Badge></div>
             {text && (
-              <div className="bg-muted/50 rounded-lg p-2.5 text-sm whitespace-pre-wrap mb-2">
+              <div className="approval-draft-text">
                 {text}
               </div>
             )}
             {(isDmPending || !isApproved) && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="message-actions">
                 {isDmPending && (
                   <Button size="sm" className="h-7 text-xs gap-1"
                     onClick={() => handleApproveSingleDm(lead.id)}
                     disabled={actionLoading === lead.id}
                   >
                     {actionLoading === lead.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                    Approve & Send
+                    Approve this DM & send
                   </Button>
                 )}
                 <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
@@ -320,7 +313,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
             )}
           </div>
         </div>
-      </div>
+      </article>
     );
   };
 
@@ -329,6 +322,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Regenerate all connection notes?</DialogTitle>
+          <DialogDescription>Replace the current connection notes with new drafts.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 text-sm text-muted-foreground">
           <p>This will delete all current connection notes and regenerate them using the latest prompt.</p>
@@ -364,26 +358,27 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
 
   return (
     <>
+      <div className="mb-5"><h2 className="text-xl font-semibold tracking-tight">Make every message worth sending.</h2><p className="text-xs text-muted-foreground mt-2 leading-relaxed">Check the available context, read the draft and decide what happens next. Profile details may be incomplete or outdated.</p></div>
       <Card>
         <CardContent className="p-0">
           <Tabs defaultValue={defaultTab}>
-            <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-4 pt-3">
+            <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-4 pt-3 overflow-x-auto">
               <TabsTrigger value="connection" className="relative gap-1.5">
-                🤝 Connection Notes
+                Connection notes
                 {!connApproved && connectionSamples.length > 0 && (
                   <Badge variant="destructive" className="h-5 min-w-5 text-[10px] px-1.5">{connectionSamples.length}</Badge>
                 )}
                 {connApproved && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
               </TabsTrigger>
               <TabsTrigger value="dm" className="relative gap-1.5">
-                💬 DMs
+                Direct messages
                 {dmPendingApproval.length > 0 && (
                   <Badge variant="destructive" className="h-5 min-w-5 text-[10px] px-1.5">{dmPendingApproval.length}</Badge>
                 )}
                 {dmPendingApproval.length === 0 && dmApproved && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
               </TabsTrigger>
               <TabsTrigger value="followup" className="relative gap-1.5">
-                🔄 Follow-ups
+                Follow-ups
                 {!followupApproved && followupSamples.length > 0 && (
                   <Badge variant="destructive" className="h-5 min-w-5 text-[10px] px-1.5">{followupSamples.length}</Badge>
                 )}
@@ -394,10 +389,10 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
             {/* Connection Notes Tab */}
             <TabsContent value="connection" className="mt-0">
               <div className="p-4">
-                {renderStageHeader('connection', 'Connection Notes', connApproved, connectionSamples, 'Approve first 5 & Auto-run')}
+                {renderStageHeader('connection', 'Connection Notes', connApproved, connectionSamples, 'Enable automatic connection notes')}
                 {!connApproved && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Review the first 5 notes. Once approved, the rest will run automatically.
+                    These are sample notes. Enabling this stage authorizes sending for the entire connection-note stage, including subsequent notes.
                   </p>
                 )}
               </div>
@@ -411,8 +406,8 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
             {/* DMs Tab — Individual Approval */}
             <TabsContent value="dm" className="mt-0">
               <div className="p-4">
-                <div className="flex items-center justify-between pb-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-start justify-between gap-4 flex-wrap pb-2">
+                  <div className="flex items-center flex-wrap gap-2">
                     <CardTitle className="text-lg">DMs</CardTitle>
                     {dmPendingApproval.length > 0 ? (
                       <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
@@ -422,7 +417,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
                       <Badge variant="secondary" className="gap-1">No DMs pending</Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-wrap gap-2">
                     {!dmApproved && onEditCampaign && (
                       <Button
                         size="sm"
@@ -430,7 +425,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
                         onClick={onEditCampaign}
                         className="gap-1"
                       >
-                        <Edit2 className="w-3 h-3" /> Edit Wizard
+                        <Edit2 className="w-3 h-3" /> Edit campaign
                       </Button>
                     )}
                     {!dmApproved && dmSamples.length > 0 && (
@@ -441,14 +436,14 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
                         className="gap-1"
                       >
                         {approving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rocket className="w-3 h-3" />}
-                        Approve DMs & Auto-run
+                        Enable automatic DMs
                       </Button>
                     )}
                   </div>
                 </div>
                 {!dmApproved ? (
                   <p className="text-xs text-muted-foreground">
-                    Approve the first DM to build confidence. When ready, enable auto-run for all future DMs.
+                    Use “Approve this DM & send” for one pending message. “Enable automatic DMs” authorizes the entire stage, including future DMs.
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">DMs are approved and will be sent automatically.</p>
@@ -473,10 +468,10 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
             {/* Follow-ups Tab */}
             <TabsContent value="followup" className="mt-0">
               <div className="p-4">
-                {renderStageHeader('followup', 'Follow-ups', followupApproved, followupSamples, 'Approve & Auto-run')}
+                {renderStageHeader('followup', 'Follow-ups', followupApproved, followupSamples, 'Enable automatic follow-ups')}
                 {!followupApproved && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Approve the first follow-up. After that, follow-ups run automatically.
+                    Review these samples. Enabling automatic follow-ups authorizes the whole follow-up stage, including future messages.
                   </p>
                 )}
               </div>
@@ -502,10 +497,12 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
             <DialogTitle>
               Edit {editField === 'connection_note' ? 'Connection Note' : editField === 'dm' ? 'DM' : 'Follow-up'} for {editingLead ? displayName(editingLead) : ''}
             </DialogTitle>
+            <DialogDescription>Edit this draft. Saving does not approve or send it.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <Textarea
+                aria-label="Edit message text"
                 value={editText}
                 onChange={e => setEditText(e.target.value.slice(0, maxLength))}
                 rows={editField === 'connection_note' ? 3 : 4}

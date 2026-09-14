@@ -1,0 +1,24 @@
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, it, expect, vi } from 'vitest';
+import Onboarding from '@/pages/Onboarding';
+const mocks = vi.hoisted(() => ({ save: vi.fn().mockResolvedValue({}), profile: { sender_name: 'Sarah', sender_title: 'Founder', company_name: 'Studio', company_description: 'Design', onboarding_completed: false }, user: { id: 'test-user' } }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: mocks.user, loading: false }) }));
+vi.mock('@/hooks/useProfile', () => ({ useProfile: () => ({ profile: mocks.profile, isLoading: false, updateProfile: { mutateAsync: mocks.save, isPending: false } }) }));
+vi.mock('@/hooks/useExtensionStatus', () => ({ useExtensionStatus: () => ({ extensionStatus: null }) }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+afterEach(() => { cleanup(); vi.useRealTimers(); });
+it('shows a recoverable timeout if the extension never connects, and can retry', async () => {
+  vi.useFakeTimers();
+  render(<MemoryRouter><Onboarding /></MemoryRouter>);
+  expect(screen.getByLabelText('Name *')).toHaveValue('Sarah');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Next' })); });
+  expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ sender_name: 'Sarah', master_onboarding_completed: true }));
+  expect(screen.getByRole('link', { name: 'Download the extension ZIP' })).toHaveAttribute('href', '/linkedincopilot-extension.zip');
+  fireEvent.click(screen.getByRole('button', { name: /detect now/ }));
+  expect(screen.getByText('Waiting for extension connection...')).toBeInTheDocument();
+  act(() => { vi.advanceTimersByTime(60001); });
+  expect(screen.getByText(/Extension not detected yet/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Try Again' }));
+  expect(screen.getByText('Waiting for extension connection...')).toBeInTheDocument();
+});

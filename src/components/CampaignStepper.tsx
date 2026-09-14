@@ -20,7 +20,7 @@ const STEPS = [
   {
     key: 'capture',
     label: 'Enrich Profiles',
-    description: 'LinkedIn profiles are enriched via our AI agents for full data.',
+    description: 'Collect the profile details available for this prospect.',
     icon: Camera,
   },
   {
@@ -38,7 +38,7 @@ const STEPS = [
   {
     key: 'connect',
     label: 'AI Connection Note',
-    description: 'GPT-5 writes a personalized connection note using profile data.',
+    description: 'A connection note uses available context and your campaign approach.',
     icon: UserPlus,
   },
   {
@@ -103,9 +103,9 @@ function getStepStatus(step: typeof STEPS[0], props: CampaignStepperProps): 'com
 
 export default function CampaignStepper(props: CampaignStepperProps) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Campaign Flow</p>
+    <Card className="border-0 shadow-none overflow-x-auto">
+      <CardContent className="p-4 min-w-[620px]">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Sequence overview</p>
         <div className="flex items-start gap-0">
           {STEPS.map((step, i) => {
             const status = getStepStatus(step, props);

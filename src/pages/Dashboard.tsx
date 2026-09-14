@@ -23,13 +23,13 @@ import ExtensionStatusBar from '@/components/ExtensionStatusBar';
 import LeadSequenceView from '@/components/LeadSequenceView';
 import ProcessingProgressCard from '@/components/ProcessingProgressCard';
 import { Settings, LogOut, RefreshCw, Users, Loader2, Rocket, Plus, Upload, Pause, Play, HelpCircle, Search, ShieldCheck } from 'lucide-react';
-import logoImg from '@/assets/logo.png';
+import AppShell from '@/components/AppShell';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function Dashboard() {
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading } = useProfile();
   const { campaigns, createCampaign, updateCampaign, deleteCampaign } = useCampaignProfiles();
   const navigate = useNavigate();
@@ -55,8 +55,8 @@ export default function Dashboard() {
   // Auto-select first active campaign
   useEffect(() => {
     if (!selectedCampaignId && campaigns.length > 0) {
-      const firstActive = campaigns.find(c => c.status === 'active' || c.status === 'paused');
-      if (firstActive) setSelectedCampaignId(firstActive.id);
+      const firstActive = campaigns.find(c => c.status === 'active' || c.status === 'paused') || campaigns[0];
+      if (firstActive) { setSelectedCampaignId(firstActive.id); if (!firstActive.status || firstActive.status === 'draft') setShowDrafts(true); }
     }
   }, [campaigns, selectedCampaignId]);
 
@@ -244,46 +244,36 @@ export default function Dashboard() {
   } : undefined;
 
   // Count unapproved stages needing attention
-  const needsApproval = stageFlags ? (
+  const needsApproval = leads.some(l => l.status === 'dm_pending_approval') || (stageFlags ? (
     (!stageFlags.stage_connection_approved && leads.some(l => l.connection_note && ['pending_approval', 'dm_ready', 'ready_for_dm', 'ready'].includes(l.status))) ||
     (!stageFlags.stage_dm_approved && leads.some(l => (l.custom_dm || l.dm_text) && ['connected', 'dm_pending_approval'].includes(l.status))) ||
     (!stageFlags.stage_followup_approved && leads.some(l => (l.custom_followup || l.follow_up_text) && ['dm_sent', 'waiting_reply'].includes(l.status)))
-  ) : pendingApprovalCount > 0;
+  ) : pendingApprovalCount > 0);
 
   if (showNewCampaign) {
     return (
-      <div className="min-h-screen bg-background p-4">
-        <div className="max-w-lg mx-auto">
+      <AppShell title="New campaign">
+        <div className="max-w-3xl mx-auto">
           <Button variant="ghost" onClick={() => setShowNewCampaign(false)} className="mb-4">← Back to Dashboard</Button>
           <CampaignWizard onComplete={handleNewCampaignComplete} onCancel={() => setShowNewCampaign(false)} isPending={createCampaign.isPending} />
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50/40 via-background to-slate-50/60">
-      {/* Top bar */}
-      <header className="border-b border-border bg-card">
-        <div className="max-w-6xl mx-auto flex items-center justify-between h-14 px-4">
-          <div className="flex items-center gap-2">
-            <img src={logoImg} alt="LinkedIn Copilot" className="h-9 w-auto" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Link to="/leads"><Button variant="outline" size="sm" className="gap-1"><Plus className="w-3 h-3" /> Add Leads</Button></Link>
-            <Link to="/help"><Button variant="ghost" size="sm"><HelpCircle className="w-4 h-4" /></Button></Link>
-            <Link to="/settings"><Button variant="ghost" size="sm"><Settings className="w-4 h-4" /></Button></Link>
-            <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4" /></Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-4 space-y-4 mt-2">
+    <AppShell>
+      <div className="workspace-heading">
+        <div><p className="eyebrow">YOUR OUTREACH, IN FOCUS</p><h1>Campaigns</h1><p>Keep the context, conversations and next steps connected.</p></div>
+        <Button onClick={() => setShowNewCampaign(true)} className="gap-2"><Plus className="h-4 w-4" /> New campaign</Button>
+      </div>
+      <div className="space-y-5">
+        {needsApproval && selectedCampaignId && <div className="attention-banner"><div><strong>Your messages are ready for a closer look.</strong><p>Review prospect context and drafts before enabling the next stage.</p></div><Button variant="outline" size="sm" onClick={() => { setActiveTab('approval'); document.getElementById('campaign-workspace')?.scrollIntoView({ block: 'start' }); }}>Review messages →</Button></div>}
         {/* Extension Status Bar */}
         <ExtensionStatusBar />
 
         {/* Campaign Selector */}
-        <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="campaign-toolbar flex items-center justify-between flex-wrap gap-3">
           <CampaignSelector
             campaigns={campaigns}
             selectedCampaignId={selectedCampaignId}
@@ -304,7 +294,7 @@ export default function Dashboard() {
             )}
             {campaignIsActive && (
               <>
-                <Badge variant="default" className="text-xs bg-emerald-600">🟢 Active</Badge>
+                <Badge variant="default" className="text-xs bg-emerald-600">Active</Badge>
                 <Button variant="outline" size="sm" onClick={() => handlePauseResume('pause')} disabled={togglingPause}>
                   {togglingPause ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Pause className="w-3 h-3 mr-1" /> Pause</>}
                 </Button>
@@ -313,7 +303,7 @@ export default function Dashboard() {
             )}
             {campaignIsPaused && (
               <>
-                <Badge variant="secondary" className="text-xs">⏸ Paused</Badge>
+                <Badge variant="secondary" className="text-xs">Paused</Badge>
                 <Button variant="outline" size="sm" onClick={() => handlePauseResume('resume')} disabled={togglingPause}>
                   {togglingPause ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Play className="w-3 h-3 mr-1" /> Resume</>}
                 </Button>
@@ -324,7 +314,7 @@ export default function Dashboard() {
 
         {/* Campaign Stepper */}
         {selectedCampaignId && (
-          <CampaignStepper
+          <details className="rounded-lg border border-border bg-white"><summary className="cursor-pointer px-5 py-4 text-xs font-medium text-muted-foreground">Outreach sequence · View stages</summary><CampaignStepper
             campaignStatus={selectedCampaign?.status || null}
             leadsCount={leads.length}
               pipelineCounts={{
@@ -335,7 +325,7 @@ export default function Dashboard() {
                 dm_sent: pipelineCounts.dm_sent,
               replied: pipelineCounts.replied,
             }}
-          />
+          /></details>
         )}
 
         {/* Processing Progress */}
@@ -386,7 +376,7 @@ export default function Dashboard() {
 
         {/* Connection Verification */}
         {selectedCampaignId && verificationEligible.length > 0 && (
-          <Card className="border border-border/80">
+          <details className="rounded-xl border border-border bg-white"><summary className="cursor-pointer px-5 py-4 text-xs font-medium text-muted-foreground">Connection verification · {verifiedAcceptedCount} verified of {verificationEligible.length} · View checks</summary><Card className="border-0 shadow-none">
             <CardHeader className="flex flex-row items-start justify-between">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
@@ -503,7 +493,7 @@ export default function Dashboard() {
                 </p>
               </div>
             </CardContent>
-          </Card>
+          </Card></details>
         )}
 
         {/* Pipeline Stats */}
@@ -514,23 +504,23 @@ export default function Dashboard() {
               connected: acceptedDisplayCount,
               connection_accepted: 0,
             }}
-            onStageClick={s => { setPipelineStageFilter(s); setPipelineFilter(null); }}
+            onStageClick={s => { setPipelineStageFilter(s); setPipelineFilter(null); setActiveTab('pipeline'); }}
             activeFilter={pipelineStageFilter}
             qualifiedTotal={leads.filter(l => l.icp_match === true).length}
           />
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs id="campaign-workspace" value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
-            <TabsTrigger value="sequence">📊 Sequence View</TabsTrigger>
-            <TabsTrigger value="pipeline">📋 Lead Table</TabsTrigger>
+            <TabsTrigger value="sequence">Sequence</TabsTrigger>
+            <TabsTrigger value="pipeline">Prospects</TabsTrigger>
             <TabsTrigger value="approval" className="relative">
-              📬 Approval Queue
+              Review messages
               {needsApproval && (
                 <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 text-[10px] px-1.5">!</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="health">📈 Health</TabsTrigger>
+            <TabsTrigger value="health">Performance</TabsTrigger>
           </TabsList>
 
           {/* Sequence View Tab */}
@@ -538,7 +528,7 @@ export default function Dashboard() {
             {!selectedCampaignId ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
-                  Select a campaign to view its sequence pipeline.
+                  {campaigns.length === 0 ? <><h2 className="text-xl font-semibold text-foreground mb-2">Your first conversation starts here.</h2><p className="text-sm mb-6">Define who you help, bring your prospects and review the approach.</p><Button onClick={() => setShowNewCampaign(true)}><Plus className="w-4 h-4 mr-2" /> Create your first campaign</Button></> : 'Choose a campaign above to see its progress.'}
                 </CardContent>
               </Card>
             ) : (
@@ -549,7 +539,7 @@ export default function Dashboard() {
           {/* Lead Table Tab */}
           <TabsContent value="pipeline">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardHeader className="flex flex-col sm:flex-row items-start justify-between gap-4 pb-2">
                 <CardTitle className="text-lg">
                   {pipelineStageFilter
                     ? `${pipelineStageFilter.replace(/_/g, ' ')} (${filteredLeads.length})`
@@ -561,7 +551,7 @@ export default function Dashboard() {
                     <Input
                       value={leadSearch}
                       onChange={(e) => setLeadSearch(e.target.value)}
-                      placeholder="Search leads"
+                      aria-label="Search prospects" placeholder="Search prospects"
                       className="h-8 pl-8 text-xs w-48"
                     />
                   </div>
@@ -585,7 +575,7 @@ export default function Dashboard() {
                       <SelectItem value="all">All quality</SelectItem>
                       <SelectItem value="ok">Quality OK</SelectItem>
                       <SelectItem value="pending">Quality pending</SelectItem>
-                      <SelectItem value="ghost">Ghost profiles</SelectItem>
+                      <SelectItem value="ghost">Limited profile data</SelectItem>
                     </SelectContent>
                   </Select>
                   {(pipelineFilter || pipelineStageFilter) && (
@@ -606,9 +596,9 @@ export default function Dashboard() {
                     <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-4">
                       <Users className="w-6 h-6 text-muted-foreground" />
                     </div>
-                    <h3 className="font-semibold mb-1">No leads yet</h3>
-                    <p className="text-sm text-muted-foreground mb-3">Upload a CSV with LinkedIn profile URLs to get started.</p>
-                    <Link to="/leads"><Button><Upload className="w-4 h-4 mr-1" /> Add Leads</Button></Link>
+                    <h3 className="font-semibold mb-1">{leads.length ? "No prospects match these filters" : "No prospects yet"}</h3>
+                    <p className="text-sm text-muted-foreground mb-3">{leads.length ? "Try a different search or clear your filters." : "Upload a CSV with LinkedIn profile URLs to get started."}</p>
+                    {leads.length ? <Button variant="outline" onClick={() => { setLeadSearch(''); setPipelineStageFilter(null); setPipelineFilter(null); setVerificationFilter('all'); setQualityFilter('all'); }}>Clear filters</Button> : <Link to="/leads"><Button><Upload className="w-4 h-4 mr-1" /> Add prospects</Button></Link>}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -648,6 +638,7 @@ export default function Dashboard() {
           {/* Approval Queue Tab */}
           <TabsContent value="approval">
             <DmApprovalQueue
+              key={selectedCampaignId || "all"}
               leads={leads}
               onRefresh={refreshLeads}
               campaignProfileId={selectedCampaignId || undefined}
@@ -670,7 +661,7 @@ export default function Dashboard() {
             />
           </TabsContent>
         </Tabs>
-      </main>
+      </div>
 
       <CampaignEditDialog
         campaign={editingCampaign}
@@ -692,6 +683,6 @@ export default function Dashboard() {
         isPending={updateCampaign.isPending}
         isDeleting={deleteCampaign.isPending}
       />
-    </div>
+    </AppShell>
   );
 }

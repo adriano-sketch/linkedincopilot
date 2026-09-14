@@ -388,7 +388,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     setLaunching(true);
     try {
       await supabase.from('campaign_profiles').update({ status: 'active' }).eq('id', createdCampaignId);
-      
+
       const { data: allLeads } = await supabase.from('campaign_leads')
         .select('id')
         .eq('campaign_profile_id', createdCampaignId)
@@ -397,7 +397,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
       if (allLeads && allLeads.length > 0) {
         const SAMPLE_SIZE = 5;
         const sampleLeads = allLeads.slice(0, SAMPLE_SIZE);
-        
+
         await supabase.functions.invoke('process-new-lead', {
           body: {
             lead_ids: sampleLeads.map(l => l.id),
@@ -416,8 +416,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   };
 
   const STEP_TITLES = isGrowth
-    ? ['Mode & Strategy', 'Add Target Profiles']
-    : ['Name & Strategy', 'Select Vertical', 'Import CSV'];
+    ? ['Your approach', 'Target profiles']
+    : ['Your approach', 'Audience fit', 'Import prospects'];
   const STEP_ICONS = isGrowth
     ? [TrendingUp, Target]
     : [Rocket, Target, Upload];
@@ -425,8 +425,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   const StepIcon = STEP_ICONS[step] || Upload;
 
   return (
-    <div className="w-full max-w-lg mx-auto">
-      <StepBar current={step} total={totalSteps} />
+    <div className="campaign-wizard">
+      <ol className="wizard-steps" aria-label="Campaign setup progress">{STEP_TITLES.map((title, index) => <li key={title} aria-current={index === step ? 'step' : undefined} className={index < step ? 'completed' : ''}><span>0{index + 1}</span>{title}</li>)}</ol>
       <Card>
         <CardHeader>
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${isGrowth ? 'bg-emerald-500/10' : 'bg-primary/10'}`}>
@@ -434,7 +434,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           </div>
           <CardTitle>Step {step + 1} of {totalSteps} — {STEP_TITLES[step]}</CardTitle>
           <CardDescription>
-            {step === 0 && (isGrowth ? "Set up your Growth campaign." : "What's this campaign about?")}
+            {step === 0 && (isGrowth ? "Set up your Growth campaign." : "Give every message a clear purpose, audience and voice.")}
             {step === 1 && (isGrowth ? "Add LinkedIn profiles to engage with." : "Select your target vertical so our AI can validate leads.")}
             {step === 2 && !isGrowth && "Upload your CSV file with LinkedIn profile URLs."}
           </CardDescription>
@@ -449,7 +449,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                 <Label className="mb-2 block">Campaign Mode *</Label>
                 <div className="grid grid-cols-2 gap-3">
                   <button type="button" onClick={() => setForm({ ...form, campaign_mode: 'outreach' })}
-                    className={`p-4 rounded-lg border text-left transition-all ${form.campaign_mode === 'outreach' ? 'border-primary bg-primary/5 ring-2 ring-primary' : 'border-border hover:border-primary/50'}`}>
+                    aria-pressed={form.campaign_mode === 'outreach'} className={`p-4 rounded-lg border text-left transition-all ${form.campaign_mode === 'outreach' ? 'border-primary bg-primary/5 ring-2 ring-primary' : 'border-border hover:border-primary/50'}`}>
                     <div className="flex items-center gap-2 mb-1">
                       <Target className="w-5 h-5 text-primary" />
                       <p className="font-semibold text-sm">Outreach</p>
@@ -457,7 +457,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                     <p className="text-xs text-muted-foreground">Send personalized connection requests & DMs to convert leads into conversations.</p>
                   </button>
                   <button type="button" onClick={() => setForm({ ...form, campaign_mode: 'growth', campaign_objective: 'build_relationship' })}
-                    className={`p-4 rounded-lg border text-left transition-all relative ${form.campaign_mode === 'growth' ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500' : 'border-border hover:border-emerald-400/50'}`}>
+                    aria-pressed={form.campaign_mode === 'growth'} className={`p-4 rounded-lg border text-left transition-all relative ${form.campaign_mode === 'growth' ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500' : 'border-border hover:border-emerald-400/50'}`}>
                     <div className="absolute -top-2 -right-2 bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full">New</div>
                     <div className="flex items-center gap-2 mb-1">
                       <TrendingUp className="w-5 h-5 text-emerald-600" />
@@ -469,8 +469,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
               </div>
 
               <div>
-                <Label>Campaign Name *</Label>
-                <Input placeholder={isGrowth ? "e.g. Growth — Marketing Agency Leaders" : "e.g. Dental Practices - Orlando"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                <Label htmlFor="campaign-name">Campaign Name *</Label>
+                <Input id="campaign-name" placeholder={isGrowth ? "e.g. Growth — Marketing Agency Leaders" : "e.g. Dental Practices - Orlando"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               </div>
 
               {/* Outreach-only fields */}
@@ -481,7 +481,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                     <div className="grid grid-cols-2 gap-2">
                       {CAMPAIGN_OBJECTIVES.map(obj => (
                         <button key={obj.value} type="button" onClick={() => setForm({ ...form, campaign_objective: obj.value })}
-                          className={`p-3 rounded-lg border text-left transition-all ${form.campaign_objective === obj.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}>
+                          aria-pressed={form.campaign_objective === obj.value} className={`p-3 rounded-lg border text-left transition-all ${form.campaign_objective === obj.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}>
                           <span className="text-lg">{obj.icon}</span>
                           <p className="font-medium text-sm mt-1">{obj.label}</p>
                           <p className="text-xs text-muted-foreground">{obj.desc}</p>
@@ -497,7 +497,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                 <div className="grid grid-cols-2 gap-2">
                   {TONE_OPTIONS.map(tone => (
                     <button key={tone.value} type="button" onClick={() => setForm({ ...form, dm_tone: tone.value })}
-                      className={`p-3 rounded-lg border text-left transition-all ${form.dm_tone === tone.value ? (isGrowth ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-primary bg-primary/5 ring-1 ring-primary') : 'border-border hover:border-primary/50'}`}>
+                      aria-pressed={form.dm_tone === tone.value} className={`p-3 rounded-lg border text-left transition-all ${form.dm_tone === tone.value ? (isGrowth ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-primary bg-primary/5 ring-1 ring-primary') : 'border-border hover:border-primary/50'}`}>
                       <span className="text-lg">{tone.icon}</span>
                       <p className="font-medium text-sm mt-1">{tone.label}</p>
                       <p className="text-xs text-muted-foreground">{tone.desc}</p>
@@ -547,19 +547,20 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
               {!isGrowth && (
                 <>
                   <div>
-                    <Label>Value Proposition</Label>
-                    <Textarea placeholder="Why should they care? Focus on benefit to the lead." value={form.value_proposition} onChange={e => setForm({ ...form, value_proposition: e.target.value.slice(0, 300) })} rows={2} />
+                    <Label htmlFor="value-proposition">Why your offer matters</Label>
+                    <Textarea id="value-proposition" placeholder="Who do you help, and what gets better for them? Be specific." value={form.value_proposition} onChange={e => setForm({ ...form, value_proposition: e.target.value.slice(0, 300) })} rows={2} />
                     <CharCounter value={form.value_proposition} max={300} />
                   </div>
+                  <details className="rounded-lg border border-border p-4"><summary className="text-xs font-medium cursor-pointer">Add an angle or a writing example (optional)</summary><div className="space-y-4 pt-4">
                   <div>
-                    <Label>Campaign Angle (optional)</Label>
-                    <Input placeholder="e.g. HIPAA compliance for dental" value={form.campaign_angle} onChange={e => setForm({ ...form, campaign_angle: e.target.value })} />
+                    <Label htmlFor="campaign-angle">Campaign Angle (optional)</Label>
+                    <Input id="campaign-angle" placeholder="e.g. A simpler client handoff for agencies" value={form.campaign_angle} onChange={e => setForm({ ...form, campaign_angle: e.target.value })} />
                   </div>
                   <div>
-                    <Label>Example DM (optional)</Label>
-                    <Textarea placeholder="Paste a DM that worked well. The AI learns your style." value={form.dm_example} onChange={e => setForm({ ...form, dm_example: e.target.value.slice(0, 500) })} rows={3} />
+                    <Label htmlFor="example-dm">Example DM (optional)</Label>
+                    <Textarea id="example-dm" placeholder="Paste a message that captures your voice." value={form.dm_example} onChange={e => setForm({ ...form, dm_example: e.target.value.slice(0, 500) })} rows={3} />
                     <CharCounter value={form.dm_example} max={500} />
-                  </div>
+                  </div></div></details>
                 </>
               )}
             </>
@@ -586,7 +587,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                       <div>
                         <p className="font-medium text-foreground">How this works</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Our AI will analyze each lead's LinkedIn profile and intelligently determine if they match your target vertical. 
+                          Our AI will analyze each lead's LinkedIn profile and intelligently determine if they match your target vertical.
                           No need to specify titles or locations — just upload your CSV and we'll handle the rest.
                         </p>
                       </div>
@@ -784,8 +785,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                       className="w-full border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer"
                     >
                       <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm font-medium">Drag & drop your CSV here</p>
-                      <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
+                      <p className="text-sm font-medium">Choose a CSV file</p>
+                      <p className="text-xs text-muted-foreground mt-1">Click to browse files on your computer</p>
                       <p className="text-xs text-muted-foreground mt-2">Required column: LinkedIn URL</p>
                     </button>
                     <div className="flex items-center gap-2">
@@ -822,6 +823,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
             </>
           )}
 
+          {(isGrowth ? step === 1 : step === 2) && importedCount > 0 && <div className="rounded-lg bg-muted/40 p-4 text-xs space-y-2"><p className="font-medium text-foreground">Ready to start: {form.name}</p><p className="text-muted-foreground">{importedCount} prospects · {isGrowth ? 'Growth' : 'Outreach'}. Launching starts campaign processing. {isGrowth ? 'Review your engagement settings before continuing.' : 'Review the generated samples in your workspace before enabling a messaging stage.'}</p></div>}
           {/* Navigation */}
           <div className="flex justify-between pt-4">
             {step > 0 ? (
@@ -844,16 +846,6 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function StepBar({ current, total }: { current: number; total: number }) {
-  return (
-    <div className="flex gap-2 mb-6">
-      {Array.from({ length: total }, (_, i) => (
-        <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= current ? 'bg-primary' : 'bg-border'}`} />
-      ))}
     </div>
   );
 }
