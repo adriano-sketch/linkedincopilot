@@ -1,6 +1,7 @@
 // LinkedIn Copilot — generate-comment edge function
 // Generates contextual comments for Growth mode using Claude API.
-// Called by schedule-actions when a lead is in "post_liked" status.
+// Called by schedule-actions when a lead is in "post_liked" status. The draft goes to the
+// approval queue (monitored_posts) and the lead waits in "comment_review" until the user decides.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
@@ -151,23 +152,74 @@ Write ONLY the comment text. No quotes, no explanation, no preamble.`;
 
     if (!commentText) return fail("Empty comment generated", 502);
 
-    // Update lead with generated comment
+    // The comment is NOT auto-approved: it waits in the dashboard approval queue
+    // (Network > Comments), next to the original post. Approving or skipping there moves
+    // the lead forward (DB triggers on monitored_posts), and the Growth engine posts it.
     const now = new Date().toISOString();
-    const { error: updateErr } = await supabase
+    const { data: claimed, error: updateErr } = await supabase
       .from("campaign_leads")
       .update({
         comment_text: commentText,
         comment_generated_at: now,
-        comment_approved: true,  // Auto-approve for now (can add approval queue later)
-        comment_approved_at: now,
+        comment_approved: false,
+        comment_approved_at: null,
+        status: "comment_review",
         updated_at: now,
       })
       .eq("id", campaign_lead_id)
-      .eq("user_id", lead.user_id);
+      .eq("user_id", lead.user_id)
+      .eq("status", "post_liked")
+      .select("id");
 
     if (updateErr) {
       console.error("generate-comment: lead update failed", updateErr);
       return fail("Failed to save comment", 500);
+    }
+    // Another run already handled this lead (status moved on): nothing to queue.
+    if (!claimed || claimed.length === 0) return json({ success: true, skipped: "lead not in post_liked", lead_id: campaign_lead_id });
+
+    const postUrl: string = lead.post_url || "";
+    const urnMatch = postUrl.match(/urn:li:(?:activity|share|ugcPost):\d+/i);
+    const postUrn = urnMatch ? urnMatch[0] : `growth:${campaign_lead_id}:${Date.now()}`;
+    // The same post may already be in the queue (found by a Network search).
+    const { data: existing } = await supabase.from("monitored_posts")
+      .select("id, status").eq("user_id", lead.user_id).eq("post_urn", postUrn).maybeSingle();
+    let queueErr: unknown = null;
+    if (existing && ["approved", "queued", "posted"].includes(existing.status)) {
+      // Already commented (or about to): skip this cycle instead of commenting twice.
+      await supabase.from("campaign_leads").update({
+        status: "engagement_done", comment_text: null, post_url: null, post_content: null,
+        last_engagement_at: now, next_action_at: new Date(Date.now() + 7 * 864e5).toISOString(), updated_at: now,
+      }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "comment_review");
+      return json({ success: true, skipped: "post already commented", lead_id: campaign_lead_id });
+    } else if (existing) {
+      const { error } = await supabase.from("monitored_posts").update({
+        campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
+      }).eq("id", existing.id);
+      queueErr = error;
+    } else {
+      const { error } = await supabase.from("monitored_posts").insert({
+        user_id: lead.user_id,
+        campaign_lead_id,
+        post_urn: postUrn,
+        post_url: postUrl || null,
+        author_name: lead.full_name || null,
+        author_headline: lead.profile_headline || lead.title || null,
+        author_profile_url: lead.linkedin_url || null,
+        post_text: String(lead.post_content).slice(0, 5000),
+        suggested_comment: commentText,
+        status: "pending",
+        priority: 2,
+        fit_reason: campaign?.icp_description ? `Growth: ${String(campaign.icp_description).slice(0, 150)}` : "Growth campaign target",
+      });
+      queueErr = error;
+    }
+    if (queueErr) {
+      // Without a queue row nobody could approve it: put the lead back so it is retried.
+      console.error("generate-comment: queue insert failed", queueErr);
+      await supabase.from("campaign_leads").update({ status: "post_liked", comment_text: null })
+        .eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "comment_review");
+      return fail("Failed to queue comment for approval", 500);
     }
 
     console.log(`Generated comment for lead ${campaign_lead_id} (variant: ${variant.key})`);

@@ -66,3 +66,7 @@ verify_jwt = false
 verify_jwt = false
 [functions.network-scheduler]
 verify_jwt = false
+[functions.contacts-match]
+verify_jwt = false
+[functions.contacts-search]
+verify_jwt = false

@@ -4,6 +4,7 @@
 //
 // Action types handled:
 //   network_search_people      result: { profiles: [...], has_next, limit_reached? }
+//                              (purpose "connections": the user's own 1st-degree contacts, see contacts-search)
 //   network_search_posts       result: { posts: [...] }
 //   network_sync_connections   result: { connections: [profile_url...], pending: [profile_url...] }
 //   network_withdraw_invites   result: { withdrawn: [profile_url...], not_found: [profile_url...] }
@@ -11,7 +12,7 @@
 //   post_comment               (module network) result: { posted: boolean }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
-import { fireAndForget, normalizeProfileUrl, startOfNextMonthUtc } from "../_shared/network.ts";
+import { buildConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, startOfNextMonthUtc } from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -95,6 +96,86 @@ async function handleSearchPeople(supabase: Supa, userId: string, action: any, s
   }
   if (inserted > 0) fireAndForget("network-process", { user_id: userId });
   return { ok: true, found: profiles.length, new: inserted, exhausted };
+}
+
+/** People search over the user's own connections (purpose "connections", from contacts-search). */
+async function handleConnectionsSearch(supabase: Supa, userId: string, action: any, success: boolean, result: any, errorMessage: string | null) {
+  const data = action.action_data || {};
+  const runId = data.search_run_id || null;
+  const campaignId = data.campaign_id || null;
+  const now = new Date().toISOString();
+  const limitHit = result?.limit_reached === true || SEARCH_LIMIT_RE.test(errorMessage || "");
+
+  if (!success || limitHit) {
+    if (limitHit) {
+      await supabase.from("extension_status").update({ searches_paused_until: startOfNextMonthUtc() }).eq("user_id", userId);
+    }
+    if (runId) {
+      await supabase.from("network_search_runs").update({ status: limitHit ? "limit_reached" : "failed", completed_at: now })
+        .eq("id", runId).eq("user_id", userId);
+    }
+    return { ok: true, limit_reached: limitHit };
+  }
+
+  const profiles: any[] = Array.isArray(result?.profiles) ? result.profiles.slice(0, 50) : [];
+  const rows = [];
+  for (const p of profiles) {
+    const url = normalizeProfileUrl(p.profile_url);
+    if (!url) continue;
+    const degree = String(p.degree || "").toLowerCase();
+    if (degree && !degree.startsWith("1")) continue; // only real connections
+    rows.push({
+      user_id: userId,
+      linkedin_url: url,
+      full_name: p.name ? String(p.name).slice(0, 200) : null,
+      headline: p.headline ? String(p.headline).slice(0, 500) : null,
+      company: p.current_company ? String(p.current_company).slice(0, 200) : null,
+      location: p.location ? String(p.location).slice(0, 200) : null,
+      source: "linkedin_search",
+      updated_at: now,
+    });
+  }
+  let saved = 0;
+  if (rows.length) {
+    // Keep data from the official export (it has the exact position) when we already have it.
+    const { data: ins, error } = await supabase.from("linkedin_connections")
+      .upsert(rows, { onConflict: "user_id,linkedin_url", ignoreDuplicates: true })
+      .select("id");
+    if (error) console.error("connection insert failed:", error);
+    saved = ins?.length || 0;
+  }
+
+  const page = Number(data.page) || 1;
+  const maxPages = Math.max(1, Math.min(10, Number(data.max_pages) || 5));
+  const exhausted = result?.has_next === false || profiles.length === 0 || page >= maxPages;
+  if (runId) {
+    await supabase.from("network_search_runs").update({
+      status: "completed", completed_at: now, results_count: profiles.length, new_count: saved,
+    }).eq("id", runId).eq("user_id", userId);
+  }
+
+  if (!exhausted && campaignId) {
+    const keywords: string[] = Array.isArray(data.keywords) ? data.keywords : [];
+    const nextPage = page + 1;
+    const url = buildConnectionsSearchUrl(keywords, nextPage);
+    const { data: run } = await supabase.from("network_search_runs").insert({
+      user_id: userId, campaign_profile_id: campaignId, kind: "connections", page: nextPage, search_url: url,
+      query: keywords.join(" | ").slice(0, 400), status: "queued",
+    }).select("id").single();
+    const delayMs = (45 + Math.random() * 75) * 1000;
+    await supabase.from("action_queue").insert({
+      user_id: userId,
+      action_type: "network_search_people",
+      linkedin_url: url,
+      priority: 3,
+      status: "pending",
+      scheduled_for: new Date(Date.now() + delayMs).toISOString(),
+      action_data: { ...data, search_run_id: run?.id || null, search_url: url, page: nextPage },
+    });
+  }
+
+  if (saved > 0 && campaignId) fireAndForget("contacts-match", { op: "score", user_id: userId, campaign_id: campaignId });
+  return { ok: true, found: profiles.length, saved, exhausted };
 }
 
 async function handleSearchPosts(supabase: Supa, userId: string, action: any, success: boolean, result: any) {
@@ -291,7 +372,11 @@ Deno.serve(async (req) => {
 
     let out: unknown;
     switch (action.action_type) {
-      case "network_search_people": out = await handleSearchPeople(supabase, userId, action, success, result, errorMessage); break;
+      case "network_search_people":
+        out = action.action_data?.purpose === "connections"
+          ? await handleConnectionsSearch(supabase, userId, action, success, result, errorMessage)
+          : await handleSearchPeople(supabase, userId, action, success, result, errorMessage);
+        break;
       case "network_search_posts": out = await handleSearchPosts(supabase, userId, action, success, result); break;
       case "network_sync_connections": out = await handleSync(supabase, userId, success, result); break;
       case "network_withdraw_invites": out = await handleWithdraw(supabase, userId, action, success, result); break;

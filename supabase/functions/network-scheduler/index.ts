@@ -87,8 +87,9 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     .eq("user_id", userId).eq("status", "queued").lt("updated_at", staleBefore).limit(200);
   const revertP = (staleP || []).map((r: any) => r.id).filter((id: string) => !pendingProspectIds.has(id));
   if (revertP.length) await supabase.from("network_prospects").update({ status: "qualified" }).in("id", revertP);
+  // Growth comments (campaign_lead_id set) are posted by the Growth engine, not by this scheduler.
   const { data: staleM } = await supabase.from("monitored_posts").select("id")
-    .eq("user_id", userId).eq("status", "queued").lt("updated_at", staleBefore).limit(200);
+    .eq("user_id", userId).eq("status", "queued").is("campaign_lead_id", null).lt("updated_at", staleBefore).limit(200);
   const revertM = (staleM || []).map((r: any) => r.id).filter((id: string) => !pendingPostIds.has(id));
   if (revertM.length) await supabase.from("monitored_posts").update({ status: "approved" }).in("id", revertM);
 
@@ -165,7 +166,7 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     const searchesPaused = ext.searches_paused_until && new Date(ext.searches_paused_until).getTime() > now;
     const monthStart = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1)).toISOString();
     const { count: searchesThisMonth } = await supabase.from("network_search_runs").select("id", { count: "exact", head: true })
-      .eq("user_id", userId).eq("kind", "people").gte("created_at", monthStart)
+      .eq("user_id", userId).in("kind", ["people", "connections"]).gte("created_at", monthStart)
       .in("status", ["completed", "failed", "limit_reached"]);
     const budget = ext.monthly_people_search_budget ?? 250;
     const needMore = (qualifiedPool || 0) < dailyTarget * 3;
@@ -272,7 +273,7 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     if (allowance > 0) {
       const { data: approved } = await supabase.from("monitored_posts")
         .select("id, icp_id, post_url, final_comment, suggested_comment, author_name")
-        .eq("user_id", userId).eq("status", "approved")
+        .eq("user_id", userId).eq("status", "approved").is("campaign_lead_id", null)
         .order("priority", { ascending: false }).order("approved_at", { ascending: true })
         .limit(Math.min(allowance, 4)); // a few per run, the rest in later runs
       let at = now + rand(4, 12) * 60 * 1000;

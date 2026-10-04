@@ -71,6 +71,17 @@ export function buildPeopleSearchUrl(icp: Icp, page: number): string {
   return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
 }
 
+/** People search restricted to the user's OWN connections (1st degree), for "my contacts". */
+export function buildConnectionsSearchUrl(keywords: string[], page: number): string {
+  const terms = keywords.map(quoteTerm).filter(Boolean).slice(0, 8);
+  const params = new URLSearchParams();
+  if (terms.length) params.set("keywords", (terms.length > 1 ? terms.join(" OR ") : terms[0]).slice(0, 400));
+  params.set("network", JSON.stringify(["F"]));
+  params.set("origin", "FACETED_SEARCH");
+  if (page > 1) params.set("page", String(page));
+  return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
+}
+
 /** LinkedIn post (content) search URL: last 24h, newest first. */
 export function buildPostSearchUrl(icp: Icp): string {
   const topics = (icp.post_topics && icp.post_topics.length ? icp.post_topics : icp.keywords || [])

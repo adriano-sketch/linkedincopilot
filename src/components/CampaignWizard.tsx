@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,8 @@ import { parseLeadCsv } from '@/lib/csv';
 import VerticalSelector from '@/components/campaign-wizard/VerticalSelector';
 import TitleZones from '@/components/campaign-wizard/TitleZones';
 import IcpFitPreview from '@/components/IcpFitPreview';
+import ContactPicker, { type PickedContact } from '@/components/contacts/ContactPicker';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   CAMPAIGN_OBJECTIVES, TONE_OPTIONS,
   PAIN_POINT_PLACEHOLDERS, MESSAGE_LANGUAGES,
@@ -110,6 +112,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   const [growthProfileUrl, setGrowthProfileUrl] = useState('');
   const [growthProfiles, setGrowthProfiles] = useState<string[]>([]);
   const [growthImporting, setGrowthImporting] = useState(false);
+  const [growthSource, setGrowthSource] = useState<'contacts' | 'urls'>('contacts');
+  const [pickedContacts, setPickedContacts] = useState<PickedContact[]>([]);
+  const onPickedChange = useCallback((p: PickedContact[]) => setPickedContacts(p), []);
 
   const isGrowth = form.campaign_mode === 'growth';
 
@@ -176,30 +181,45 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     setGrowthProfileUrl('');
   };
 
-  const importGrowthProfiles = async () => {
-    if (!createdCampaignId || !user || growthProfiles.length === 0) return;
+  /** Saves the chosen targets (picked contacts + pasted URLs) as Growth leads. Returns how many are in the campaign. */
+  const importGrowthProfiles = async (): Promise<number> => {
+    if (!createdCampaignId || !user) return 0;
+    const byUrl = new Map<string, Record<string, unknown>>();
+    for (const c of pickedContacts) {
+      byUrl.set(c.linkedin_url, {
+        user_id: user.id, campaign_profile_id: createdCampaignId, linkedin_url: c.linkedin_url,
+        full_name: c.full_name || c.linkedin_url.split('/in/')[1] || null, title: c.title, company: c.company,
+        source: 'my_contacts', status: 'ready',
+      });
+    }
+    for (const url of growthProfiles) {
+      if (byUrl.has(url)) continue;
+      const vanity = url.split('/in/')[1]?.replace(/\/$/, '') || '';
+      byUrl.set(url, {
+        user_id: user.id, campaign_profile_id: createdCampaignId, linkedin_url: url,
+        full_name: vanity.replace(/-/g, ' '), source: 'manual', status: 'ready',
+      });
+    }
+    const payload = Array.from(byUrl.values());
+    if (payload.length === 0) return 0;
     setGrowthImporting(true);
     try {
-      const payload = growthProfiles.map(url => {
-        const vanity = url.split('/in/')[1]?.replace(/\/$/, '') || '';
-        return {
-          user_id: user.id,
-          campaign_profile_id: createdCampaignId,
-          linkedin_url: url,
-          full_name: vanity.replace(/-/g, ' '),
-          source: 'manual',
-          status: 'ready',
-        };
-      });
-      const { data: inserted, error } = await supabase
-        .from('campaign_leads')
-        .upsert(payload, { onConflict: 'user_id,linkedin_url', ignoreDuplicates: true })
-        .select('id');
-      if (error) throw error;
-      setImportedCount(inserted?.length || 0);
-      toast.success(`${inserted?.length || 0} target profiles imported`);
+      let inserted = 0;
+      for (let i = 0; i < payload.length; i += 200) {
+        const { data, error } = await supabase
+          .from('campaign_leads')
+          .upsert(payload.slice(i, i + 200) as any, { onConflict: 'user_id,linkedin_url', ignoreDuplicates: true })
+          .select('id');
+        if (error) throw error;
+        inserted += data?.length || 0;
+      }
+      setImportedCount(c => c + inserted);
+      const skipped = payload.length - inserted;
+      if (skipped > 0) toast.info(`${skipped} of them are already in another campaign and were skipped.`);
+      return inserted;
     } catch (e) {
       toast.error('Import failed: ' + (e instanceof Error ? e.message : 'Unknown'));
+      return -1;
     } finally { setGrowthImporting(false); }
   };
 
@@ -224,7 +244,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         if (error) throw error;
         setCreatedCampaignId(data.id);
         queryClient.invalidateQueries({ queryKey: ['campaign_profiles'] });
-        toast.success('Growth campaign created — now add target profiles');
+        toast.success('Growth campaign created. Now choose who to engage with.');
       } catch (e) {
         toast.error('Failed to create campaign');
         return;
@@ -387,6 +407,11 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     if (!createdCampaignId || !user) return;
     setLaunching(true);
     try {
+      if (isGrowth && importedCount === 0) {
+        const n = await importGrowthProfiles();
+        if (n < 0) return;
+        if (n === 0) { toast.error('Pick at least 1 contact or add a profile URL'); return; }
+      }
       await supabase.from('campaign_profiles').update({ status: 'active' }).eq('id', createdCampaignId);
       
       const { data: allLeads } = await supabase.from('campaign_leads')
@@ -416,7 +441,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   };
 
   const STEP_TITLES = isGrowth
-    ? ['Mode & Strategy', 'Add Target Profiles']
+    ? ['Mode & Strategy', 'Choose Who to Engage']
     : ['Name & Strategy', 'Select Vertical', 'Import CSV'];
   const STEP_ICONS = isGrowth
     ? [TrendingUp, Target]
@@ -425,7 +450,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   const StepIcon = STEP_ICONS[step] || Upload;
 
   return (
-    <div className="w-full max-w-lg mx-auto">
+    <div className={`w-full mx-auto ${isGrowth && step === 1 ? 'max-w-3xl' : 'max-w-lg'}`}>
       <StepBar current={step} total={totalSteps} />
       <Card>
         <CardHeader>
@@ -435,7 +460,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           <CardTitle>Step {step + 1} of {totalSteps} — {STEP_TITLES[step]}</CardTitle>
           <CardDescription>
             {step === 0 && (isGrowth ? "Set up your Growth campaign." : "What's this campaign about?")}
-            {step === 1 && (isGrowth ? "Add LinkedIn profiles to engage with." : "Select your target vertical so our AI can validate leads.")}
+            {step === 1 && (isGrowth ? "Choose the people whose posts you want to engage with." : "Select your target vertical so our AI can validate leads.")}
             {step === 2 && !isGrowth && "Upload your CSV file with LinkedIn profile URLs."}
           </CardDescription>
         </CardHeader>
@@ -536,7 +561,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                     <div>
                       <p className="font-medium text-emerald-800">How Growth Mode works</p>
                       <p className="text-xs text-emerald-700 mt-1">
-                        Add LinkedIn profiles of thought leaders in your niche. Every week, the extension will visit their profile, find their latest post, like it, and post an AI-generated comment that references specific points from their content. This builds your visibility in their audience.
+                        Pick people from your own LinkedIn contacts (or paste profile URLs). Every week the extension finds their latest post and likes it, and the AI drafts a comment about it. Comments are only posted after you approve them in Network → Comments, next to the original post.
                       </p>
                     </div>
                   </div>
@@ -652,19 +677,32 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
             </>
           )}
 
-          {/* STEP 1 (Growth): Add Target Profiles */}
+          {/* STEP 1 (Growth): choose who to engage with */}
           {step === 1 && isGrowth && (
             <>
               {importedCount > 0 && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                  <p className="text-sm font-medium text-emerald-800">✅ {importedCount} target profiles imported</p>
-                  <p className="text-xs text-emerald-700 mt-1">The extension will engage with their content weekly.</p>
+                <div className="bg-gold-bg border border-[#E9D3A4] rounded-lg p-3">
+                  <p className="text-sm font-medium">{importedCount} target profiles added</p>
+                  <p className="text-xs text-muted-foreground mt-1">The extension checks their latest post every week. Suggested comments wait for your approval in Network → Comments.</p>
                 </div>
               )}
 
+              <Tabs value={growthSource} onValueChange={v => setGrowthSource(v as 'contacts' | 'urls')}>
+                <TabsList className="w-full grid grid-cols-2">
+                  <TabsTrigger value="contacts">From my contacts</TabsTrigger>
+                  <TabsTrigger value="urls">Paste profile URLs</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {growthSource === 'contacts' ? (
+                <ContactPicker
+                  campaignId={createdCampaignId}
+                  onChange={onPickedChange}
+                />
+              ) : (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Add LinkedIn profile URLs of thought leaders or accounts whose audience you want to reach. The AI will engage with their latest posts every week.
+                  Add LinkedIn profile URLs of thought leaders or accounts whose audience you want to reach.
                 </p>
 
                 <div className="flex gap-2">
@@ -675,7 +713,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGrowthProfile(); } }}
                     className="flex-1"
                   />
-                  <Button variant="outline" size="sm" onClick={addGrowthProfile} className="shrink-0">
+                  <Button variant="outline" size="sm" onClick={addGrowthProfile} className="shrink-0 h-10">
                     <Plus className="w-4 h-4 mr-1" /> Add
                   </Button>
                 </div>
@@ -685,10 +723,10 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                     {growthProfiles.map((url, i) => {
                       const vanity = url.split('/in/')[1]?.replace(/\/$/, '') || url;
                       return (
-                        <div key={i} className="flex items-center gap-2 bg-emerald-50/50 border border-emerald-200/50 rounded-lg px-3 py-2">
-                          <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <div key={i} className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
+                          <TrendingUp className="w-3.5 h-3.5 text-gold-dark shrink-0" />
                           <span className="text-sm flex-1 truncate">{vanity}</span>
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setGrowthProfiles(prev => prev.filter((_, j) => j !== i))}>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={`Remove ${vanity}`} onClick={() => setGrowthProfiles(prev => prev.filter((_, j) => j !== i))}>
                             <X className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -698,13 +736,14 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                 )}
 
                 <p className="text-xs text-muted-foreground">{growthProfiles.length} profile{growthProfiles.length !== 1 ? 's' : ''} added</p>
-
-                {growthProfiles.length > 0 && importedCount === 0 && (
-                  <Button onClick={importGrowthProfiles} disabled={growthImporting} className="w-full bg-emerald-600 hover:bg-emerald-700">
-                    {growthImporting ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Importing...</> : `Import ${growthProfiles.length} target profiles`}
-                  </Button>
-                )}
               </div>
+              )}
+
+              <p className="text-sm text-muted-foreground border-t border-border pt-3">
+                {pickedContacts.length + growthProfiles.length > 0
+                  ? `${pickedContacts.length + growthProfiles.length} people will be added when you launch.`
+                  : 'Pick contacts or paste URLs, then launch.'}
+              </p>
             </>
           )}
 
@@ -831,8 +870,11 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
             ) : <div />}
             {(isGrowth ? step === 1 : step === 2) ? (
               <Button
-                onClick={() => { if (importedCount > 0) handleLaunch(); else toast.error(isGrowth ? 'Import at least 1 target profile first' : 'Import at least 1 lead first'); }}
-                disabled={launching}
+                onClick={() => {
+                  const ready = importedCount > 0 || (isGrowth && (pickedContacts.length > 0 || growthProfiles.length > 0));
+                  if (ready) handleLaunch(); else toast.error(isGrowth ? 'Pick at least 1 contact or add a profile URL' : 'Import at least 1 lead first');
+                }}
+                disabled={launching || growthImporting}
                 size="lg"
                 className={isGrowth ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
               >
