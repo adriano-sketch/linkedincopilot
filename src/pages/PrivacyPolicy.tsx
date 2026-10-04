@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import logoImg from '@/assets/logo.png';
+import Logo from '@/components/Logo';
 
 export default function PrivacyPolicy() {
   return (
@@ -9,8 +9,7 @@ export default function PrivacyPolicy() {
       <nav className="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <img src={logoImg} alt="LinkedIn Copilot" className="h-8 w-8" />
-            <span className="text-white font-semibold text-lg">LinkedIn Copilot</span>
+            <Logo tone="dark" className="text-base" markClassName="w-7 h-7" />
           </Link>
           <Link
             to="/"

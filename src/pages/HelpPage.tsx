@@ -12,7 +12,7 @@ import {
   MessageSquare, RefreshCw, ChevronRight, Monitor, Rocket,
   CheckSquare, Upload, Star,
 } from 'lucide-react';
-import logoImg from '@/assets/logo.png';
+import Logo from '@/components/Logo';
 
 const flowSteps = [
   { label: 'Find Leads', icon: Search, desc: 'Search via Apollo or upload a CSV with LinkedIn URLs.' },
@@ -49,7 +49,7 @@ export default function HelpPage() {
             <Link to="/dashboard">
               <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
             </Link>
-            <img src={logoImg} alt="LinkedIn Copilot" className="h-8 w-auto" />
+            <Logo short className="text-base" markClassName="w-7 h-7" />
             <h1 className="text-lg font-display font-bold uppercase tracking-wide">Help Center</h1>
           </div>
         </div>

@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, Mail, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import logoImg from '@/assets/logo.png';
+import Logo from '@/components/Logo';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function AuthPage() {
@@ -115,7 +115,7 @@ export default function AuthPage() {
       </button>
 
       <div className="flex items-center gap-2 mb-8">
-        <img src={logoImg} alt="LinkedIn Copilot" className="h-10 w-auto" />
+        <Logo className="text-xl" markClassName="w-9 h-9" />
       </div>
 
       <Card className="w-full max-w-sm shadow-lg">
@@ -152,7 +152,7 @@ export default function AuthPage() {
                 <button
                   type="button"
                   onClick={() => setMode('forgot')}
-                  className="text-xs text-primary hover:underline w-full text-center"
+                  className="text-xs text-gold-dark font-medium hover:underline w-full text-center"
                 >
                   Forgot your password?
                 </button>
@@ -217,7 +217,7 @@ export default function AuthPage() {
           {(mode === 'signin' || mode === 'signup') && (
             <p className="text-center text-sm text-muted-foreground mt-5">
               {mode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
-              <button onClick={() => setMode(mode === 'signup' ? 'signin' : 'signup')} className="text-primary font-medium hover:underline">
+              <button onClick={() => setMode(mode === 'signup' ? 'signin' : 'signup')} className="text-gold-dark font-semibold hover:underline">
                 {mode === 'signup' ? 'Sign in' : 'Sign up'}
               </button>
             </p>

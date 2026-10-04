@@ -15,8 +15,8 @@ import {
   Check, ChevronRight, Star, Sparkles, Globe, Lock, Quote,
   Ghost, TrendingUp, Heart, MessageCircle, Repeat, Radar,
 } from 'lucide-react';
-import logoImg from '@/assets/logo.png';
 import BrandMark from '@/components/BrandMark';
+import Logo from '@/components/Logo';
 import { motion } from 'framer-motion';
 import '@/styles/campaign-flow.css';
 
@@ -981,7 +981,7 @@ export default function Landing() {
         <div className="container mx-auto max-w-5xl">
           <div className="flex flex-col md:flex-row gap-12">
             <div className="md:w-2/5">
-              <img src={logoImg} alt="LinkedIn Copilot \u2014 AI-powered B2B LinkedIn automation platform" className="h-20 w-auto mb-5" />
+              <Logo tone="dark" className="text-xl mb-5" markClassName="w-9 h-9" />
               <p className="text-sm text-gray-400 leading-relaxed max-w-xs">LinkedIn Copilot: AI-powered LinkedIn automation built by a practitioner who sends 1,000+ personalized messages a month. Safe, profile-based B2B outreach at scale.</p>
             </div>
             <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-8">

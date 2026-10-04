@@ -23,7 +23,7 @@ import ExtensionStatusBar from '@/components/ExtensionStatusBar';
 import LeadSequenceView from '@/components/LeadSequenceView';
 import ProcessingProgressCard from '@/components/ProcessingProgressCard';
 import { Settings, LogOut, RefreshCw, Users, Loader2, Rocket, Plus, Upload, Pause, Play, HelpCircle, Search, ShieldCheck } from 'lucide-react';
-import logoImg from '@/assets/logo.png';
+import Logo from '@/components/Logo';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -267,7 +267,7 @@ export default function Dashboard() {
       <header className="border-b border-border bg-card">
         <div className="max-w-6xl mx-auto flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-2">
-            <img src={logoImg} alt="LinkedIn Copilot" className="h-9 w-auto" />
+            <Logo className="text-base" markClassName="w-7 h-7" />
           </div>
           <div className="flex items-center gap-2">
             <Link to="/network"><Button variant="outline" size="sm" className="gap-1"><Users className="w-3 h-3" /> Network</Button></Link>
