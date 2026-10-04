@@ -1,5 +1,4 @@
 import { useAuth } from '@/hooks/useAuth';
-import SplitFlapText from '@/components/SplitFlapText';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import React, { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
@@ -14,9 +13,10 @@ import {
   Zap, ArrowRight, Target, Eye, UserPlus, MessageSquare, Clock,
   Upload, Bot, BarChart3, RefreshCw, ShieldCheck, Shield,
   Check, ChevronRight, Star, Sparkles, Globe, Lock, Quote,
-  Ghost, TrendingUp, Heart, MessageCircle, Repeat,
+  Ghost, TrendingUp, Heart, MessageCircle, Repeat, Radar,
 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
+import BrandMark from '@/components/BrandMark';
 import { motion } from 'framer-motion';
 import '@/styles/campaign-flow.css';
 
@@ -39,6 +39,8 @@ export default function Landing() {
   const howRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const pricingRef = useRef<HTMLDivElement>(null);
+  const modesRef = useRef<HTMLDivElement>(null);
+  const networkRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!loading && user) navigate('/dashboard');
@@ -98,11 +100,6 @@ export default function Landing() {
     { emoji: '\uD83E\uDDD1\u200D\uD83D\uDCBB', title: 'Runs In Your Browser', desc: 'Our Chrome Extension acts as you, from your own browser and IP address. No cloud servers, no proxy farms. LinkedIn sees you, not a bot.' },
   ];
 
-  const testimonials = [
-    { name: 'Marcus W.', role: 'VP Sales', company: 'B2B SaaS Startup', quote: 'LinkedIn Copilot replaced 3 hours of daily manual outreach. The AI messages actually reference what my prospects do \u2014 the reply rate jumped from 4% to 18%.' },
-    { name: 'Sarah L.', role: 'Founder', company: 'Digital Agency', quote: 'I was skeptical about LinkedIn automation, but the ICP validation is a game-changer. No more wasting connections on people who will never buy.' },
-    { name: 'David K.', role: 'Head of Growth', company: 'FinTech Scale-up', quote: 'We tested 5 LinkedIn tools. Copilot is the only one where messages don\'t look automated. Our prospects actually think we wrote them personally.' },
-  ];
 
   const faqs = [
     { q: 'What is LinkedIn automation?', a: 'LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks such as sending connection requests, follow-ups, and direct messages. LinkedIn Copilot is an AI-powered LinkedIn automation tool that goes beyond simple templates \u2014 it reads each prospect\'s full profile and generates personalized messages using Claude Sonnet, while validating leads against your Ideal Customer Profile using Claude Haiku.' },
@@ -120,6 +117,7 @@ export default function Landing() {
     { q: 'What are Ghost Profiles and why does LinkedIn Copilot skip them?', a: 'Ghost profiles are LinkedIn accounts with minimal activity \u2014 no about section, few skills, no education, barely any connections. These users rarely check LinkedIn and will never see your connection request or message. LinkedIn Copilot automatically detects and skips ghost profiles so you don\'t waste credits or daily limits on people who aren\'t actually active on the platform.' },
     { q: 'What is Growth Mode?', a: 'Growth Mode is a separate campaign type designed to build your LinkedIn authority over time. Instead of sending connection requests and DMs, Growth Mode engages with content posted by thought leaders in your niche. It visits their profiles, finds their latest posts, likes them, and posts AI-generated contextual comments. This makes your profile visible to their audience and helps grow your follower count, connection quality, and overall LinkedIn presence organically.' },
     { q: 'How does AI comment generation work?', a: 'When Growth Mode finds a post from one of your target profiles, Claude Haiku reads the full post content and generates a contextual comment. The AI rotates between five distinct comment styles \u2014 observation with a question, personal experience, expanding on a point, respectful challenge, and data-backed insight \u2014 so your engagement always looks natural and varied. Comments reference specific details from the post and never use generic phrases like "Great post!" or "Love this!".' },
+    { q: 'What is the Network module?', a: 'Network grows your LinkedIn network with people who match your Ideal Customer Profiles, without importing any list. You describe one or more ICPs, and the Chrome extension runs LinkedIn people searches from your own account (no Sales Navigator needed), favoring 2nd-degree contacts you share connections with. Claude Haiku scores each person for fit, and qualified people receive a connection request without a note, inside your weekly limit. Network also watches posts from people in your ICPs and drafts a comment for each, shown next to the original post so you can spot business opportunities, edit, and approve one by one or in bulk.' },
     { q: 'Can I use Outreach and Growth modes together?', a: 'Yes. You can run Outreach campaigns and Growth campaigns simultaneously from the same LinkedIn account. They operate independently \u2014 Growth Mode engages with content from thought leaders in your niche, while Outreach Mode handles connection requests and personalized DMs to your leads. Using both together is a powerful strategy: Growth Mode warms up your profile and builds credibility, while Outreach Mode converts that credibility into conversations.' },
   ];
 
@@ -140,6 +138,7 @@ export default function Landing() {
         'Chrome extension included',
         'Full automation sequence',
         'Growth Mode: 10 target profiles',
+        'Network: ICP prospecting + comment queue',
         'Manual DM approval only',
       ],
       cta: 'Start Free',
@@ -162,7 +161,8 @@ export default function Landing() {
         'Chrome extension with smart limits',
         'Growth Mode: unlimited target profiles',
         'AI-generated comments with 5 style variants',
-        'Batch DM approval',
+        'Network: ICP prospecting + comment queue',
+        'Batch DM and comment approval',
         'Priority support',
       ],
       cta: 'Start 7-day trial',
@@ -188,107 +188,123 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-background" itemScope itemType="https://schema.org/WebPage">
       {/* -- NAVBAR -- */}
-      <nav className="fixed top-0 w-full z-50 glass" aria-label="Main navigation" role="navigation">
-        <div className="container mx-auto flex items-center justify-between h-[72px] px-4">
-          <div className="flex items-center">
-            <img src={logoImg} alt="LinkedIn Copilot \u2014 AI-powered LinkedIn automation tool for B2B outreach" className="h-14 w-auto" />
+      <nav className="fixed top-0 w-full z-50 bg-navy/95 backdrop-blur border-b border-white/[0.06]" aria-label="Main navigation" role="navigation">
+        <div className="max-w-[1240px] mx-auto flex items-center justify-between h-[72px] px-4 sm:px-6 gap-4">
+          <Link to="/" className="flex items-center gap-3 text-white" aria-label="LinkedIn Copilot home">
+            <BrandMark className="w-8 h-8" />
+            <span className="font-display font-bold text-lg sm:text-xl tracking-[0.06em] uppercase whitespace-nowrap"><span className="hidden sm:inline">LinkedIn </span>Copilot</span>
+          </Link>
+          <div className="hidden md:flex items-center gap-7 text-[15px] text-slate-300">
+            <button onClick={() => scrollTo(modesRef)} className="hover:text-white transition-colors">Modes</button>
+            <button onClick={() => scrollTo(networkRef)} className="hover:text-white transition-colors">Network</button>
+            <button onClick={() => scrollTo(howRef)} className="hover:text-white transition-colors">How it works</button>
+            <button onClick={() => scrollTo(pricingRef)} className="hover:text-white transition-colors">Pricing</button>
           </div>
-          <div className="hidden md:flex items-center gap-6 text-sm font-display font-semibold uppercase tracking-wider text-sidebar-foreground">
-            <button onClick={() => scrollTo(howRef)} className="hover:text-primary transition-colors">How it Works</button>
-            <button onClick={() => scrollTo(featuresRef)} className="hover:text-primary transition-colors">Features</button>
-            <button onClick={() => scrollTo(pricingRef)} className="hover:text-primary transition-colors">Pricing</button>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/auth" className="text-sm font-display font-semibold uppercase tracking-wider text-sidebar-foreground hover:text-primary transition-colors">
-              Login
-            </Link>
-            <Button onClick={handleCTA} size="sm" className="bg-primary text-primary-foreground hover:bg-gold-light font-display font-bold uppercase tracking-wider rounded-md shine-effect">
-              Get Started <ArrowRight className="w-3.5 h-3.5 ml-1" />
+          <div className="flex items-center gap-2">
+            <Link to="/auth" className="text-[15px] text-white px-3 py-2.5 whitespace-nowrap hover:text-primary transition-colors">Log in</Link>
+            <Button onClick={handleCTA} className="bg-primary text-primary-foreground hover:bg-gold-light font-semibold rounded-lg h-11 px-5">
+              Start free
             </Button>
           </div>
         </div>
       </nav>
 
-      {/* SECTION 1: HERO (dark) */}
+      {/* SECTION 1: HERO */}
       <main>
-      <section className="px-4 sm:px-6 relative overflow-hidden hero-topgun" aria-label="Hero">
-        <svg className="target-reticle hidden md:block" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <circle cx="60" cy="60" r="55" stroke="hsl(var(--gold))" strokeWidth="1.5" strokeDasharray="8 4"/>
-          <circle cx="60" cy="60" r="35" stroke="hsl(var(--gold))" strokeWidth="1"/>
-          <circle cx="60" cy="60" r="8" stroke="hsl(var(--gold))" strokeWidth="1.5"/>
-          <line x1="60" y1="0" x2="60" y2="20" stroke="hsl(var(--gold))" strokeWidth="1.5"/>
-          <line x1="60" y1="100" x2="60" y2="120" stroke="hsl(var(--gold))" strokeWidth="1.5"/>
-          <line x1="0" y1="60" x2="20" y2="60" stroke="hsl(var(--gold))" strokeWidth="1.5"/>
-          <line x1="100" y1="60" x2="120" y2="60" stroke="hsl(var(--gold))" strokeWidth="1.5"/>
-        </svg>
-
-        <div className="container mx-auto max-w-[900px] text-center relative z-[2] pt-20 sm:pt-24">
-          <h1 className="sr-only">LinkedIn Copilot: AI-Powered LinkedIn Automation for B2B Sales Outreach</h1>
+      <section className="bg-navy text-white pt-[72px] relative overflow-hidden" aria-label="Hero">
+        <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-16 md:py-24 grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 items-center">
+          <div className="flex flex-col gap-7">
+            <h1 className="sr-only">LinkedIn Copilot: AI-Powered LinkedIn Automation for B2B Sales Outreach</h1>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} className="font-mono-label text-xs text-primary">
+              Outreach · Growth · Network <span className="text-slate-500">//</span> powered by Claude
+            </motion.div>
+            <motion.p
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' as const }}
+              aria-hidden="true"
+              className="font-display font-bold uppercase leading-[0.92] tracking-tight m-0"
+              style={{ fontSize: 'clamp(48px, 6.3vw, 92px)' }}
+            >
+              You set the course.<br /><span className="text-primary">Copilot flies it.</span>
+            </motion.p>
+            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[34ch] m-0">
+              Define your ideal customer once. Copilot finds them on LinkedIn, connects, writes the messages and drafts the comments. Nothing goes out that you would not have sent yourself.
+            </motion.p>
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }} className="flex flex-wrap items-center gap-4">
+              <Button onClick={handleCTA} size="lg" className="bg-primary text-primary-foreground hover:bg-gold-light font-semibold text-base rounded-xl h-14 px-6">
+                Start free · 50 outreach credits <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+              <button onClick={() => scrollTo(networkRef)} className="text-base text-white py-3 border-b border-slate-600 hover:border-primary transition-colors">
+                See the Network module
+              </button>
+            </motion.div>
+            <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-400 list-none p-0 m-0">
+              {['No credit card', 'Works with free LinkedIn', 'Chrome extension, 30-second setup'].map(t => (
+                <li key={t} className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" />{t}</li>
+              ))}
+            </ul>
+          </div>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, ease: 'easeOut' as const }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/[0.12] text-gold-light text-[10px] sm:text-[11px] font-display font-bold uppercase tracking-[0.18em] mb-6 border border-primary/50"
+            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.2 }}
+            className="bg-navy-light/60 border border-[#22304A] rounded-[20px] p-5 sm:p-6 flex flex-col gap-5 shadow-hero"
+            aria-hidden="true"
           >
-            <span className="badge-dot" />
-            Outreach + Growth Modes &middot; Claude AI &middot; 30+ Languages
+            <div className="flex justify-between items-center font-mono-label text-[11px] text-slate-400">
+              <span>ICP radar · Ops leaders, Florida</span>
+              <span className="flex items-center gap-2 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />Scanning</span>
+            </div>
+            <div className="relative aspect-[1.6/1] rounded-2xl bg-navy border border-[#1C2740] overflow-hidden">
+              <svg viewBox="0 0 480 300" className="w-full h-full" preserveAspectRatio="xMidYMid slice">
+                <defs>
+                  <radialGradient id="lc-sweep" cx="240" cy="150" r="200" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#E0A82E" stopOpacity="0.35" />
+                    <stop offset="1" stopColor="#E0A82E" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <g fill="none" stroke="#22304A">
+                  <circle cx="240" cy="150" r="50" /><circle cx="240" cy="150" r="100" /><circle cx="240" cy="150" r="150" /><circle cx="240" cy="150" r="200" />
+                  <path d="M40 150h400M240 -50v400" />
+                </g>
+                <g className="lc-radar-sweep" style={{ transformOrigin: '240px 150px' }}>
+                  <path d="M240 150 L 418 60 A 200 200 0 0 1 440 150 Z" fill="url(#lc-sweep)" />
+                </g>
+                <g fill="#E0A82E"><circle cx="330" cy="102" r="6" /><circle cx="182" cy="96" r="4" /><circle cx="300" cy="214" r="5" /><circle cx="140" cy="190" r="3.5" /><circle cx="378" cy="168" r="4.5" /></g>
+                <g fill="#4A5A7A"><circle cx="210" cy="230" r="3" /><circle cx="120" cy="120" r="3" /><circle cx="268" cy="70" r="3" /><circle cx="350" cy="240" r="3" /></g>
+                <circle cx="330" cy="102" r="14" fill="none" stroke="#E0A82E" strokeOpacity="0.6" />
+                <circle cx="240" cy="150" r="5" fill="#E8ECF4" />
+              </svg>
+              <div className="absolute left-[60%] top-[12%] bg-navy-light border border-[#3A4A6B] rounded-xl px-3 py-2.5 text-[13px] leading-snug min-w-[160px]">
+                <div className="font-semibold">Marina Alves</div>
+                <div className="text-slate-400">VP Operations · 14 mutual</div>
+                <div className="font-mono text-[11px] text-primary mt-1">FIT 92 · QUALIFIED</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-navy-light rounded-xl p-3.5">
+                <div className="font-mono-label text-[10px] text-slate-400">Invites / week</div>
+                <div className="font-display text-[32px] font-semibold leading-tight">64<span className="text-slate-500 text-xl">/100</span></div>
+                <div className="h-1 bg-[#22304A] rounded"><div className="h-1 w-[64%] bg-primary rounded" /></div>
+              </div>
+              <div className="bg-navy-light rounded-xl p-3.5">
+                <div className="font-mono-label text-[10px] text-slate-400">Accepted</div>
+                <div className="font-display text-[32px] font-semibold leading-tight">41%</div>
+                <div className="text-[13px] text-emerald-400">+26 contacts</div>
+              </div>
+              <div className="bg-navy-light rounded-xl p-3.5">
+                <div className="font-mono-label text-[10px] text-slate-400">To approve</div>
+                <div className="font-display text-[32px] font-semibold leading-tight">7</div>
+                <div className="text-[13px] text-amber-300">2 signals</div>
+              </div>
+            </div>
           </motion.div>
-          <SplitFlapText
-            className="font-display uppercase tracking-tight mb-5 leading-tight text-white max-w-[900px] mx-auto"
-            style={{ fontSize: 'clamp(40px, 6.8vw, 96px)', fontWeight: 900, textShadow: '0 8px 36px rgba(0,0,0,0.55)' }}
-            lines={[
-              { text: 'Lock on Target.', className: 'block' },
-              { text: 'Deploy Precision', className: 'text-primary block whitespace-nowrap' },
-              { text: 'Messages.', className: 'text-primary block' },
-              { text: 'Close Deals.', className: 'block' },
-            ]}
-          />
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' as const }}
-            className="text-base sm:text-lg leading-relaxed max-w-[680px] mx-auto mb-9 px-2"
-            style={{ color: 'rgba(255,255,255,0.78)', textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}
-          >
-            Two modes, one platform. <strong>Outreach Mode</strong> reads profiles and crafts messages they can't ignore. <strong>Growth Mode</strong> builds your authority through AI-powered engagement. Not templates. Not spam. Precision.
-          </motion.p>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.45, ease: 'easeOut' as const }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <Button
-              onClick={handleCTA}
-              size="lg"
-              className="bg-primary text-primary-foreground hover:bg-gold-light px-8 sm:px-10 py-[16px] text-sm sm:text-base font-display font-extrabold uppercase tracking-[0.1em] rounded-xl transition-all shine-effect shadow-hero"
-              style={{ boxShadow: '0 0 30px rgba(201,162,39,0.4), 0 4px 20px rgba(0,0,0,0.4)' }}
-            >
-              Start Free &mdash; 50 Outreach Credits
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-            <button
-              onClick={() => scrollTo(howRef)}
-              className="text-xs sm:text-sm font-display font-semibold uppercase tracking-wider text-white/60 hover:text-white transition-colors flex items-center gap-1.5"
-            >
-              See How It Works <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </motion.div>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.6 }}
-            className="text-[11px] mt-4"
-            style={{ color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em' }}
-          >
-            No credit card required. Chrome Extension installs in 30 seconds.
-          </motion.p>
         </div>
-
-        <div className="scroll-hint">
-          <span>Scroll</span>
-          <div className="scroll-arrow" />
+        <div className="border-t border-white/[0.06] bg-[#0D1322]">
+          <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-5 flex flex-wrap justify-between gap-4 font-mono-label text-[11px] text-slate-400">
+            <span>Claude Sonnet writes · Claude Haiku qualifies</span>
+            <span>No Sales Navigator required</span>
+            <span>Human approval on every comment</span>
+            <span>30+ languages</span>
+          </div>
         </div>
       </section>
 
@@ -306,62 +322,91 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* SECTION: TWO MODES */}
-      <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
-        <div className="container mx-auto max-w-5xl relative z-10">
-          <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-3">
-              Two Modes. <span className="text-gradient-gold">One Platform.</span>
+      {/* SECTION: THREE MODES */}
+      <section ref={modesRef} id="modes" className="py-20 md:py-28 px-4 sm:px-6 section-white border-t border-border/60">
+        <div className="max-w-[1240px] mx-auto flex flex-col gap-12">
+          <motion.div {...fadeUp} className="flex flex-col gap-3 max-w-3xl">
+            <div className="font-mono-label text-xs text-gold-dark">01 // Three modes</div>
+            <h2 className="font-display font-bold uppercase leading-[0.98] m-0" style={{ fontSize: 'clamp(40px, 5vw, 64px)' }}>
+              One cockpit for every way you sell on LinkedIn
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Whether you're closing deals or building presence, LinkedIn Copilot adapts to your goal.
-            </p>
+          </motion.div>
+          <div className="grid md:grid-cols-3 gap-5">
+            {[
+              { icon: Target, title: 'Outreach', isNew: false, desc: 'Bring a lead list. Copilot validates each person against your ICP, skips ghost profiles and writes a DM from their actual career.', bullets: ['Visit, follow, connect, DM, follow up', 'Only outreach-ready leads use credits', 'Batch DM approval'] },
+              { icon: TrendingUp, title: 'Growth', isNew: false, desc: 'Stay visible next to the voices your buyers follow. Copilot finds their newest posts and drafts comments worth reading.', bullets: ['Five comment styles, never "Great post!"', 'Weekly engagement cycles', 'Your profile in front of their audience'] },
+              { icon: Radar, title: 'Network', isNew: true, desc: 'No spreadsheet. Describe who you want to know, and Copilot prospects LinkedIn itself, favoring people you share connections with.', bullets: ['Invites without a note, inside weekly limits', 'A dashboard of new contacts by ICP', 'Comment queue with the original post'] },
+            ].map((m, i) => (
+              <motion.article key={m.title} {...stagger(i)}
+                className={`relative rounded-[18px] p-8 flex flex-col gap-4 border ${m.isNew ? 'bg-navy text-white border-primary' : 'bg-card border-border'}`}
+              >
+                {m.isNew && <span className="absolute top-6 right-6 font-mono-label text-[11px] bg-primary text-primary-foreground px-2 py-1 rounded-md">New</span>}
+                <m.icon className={`w-9 h-9 ${m.isNew ? 'text-primary' : 'text-gold-dark'}`} strokeWidth={1.5} />
+                <h3 className="font-display font-semibold text-[32px] uppercase leading-none m-0">{m.title}</h3>
+                <p className={`m-0 ${m.isNew ? 'text-slate-300' : 'text-muted-foreground'}`}>{m.desc}</p>
+                <ul className="list-none p-0 m-0 flex flex-col gap-2.5 text-[15px]">
+                  {m.bullets.map(b => (
+                    <li key={b} className="flex gap-2.5 items-start"><Check className={`w-4 h-4 mt-1 shrink-0 ${m.isNew ? 'text-primary' : 'text-gold-dark'}`} />{b}</li>
+                  ))}
+                </ul>
+              </motion.article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION: NETWORK SPOTLIGHT */}
+      <section ref={networkRef} id="network" className="py-20 md:py-28 px-4 sm:px-6 bg-navy text-white">
+        <div className="max-w-[1240px] mx-auto grid lg:grid-cols-2 gap-14 items-center">
+          <motion.div {...fadeUp} className="flex flex-col gap-8">
+            <div className="flex flex-col gap-3">
+              <div className="font-mono-label text-xs text-primary">02 // Network module</div>
+              <h2 className="font-display font-bold uppercase leading-[0.98] m-0" style={{ fontSize: 'clamp(40px, 5vw, 64px)' }}>
+                Read the post. Spot the deal. Approve in one click.
+              </h2>
+              <p className="text-lg text-slate-300 m-0">
+                Copilot watches what people in your ICP are posting and drafts a comment for each. You see their words next to the suggestion, so a buying signal never slips by.
+              </p>
+            </div>
+            <ol className="list-none p-0 m-0 border-t border-[#22304A]">
+              {[
+                ['Define one or more ICPs.', 'Titles, locations, keywords, topics they post about.'],
+                ['Copilot prospects.', 'People search on your own account, scored for fit by Claude.'],
+                ['It connects.', 'No note, spaced through your active hours, withdrawn after 21 days.'],
+                ['You approve the comments.', 'Edit inline or approve the whole queue at once.'],
+              ].map(([t, d], i) => (
+                <li key={t} className="flex gap-5 py-4 border-b border-[#22304A]">
+                  <span className="font-mono text-sm text-primary pt-0.5">0{i + 1}</span>
+                  <span><strong className="font-semibold">{t}</strong> <span className="text-slate-400">{d}</span></span>
+                </li>
+              ))}
+            </ol>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 gap-8">
-            <motion.div {...stagger(0)}>
-              <Card className="h-full border-2 border-primary/40 bg-amber-50/30 rounded-2xl shadow-sm hover-float">
-                <CardContent className="p-6 sm:p-8">
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 border border-primary/30">
-                    <Target className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="font-display font-bold uppercase tracking-wide text-lg mb-3">Outreach Mode</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed mb-4">
-                    Import leads from any source, validate them against your ICP, and send AI-personalized connection requests and DMs. The full outreach sequence runs on autopilot with human-like delays.
-                  </p>
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> CSV import from any lead source</li>
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> AI ICP validation + ghost detection</li>
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> Claude Sonnet writes unique DMs per lead</li>
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /> Visit &rarr; Follow &rarr; Connect &rarr; DM &rarr; Follow-up</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div {...stagger(1)}>
-              <Card className="h-full border-2 border-emerald-400/40 bg-emerald-50/30 rounded-2xl shadow-sm hover-float relative overflow-hidden">
-                <div className="absolute top-3 right-3 bg-emerald-500 text-white text-[10px] font-display font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> New
-                </div>
-                <CardContent className="p-6 sm:p-8">
-                  <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/30">
-                    <TrendingUp className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <h3 className="font-display font-bold uppercase tracking-wide text-lg mb-3">Growth Mode</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed mb-4">
-                    Build your LinkedIn authority by engaging with thought leaders' content. The AI likes posts, writes contextual comments, and makes your profile visible to their audience — on autopilot, every week.
-                  </p>
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> Target thought leaders in your niche</li>
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> AI finds and engages with latest posts</li>
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> Claude Haiku writes contextual comments</li>
-                    <li className="flex items-start gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> Weekly engagement cycles on autopilot</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
+          <motion.div {...stagger(1)} aria-hidden="true" className="bg-background text-foreground rounded-[20px] p-6 flex flex-col gap-4 shadow-hero">
+            <div className="flex gap-3 items-center">
+              <div className="w-11 h-11 rounded-full bg-navy text-primary grid place-items-center font-semibold">RT</div>
+              <div className="flex-1">
+                <div className="font-semibold">Rafael Teixeira</div>
+                <div className="text-sm text-muted-foreground">Director of Facilities · 2nd · 3h</div>
+              </div>
+              <span className="text-xs font-semibold bg-gold-bg text-[#7A4B00] px-2.5 py-1 rounded-full">Business signal</span>
+            </div>
+            <p className="m-0 text-[15px] leading-relaxed p-4 bg-card border border-border rounded-xl">
+              We are consolidating three sites into one control room next quarter. Still looking for a partner who has done this in a 24/7 operation, not just on paper.
+            </p>
+            <div className="text-[13px] text-[#7A4B00] flex gap-2 items-center"><Sparkles className="w-3.5 h-3.5" />Actively looking for a vendor</div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[13px] text-muted-foreground">Suggested comment</span>
+              <p className="m-0 text-[15px] leading-relaxed p-4 bg-card border-[1.5px] border-[#C99526] rounded-xl">
+                The hardest part we have seen is the cutover week, when both sites still need eyes on them. Are you planning a parallel run or a hard switch?
+              </p>
+            </div>
+            <div className="flex gap-2.5 justify-end">
+              <span className="px-4 py-2.5 rounded-lg border border-border font-medium">Skip</span>
+              <span className="px-5 py-2.5 rounded-lg bg-navy text-background font-semibold">Approve</span>
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -689,35 +734,6 @@ export default function Landing() {
           <motion.p {...fadeUp} className="text-center text-sm text-slate-400 mt-10 max-w-xl mx-auto italic">
             "We built LinkedIn Copilot for our own outreach first. If it wasn't safe, we wouldn't use it ourselves."
           </motion.p>
-        </div>
-      </section>
-
-      {/* SECTION: TESTIMONIALS / SOCIAL PROOF */}
-      <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
-        <div className="container mx-auto max-w-5xl relative z-10">
-          <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
-              What Sales Teams <span className="text-gradient-gold">Say</span>
-            </h2>
-            <p className="text-lg text-gray-600">Real feedback from B2B professionals using LinkedIn Copilot.</p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {testimonials.map((t, i) => (
-              <motion.div key={i} {...stagger(i)}>
-                <Card className="hover-float h-full border-border rounded-2xl shadow-sm">
-                  <CardContent className="p-6 sm:p-8 flex flex-col h-full">
-                    <Quote className="w-8 h-8 text-primary/30 mb-4" />
-                    <p className="text-sm text-gray-600 leading-relaxed flex-1 italic">"{t.quote}"</p>
-                    <div className="mt-5 pt-4 border-t border-border">
-                      <p className="font-display font-bold text-sm">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">{t.role}, {t.company}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
         </div>
       </section>
 

@@ -10,12 +10,12 @@ import { toast } from 'sonner';
 import { useMonitoredPosts, type MonitoredPost, type PostFilter } from '@/hooks/useNetwork';
 
 const SIGNALS: Record<string, { label: string; className: string }> = {
-  business_opportunity: { label: 'Business opportunity', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-  hiring: { label: 'Hiring', className: 'bg-blue-100 text-blue-800 border-blue-200' },
-  pain_point: { label: 'Pain point', className: 'bg-amber-100 text-amber-800 border-amber-200' },
-  launch: { label: 'Launch', className: 'bg-violet-100 text-violet-800 border-violet-200' },
-  milestone: { label: 'Milestone', className: 'bg-slate-100 text-slate-700 border-slate-200' },
-  relationship: { label: 'Relationship', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+  business_opportunity: { label: 'Business signal', className: 'bg-gold-bg text-[#7A4B00] border-transparent' },
+  hiring: { label: 'Hiring', className: 'bg-gold-bg text-[#7A4B00] border-transparent' },
+  pain_point: { label: 'Pain point', className: 'bg-gold-bg text-[#7A4B00] border-transparent' },
+  launch: { label: 'Launch', className: 'bg-secondary text-foreground border-transparent' },
+  milestone: { label: 'Milestone', className: 'bg-secondary text-foreground border-transparent' },
+  relationship: { label: 'Relationship', className: 'bg-secondary text-foreground border-transparent' },
 };
 
 function PostCard({
@@ -37,73 +37,84 @@ function PostCard({
   const longText = (post.post_text || '').length > 420;
   const shown = expanded || !longText ? post.post_text : `${(post.post_text || '').slice(0, 420)}…`;
 
+  const initials = (post.author_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const isSignal = ['business_opportunity', 'hiring', 'pain_point'].includes(post.signal_type || '');
+
   return (
-    <Card className={selected ? 'ring-2 ring-primary/40' : ''}>
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          {mode === 'pending' && <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1" aria-label="Select" />}
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
+    <article className={`rounded-2xl bg-card border p-5 sm:p-6 transition-colors ${selected ? 'border-foreground' : 'border-border'}`}>
+      <div className="grid lg:grid-cols-2 gap-5 lg:gap-6">
+        <div className="flex flex-col gap-3 min-w-0">
+          <div className="flex items-center gap-3">
+            {mode === 'pending' && <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select post by ${post.author_name || 'author'}`} />}
+            <div className="w-11 h-11 shrink-0 rounded-full bg-navy text-primary grid place-items-center font-semibold">{initials}</div>
+            <div className="flex-1 min-w-0">
               {post.author_profile_url ? (
-                <a href={post.author_profile_url} target="_blank" rel="noreferrer" className="font-medium hover:underline">
+                <a href={post.author_profile_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
                   {post.author_name || 'Unknown author'}
                 </a>
-              ) : <span className="font-medium">{post.author_name || 'Unknown author'}</span>}
-              {post.author_degree && <span className="text-xs text-muted-foreground">• {post.author_degree}</span>}
-              {post.posted_label && <span className="text-xs text-muted-foreground">• {post.posted_label}</span>}
-              {signal && <Badge variant="outline" className={signal.className}>{signal.label}</Badge>}
-            </div>
-            {post.author_headline && <p className="text-xs text-muted-foreground line-clamp-1">{post.author_headline}</p>}
-            {post.signal_reason && (post.signal_type === 'business_opportunity' || post.signal_type === 'hiring' || post.signal_type === 'pain_point') && (
-              <p className="text-xs font-medium text-emerald-700">{post.signal_reason}</p>
-            )}
-          </div>
-          {post.post_url && (
-            <a href={post.post_url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground" aria-label="Open post">
-              <ExternalLink className="w-4 h-4" />
-            </a>
-          )}
-        </div>
-
-        <div className="rounded-md bg-muted/50 p-3 text-sm whitespace-pre-line">
-          {shown}
-          {longText && (
-            <button className="block mt-1 text-xs text-primary hover:underline" onClick={() => setExpanded(e => !e)}>
-              {expanded ? 'Show less' : 'Show full post'}
-            </button>
-          )}
-        </div>
-
-        {mode === 'pending' ? (
-          <>
-            <Textarea rows={3} value={text} onChange={e => onText(e.target.value)} className="text-sm" />
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{text.length} characters</span>
-              <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={onDismiss} disabled={busy}><X className="w-4 h-4 mr-1" /> Skip</Button>
-                <Button size="sm" onClick={onApprove} disabled={busy || !text.trim()}><Check className="w-4 h-4 mr-1" /> Approve</Button>
+              ) : <span className="font-semibold">{post.author_name || 'Unknown author'}</span>}
+              <div className="text-[13px] text-muted-foreground line-clamp-1">
+                {[post.author_headline, post.author_degree, post.posted_label].filter(Boolean).join(' · ')}
               </div>
             </div>
-          </>
-        ) : (
-          <div className="space-y-1">
-            <p className="text-sm border-l-2 border-primary/40 pl-3">{post.final_comment || post.suggested_comment}</p>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>
-                {post.status === 'posted' && post.commented_at && `Commented ${new Date(post.commented_at).toLocaleString()}`}
-                {post.status === 'approved' && 'Approved, waiting for a slot in your active hours'}
-                {post.status === 'queued' && 'Scheduled in the extension queue'}
-                {post.status === 'failed' && `Failed: ${post.last_error || 'unknown error'}`}
-                {post.status === 'dismissed' && 'Skipped'}
-              </span>
-              {post.status === 'approved' && (
-                <Button size="sm" variant="ghost" onClick={onUnschedule}><Undo2 className="w-3 h-3 mr-1" /> Back to review</Button>
-              )}
-            </div>
+            {post.post_url && (
+              <a href={post.post_url} target="_blank" rel="noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary" aria-label="Open post on LinkedIn">
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+          {(signal || (isSignal && post.signal_reason)) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {signal && <Badge variant="outline" className={`rounded-full font-semibold ${signal.className}`}>{signal.label}</Badge>}
+              {isSignal && post.signal_reason && <span className="text-[13px] text-[#7A4B00]">{post.signal_reason}</span>}
+            </div>
+          )}
+          <blockquote className="m-0 rounded-xl bg-background/70 p-4 text-[15px] leading-relaxed whitespace-pre-line">
+            {shown}
+            {longText && (
+              <button className="block mt-2 text-[13px] font-medium text-gold-dark hover:underline" onClick={() => setExpanded(e => !e)}>
+                {expanded ? 'Show less' : 'Show full post'}
+              </button>
+            )}
+          </blockquote>
+        </div>
+
+        <div className="flex flex-col gap-2.5">
+          {mode === 'pending' ? (
+            <>
+              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted-foreground">
+                Suggested comment
+                <Textarea rows={6} value={text} onChange={e => onText(e.target.value)} className="text-[15px] leading-relaxed text-foreground rounded-xl border-[1.5px] bg-card resize-y" />
+              </label>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground tabular-nums">{text.length} characters</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="h-11" onClick={onDismiss} disabled={busy}><X className="w-4 h-4 mr-1" /> Skip</Button>
+                  <Button className="h-11 bg-navy text-background hover:bg-navy-light" onClick={onApprove} disabled={busy || !text.trim()}><Check className="w-4 h-4 mr-1" /> Approve</Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="text-[13px] font-medium text-muted-foreground">Comment</span>
+              <p className="m-0 rounded-xl border border-border p-4 text-[15px] leading-relaxed">{post.final_comment || post.suggested_comment}</p>
+              <div className="flex items-center justify-between gap-2 text-[13px] text-muted-foreground">
+                <span className={post.status === 'failed' ? 'text-destructive' : post.status === 'posted' ? 'text-success font-medium' : ''}>
+                  {post.status === 'posted' && post.commented_at && `Commented ${new Date(post.commented_at).toLocaleString()}`}
+                  {post.status === 'approved' && 'Approved, waiting for a slot in your active hours'}
+                  {post.status === 'queued' && 'Scheduled in the extension queue'}
+                  {post.status === 'failed' && `Failed: ${post.last_error || 'unknown error'}`}
+                  {post.status === 'dismissed' && 'Skipped'}
+                </span>
+                {post.status === 'approved' && (
+                  <Button size="sm" variant="ghost" onClick={onUnschedule}><Undo2 className="w-3 h-3 mr-1" /> Back to review</Button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -183,7 +194,7 @@ export default function CommentQueue() {
       </div>
 
       {filter === 'pending' && visible.length > 0 && (
-        <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2 sticky top-2 z-10">
+        <div className="flex items-center justify-between flex-wrap gap-2 rounded-xl border border-border bg-card/95 backdrop-blur px-4 py-2.5 sticky top-2 z-10 shadow-sm">
           <label className="flex items-center gap-2 text-sm">
             <Checkbox
               checked={allSelected}
@@ -195,9 +206,9 @@ export default function CommentQueue() {
             <Button size="sm" variant="ghost" disabled={selected.size === 0 || busy} onClick={() => dismissIds(Array.from(selected))}>
               Skip selected
             </Button>
-            <Button size="sm" disabled={selected.size === 0 || busy} onClick={() => approveIds(Array.from(selected))}>
+            <Button size="sm" className="h-10 font-semibold" disabled={selected.size === 0 || busy} onClick={() => approveIds(Array.from(selected))}>
               {approve.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-              Approve selected
+              {selected.size > 0 ? `Approve ${selected.size} selected` : 'Approve selected'}
             </Button>
           </div>
         </div>
@@ -217,7 +228,7 @@ export default function CommentQueue() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-4">
           {visible.map(p => (
             <PostCard
               key={p.id}

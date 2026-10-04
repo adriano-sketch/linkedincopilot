@@ -14,9 +14,10 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Barlow', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
         display: ['Barlow Condensed', 'sans-serif'],
-        numbers: ['Oswald', 'sans-serif'],
+        numbers: ['Barlow Condensed', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",

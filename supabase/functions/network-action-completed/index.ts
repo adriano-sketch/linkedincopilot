@@ -249,6 +249,8 @@ async function handleComment(supabase: Supa, userId: string, action: any, succes
   }
   const { data: post } = await supabase.from("monitored_posts").select("last_error").eq("id", postId).eq("user_id", userId).maybeSingle();
   const alreadyRetried = String(post?.last_error || "").startsWith("[retry]");
+  // one automatic retry, then it stays failed and visible in the dashboard
+  await supabase.from("monitored_posts").update({
     status: alreadyRetried ? "failed" : "approved",
     last_error: `${alreadyRetried ? "" : "[retry] "}${(errorMessage || (result?.posted === false ? "comment not confirmed" : "unknown error")).slice(0, 300)}`,
   }).eq("id", postId).eq("user_id", userId);

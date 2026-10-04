@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=Oswald:wght@700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,85 +6,85 @@
 
 @layer base {
   :root {
-    /* Navy + Gold + Slate palette */
-    --background: 210 20% 98%;       /* Off White #F8FAFC */
-    --foreground: 222 47% 11%;       /* Navy #0F172A */
+    /* Flight Deck palette: warm paper, ink navy, brass */
+    --background: 45 27% 94%;        /* Paper #F4F2EC */
+    --foreground: 220 46% 10%;       /* Ink #0E1626 */
 
-    --card: 0 0% 100%;               /* White */
-    --card-foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 46% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 220 46% 10%;
 
-    --primary: 43 91% 38%;           /* Gold #B8860B */
-    --primary-foreground: 222 47% 11%; /* Navy text on gold */
+    --primary: 41 74% 53%;           /* Brass #E0A82E (fills, ink text on top) */
+    --primary-foreground: 223 47% 7%;
 
-    --secondary: 214 32% 91%;        /* Slate 100 #F1F5F9 */
-    --secondary-foreground: 215 25% 27%; /* Slate 700 #334155 */
+    --secondary: 43 27% 90%;         /* #ECE8DE */
+    --secondary-foreground: 220 46% 10%;
 
-    --muted: 210 20% 96%;
-    --muted-foreground: 215 16% 47%; /* Slate 500 #64748B */
+    --muted: 43 27% 90%;
+    --muted-foreground: 216 14% 39%; /* #556070 */
 
-    --accent: 43 67% 56%;            /* Gold Light #D4A843 */
-    --accent-foreground: 222 47% 11%;
+    --accent: 43 27% 90%;
+    --accent-foreground: 220 46% 10%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 213 27% 84%;           /* Slate 300 #CBD5E1 */
-    --input: 213 27% 84%;
-    --ring: 43 91% 38%;              /* Gold ring */
+    --border: 44 21% 86%;            /* #E2DED3 */
+    --input: 44 21% 82%;
+    --ring: 41 68% 47%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 213 27% 84%;
-    --sidebar-primary: 43 91% 38%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 213 27% 84%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 43 91% 38%;
+    --sidebar-background: 223 47% 7%;
+    --sidebar-foreground: 218 25% 77%;
+    --sidebar-primary: 41 74% 53%;
+    --sidebar-primary-foreground: 223 47% 7%;
+    --sidebar-accent: 221 41% 12%;
+    --sidebar-accent-foreground: 220 30% 93%;
+    --sidebar-border: 219 37% 21%;
+    --sidebar-ring: 41 74% 53%;
 
     /* Custom tokens */
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --success: 43 91% 38%;           /* Gold as success */
-    --success-foreground: 222 47% 11%;
+    --success: 152 59% 30%;          /* #1F7A50 */
+    --success-foreground: 0 0% 100%;
     --info: 215 25% 27%;
     --info-foreground: 0 0% 100%;
 
-    /* Navy tokens */
-    --navy: 222 47% 11%;             /* #0F172A */
-    --navy-light: 217 33% 17%;       /* #1E293B */
-    --gold: 43 91% 38%;              /* #B8860B */
-    --gold-light: 43 67% 56%;        /* #D4A843 */
-    --gold-dark: 43 76% 31%;         /* #8B6914 */
-    --gold-bg: 43 67% 96%;           /* #FDF8ED */
+    /* Navy / brass tokens */
+    --navy: 223 47% 7%;              /* Night #0A0F1C */
+    --navy-light: 221 41% 12%;       /* Panel #121A2B */
+    --gold: 41 74% 53%;              /* Brass #E0A82E */
+    --gold-light: 41 80% 62%;
+    --gold-dark: 40 79% 30%;         /* Brass ink #8A6210, text on light */
+    --gold-bg: 40 88% 93%;
 
-    /* Gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(222, 47%, 11%) 0%, hsl(217, 33%, 17%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 20%, 98%) 100%);
-    --gradient-gold: linear-gradient(135deg, hsl(43, 91%, 38%) 0%, hsl(43, 67%, 56%) 100%);
+    /* Gradients (kept for older components, now flat) */
+    --gradient-hero: linear-gradient(180deg, hsl(223, 47%, 7%) 0%, hsl(221, 41%, 12%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(45, 33%, 98%) 100%);
+    --gradient-gold: linear-gradient(90deg, hsl(41, 74%, 53%) 0%, hsl(41, 74%, 53%) 100%);
 
     /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(222 47% 11% / 0.04);
-    --shadow-soft: 0 2px 8px hsl(0 0% 0% / 0.08);
-    --shadow-md: 0 4px 12px -2px hsl(222 47% 11% / 0.08);
-    --shadow-elevated: 0 8px 24px hsl(0 0% 0% / 0.12);
-    --shadow-lg: 0 12px 32px -4px hsl(222 47% 11% / 0.12);
-    --shadow-luxe: 0 20px 50px -12px hsl(217 100% 34% / 0.12);
-    --shadow-deep: 0 25px 60px -15px hsl(217 100% 34% / 0.18);
-    --shadow-card: 0 1px 3px hsl(222 47% 11% / 0.08), 0 4px 12px hsl(222 47% 11% / 0.04);
-    --shadow-gold: 0 4px 14px hsl(43 91% 38% / 0.15);
-    --shadow-glow: 0 0 20px hsl(43 91% 38% / 0.15);
-    --shadow-glow-strong: 0 0 40px hsl(43 91% 38% / 0.3);
-    --shadow-hero: 0 25px 50px -12px hsl(217 100% 34% / 0.15);
+    --shadow-sm: 0 1px 2px 0 hsl(220 46% 10% / 0.05);
+    --shadow-soft: 0 2px 8px hsl(220 46% 10% / 0.06);
+    --shadow-md: 0 4px 12px -2px hsl(220 46% 10% / 0.08);
+    --shadow-elevated: 0 12px 28px -8px hsl(220 46% 10% / 0.18);
+    --shadow-lg: 0 12px 32px -4px hsl(220 46% 10% / 0.12);
+    --shadow-luxe: 0 20px 50px -12px hsl(220 46% 10% / 0.18);
+    --shadow-deep: 0 40px 80px -30px hsl(223 47% 7% / 0.6);
+    --shadow-card: 0 1px 2px hsl(220 46% 10% / 0.05);
+    --shadow-gold: 0 4px 14px hsl(41 74% 53% / 0.18);
+    --shadow-glow: 0 0 20px hsl(41 74% 53% / 0.15);
+    --shadow-glow-strong: 0 0 40px hsl(41 74% 53% / 0.3);
+    --shadow-hero: 0 40px 80px -30px hsl(223 47% 7% / 0.7);
 
     /* Section backgrounds */
-    --section-white: 0 0% 100%;
-    --section-cream: 40 33% 99%;
-    --section-warm: 35 30% 98%;
+    --section-white: 45 33% 98%;
+    --section-cream: 45 27% 94%;
+    --section-warm: 45 27% 94%;
   }
 
   .dark {
@@ -116,7 +116,7 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Barlow', system-ui, sans-serif;
   }
   html, body, #root {
     height: 100%;
@@ -134,7 +134,12 @@
     font-family: 'Barlow Condensed', sans-serif;
   }
   .font-numbers {
-    font-family: 'Oswald', sans-serif;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+  .font-mono-label {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
   }
   .text-gradient-hero {
     background: var(--gradient-hero);
@@ -143,10 +148,10 @@
     background-clip: text;
   }
   .text-gradient-gold {
-    background: var(--gradient-gold);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: hsl(var(--gold-dark));
+  }
+  .bg-navy .text-gradient-gold, .dark .text-gradient-gold {
+    color: hsl(var(--gold));
   }
   .bg-gradient-hero {
     background: var(--gradient-hero);
@@ -268,10 +273,10 @@
 
   /* Section backgrounds */
   .section-white {
-    background: linear-gradient(180deg, hsl(var(--section-white)) 0%, hsl(var(--section-cream)) 100%);
+    background: hsl(var(--section-white));
   }
   .section-cream {
-    background: linear-gradient(180deg, hsl(var(--section-cream)) 0%, hsl(var(--section-warm)) 50%, hsl(var(--section-cream)) 100%);
+    background: hsl(var(--section-cream));
   }
 
   /* Hero Top Gun background */
@@ -429,3 +434,8 @@
 ::-webkit-scrollbar-track { background: hsl(var(--secondary)); }
 ::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground)); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary)); }
+
+/* Radar sweep on the landing hero */
+.lc-radar-sweep { animation: lc-radar 6s linear infinite; }
+@keyframes lc-radar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lc-radar-sweep { animation: none; } }
