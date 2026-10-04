@@ -1,22 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// icp-check (patched 2026-10)
+// Changes: real auth (before: an UNSIGNED, forgeable JWT with role=service_role was trusted);
+// fail-closed on AI errors (before: an AI outage approved every lead in the batch).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 
-function parseJwtPayload(token: string): Record<string, any> | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
+
 
 interface Lead {
   id: string;
@@ -158,39 +147,24 @@ Only output the JSON array, nothing else.`;
   }));
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
+    const auth = await authenticate(req, { allowService: true, allowUser: true });
+    if (!auth) return unauthorized();
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Support both user-auth and service-role (cron) calls
-    const body = await req.json();
-    const { campaign_profile_id, lead_ids, user_id: cronUserId } = body;
-    if (!campaign_profile_id) throw new Error("campaign_profile_id is required");
+    const body = await req.json().catch(() => ({}));
+    const { campaign_profile_id, lead_ids } = body;
+    if (!campaign_profile_id) return json({ error: "campaign_profile_id is required" }, 400);
 
-    let userId: string;
-    const internalKey = req.headers.get("x-internal-key");
-    const token = authHeader.replace("Bearer ", "").trim();
-    const jwtPayload = parseJwtPayload(token);
-    const isServiceRole = jwtPayload?.role === "service_role";
-    if ((internalKey === supabaseKey || isServiceRole) && cronUserId) {
-      // Called from cron or service-role
-      userId = cronUserId;
-      console.log("ICP check called from cron/service-role for user:", userId);
-    } else {
-      // Called from frontend with user auth
-      const supabaseUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-      const { data: { user }, error: userError } = await supabaseUser.auth.getUser(token);
-      if (userError || !user) throw new Error("Unauthorized");
-      userId = user.id;
-    }
+    const userId = effectiveUserId(auth, body.user_id);
+    if (!userId) return json({ error: "user_id required for service calls" }, 400);
 
     // Get campaign ICP criteria + vertical
     const { data: campaign, error: campError } = await supabase
@@ -218,6 +192,7 @@ serve(async (req) => {
       .from("campaign_leads")
       .select("id, title, industry, company, location, source, full_name, profile_headline, profile_current_title, profile_current_company, profile_previous_title, profile_previous_company, profile_about, profile_education, error_message")
       .eq("campaign_profile_id", campaign_profile_id)
+      .eq("user_id", userId)
       .is("error_message", null) // Skip leads with errors
       .not("profile_enriched_at", "is", null); // Only check enriched leads
 
@@ -237,6 +212,7 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
     const allPassed: string[] = [];
+    let failedBatches = 0;
     const allRejected: { id: string; reason: string }[] = [];
 
     // Process in batches of 15 for AI
@@ -254,10 +230,9 @@ serve(async (req) => {
         }
       } catch (aiError) {
         console.error(`AI batch error at offset ${i}:`, aiError);
-        // On AI failure, pass all leads in this batch (benefit of the doubt)
-        for (const lead of batch) {
-          allPassed.push(lead.id);
-        }
+        // Fail closed: leave these leads unchecked (icp_checked_at stays null) so the
+        // next cron run retries them. Never approve leads the AI did not evaluate.
+        failedBatches++;
       }
     }
 
@@ -304,6 +279,7 @@ serve(async (req) => {
       total_checked: leads.length,
       passed: allowedPassed.length,
       rejected: allRejected.length,
+      ai_failed_batches: failedBatches,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

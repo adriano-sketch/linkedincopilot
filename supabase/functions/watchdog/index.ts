@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { authenticate, corsHeaders, unauthorized } from "../_shared/auth.ts";
 
 const ALERT_EMAIL = "support@scantosell.io";
 const ENRICHABLE_SOURCES = ["csv", "search", "apollo"];
@@ -21,6 +17,10 @@ interface Issue {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Internal / cron only.
+  const auth = await authenticate(req, { allowService: true, allowUser: false });
+  if (!auth) return unauthorized();
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const resendKey = Deno.env.get("RESEND_API_KEY");
@@ -33,9 +33,12 @@ serve(async (req) => {
   // ═══════════════════════════════════════════════════════
   // 0. DAILY COUNTER RESET
   // ═══════════════════════════════════════════════════════
-  const { data: allExt } = await supabase
+  // Select every column read later (sections 3 and 11 read active_*, daily_limit_*
+  // and last_action_at; previously they were undefined, so limit/hour checks never ran).
+  const { data: allExt, error: allExtErr } = await supabase
     .from("extension_status")
-    .select("user_id, last_limit_reset_at, is_connected, last_heartbeat_at, is_paused, linkedin_logged_in, actions_today, connection_requests_today, messages_today, visits_today");
+    .select("user_id, last_limit_reset_at, is_connected, last_heartbeat_at, is_paused, linkedin_logged_in, actions_today, connection_requests_today, messages_today, visits_today, active_days, active_hours_start, active_hours_end, daily_limit_visits, daily_limit_connection_requests, daily_limit_messages, last_action_at");
+  if (allExtErr) console.error("[watchdog] extension_status fetch error:", allExtErr);
 
   const todayDateStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
   let countersReset = 0;
@@ -48,7 +51,7 @@ serve(async (req) => {
       // NOTE: extension_status does not have an `updated_at` column — do not
       // include it in the payload or PostgREST returns a 42703 error and
       // silently fails the whole update.
-      await supabase
+      const { error: resetErr } = await supabase
         .from("extension_status")
         .update({
           visits_today: 0,
@@ -58,6 +61,10 @@ serve(async (req) => {
           last_limit_reset_at: now.toISOString(),
         })
         .eq("user_id", ext.user_id);
+      if (resetErr) {
+        console.error(`[watchdog] daily counter reset failed for ${ext.user_id}:`, resetErr);
+        continue;
+      }
       countersReset++;
     }
   }
@@ -86,10 +93,11 @@ serve(async (req) => {
 
     if (minutesSinceHeartbeat > 30) {
       // Auto-fix: mark as disconnected (no updated_at — column doesn't exist)
-      await supabase
+      const { error: discErr } = await supabase
         .from("extension_status")
         .update({ is_connected: false })
         .eq("user_id", ext.user_id);
+      if (discErr) console.error(`[watchdog] mark disconnected failed for ${ext.user_id}:`, discErr);
 
       issues.push({
         severity: "critical",
@@ -140,7 +148,7 @@ serve(async (req) => {
     if (stuckLeads && stuckLeads.length > 0) {
       // Auto-fix: reset to 'ready' so they can be re-processed
       const ids = stuckLeads.map(l => l.id);
-      await supabase
+      const { error: stuckErr } = await supabase
         .from("campaign_leads")
         .update({
           status: "ready",
@@ -149,6 +157,10 @@ serve(async (req) => {
           updated_at: now.toISOString(),
         } as any)
         .in("id", ids);
+      if (stuckErr) {
+        console.error(`[watchdog] stuck lead reset failed (${status}):`, stuckErr);
+        continue;
+      }
 
       totalStuckFixed += stuckLeads.length;
 
@@ -640,7 +652,7 @@ serve(async (req) => {
 
   if (zombieActions && zombieActions.length > 0) {
     const ids = zombieActions.map(a => a.id);
-    await supabase
+    const { error: zombieErr } = await supabase
       .from("action_queue")
       .update({
         status: "pending",
@@ -649,6 +661,7 @@ serve(async (req) => {
         error_message: "watchdog: reset zombie action",
       } as any)
       .in("id", ids);
+    if (zombieErr) console.error("[watchdog] zombie action reset failed:", zombieErr);
 
     issues.push({
       severity: "warning",
@@ -676,7 +689,7 @@ serve(async (req) => {
   if (loopingLeads && loopingLeads.length > 0) {
     // Mark them as error to stop the loop
     const ids = loopingLeads.map(l => l.id);
-    await supabase
+    const { error: loopErr } = await supabase
       .from("campaign_leads")
       .update({
         status: "error",
@@ -684,6 +697,7 @@ serve(async (req) => {
         updated_at: now.toISOString(),
       } as any)
       .in("id", ids);
+    if (loopErr) console.error("[watchdog] loop-detection update failed:", loopErr);
 
     issues.push({
       severity: "critical",
@@ -1149,10 +1163,14 @@ serve(async (req) => {
     }
 
     try {
-      await supabase
+      const { error: healthUpdErr } = await supabase
         .from("extension_status")
         .update(updatePayload)
         .eq("user_id", ext.user_id);
+      if (healthUpdErr) {
+        console.error(`Failed to update health score for user ${ext.user_id}:`, healthUpdErr);
+        if (shouldAutoPause) autoPausedCount--; // pause did not persist
+      }
     } catch (err) {
       console.error(`Failed to update health score for user ${ext.user_id}:`, err);
     }
@@ -1286,14 +1304,22 @@ serve(async (req) => {
     }
   }
 
+  // Response carries counts only: no user ids (full or truncated), no per-user
+  // or per-campaign breakdowns, no issue text. Details go to the support email.
+  const responseStats: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(stats)) {
+    if (k.startsWith("pipeline_") || k.startsWith("campaign_") || k === "health_reports") continue;
+    responseStats[k] = v;
+  }
+  responseStats.health_reports_count = healthReports.length;
+
   return new Response(JSON.stringify({
     timestamp: now.toISOString(),
     issues_found: issues.length,
     criticals: criticals.length,
     warnings: warnings.length,
     auto_fixed: autoFixed.length,
-    stats,
-    issues,
+    stats: responseStats,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });

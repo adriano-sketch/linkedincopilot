@@ -3,11 +3,11 @@
 // Called by schedule-actions when a lead is in "post_liked" status.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// Deployed with verify_jwt=false: authentication is enforced here.
+//  - service callers (schedule-actions, pg_cron) may target any lead.
+//  - users may only target leads where lead.user_id === auth.userId.
 
 // Comment style variants — rotated per lead for natural variety
 const COMMENT_VARIANTS = [
@@ -41,37 +41,54 @@ function pickVariant(leadId: string): typeof COMMENT_VARIANTS[0] {
   return COMMENT_VARIANTS[Math.abs(hash) % COMMENT_VARIANTS.length];
 }
 
+function fail(error: string, status: number): Response {
+  return json({ success: false, error }, status);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const auth = await authenticate(req, { allowService: true, allowUser: true });
+    if (!auth) return fail("Unauthorized", 401);
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { campaign_lead_id, user_id } = await req.json();
-    if (!campaign_lead_id) throw new Error("campaign_lead_id required");
+    const body = await req.json().catch(() => ({}));
+    const campaign_lead_id: unknown = body.campaign_lead_id;
+    if (typeof campaign_lead_id !== "string" || !campaign_lead_id) return fail("campaign_lead_id required", 400);
 
     // Fetch the lead with post content
     const { data: lead, error: leadErr } = await supabase
       .from("campaign_leads")
-      .select("*, campaign_profile_id")
+      .select("*")
       .eq("id", campaign_lead_id)
-      .single();
+      .maybeSingle();
 
-    if (leadErr || !lead) throw new Error(`Lead not found: ${leadErr?.message}`);
-    if (!lead.post_content) throw new Error("No post_content to generate comment for");
+    if (leadErr) {
+      console.error("generate-comment: lead lookup failed", leadErr);
+      return fail("Failed to load lead", 500);
+    }
+    // Users may only act on their own leads. Same 404 for "missing" and
+    // "not yours" so lead ids of other tenants cannot be probed.
+    if (!lead || (auth.kind === "user" && lead.user_id !== auth.userId)) return fail("Lead not found", 404);
+    if (!lead.post_content) return fail("No post_content to generate comment for", 400);
 
-    // Fetch campaign profile for context
+    // Fetch campaign profile for context (scoped to the lead owner)
     const { data: campaign } = await supabase
       .from("campaign_profiles")
       .select("campaign_objective, value_proposition, icp_description, dm_tone, message_language")
       .eq("id", lead.campaign_profile_id)
-      .single();
+      .eq("user_id", lead.user_id)
+      .maybeSingle();
 
-    // Get Anthropic API key from user settings or env
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY not configured");
+    if (!anthropicKey) {
+      console.error("generate-comment: ANTHROPIC_API_KEY not configured");
+      return fail("Comment generation is not configured", 500);
+    }
 
     const variant = pickVariant(campaign_lead_id);
     const language = campaign?.message_language || "English";
@@ -96,7 +113,7 @@ RULES:
 
 POST CONTENT:
 """
-${lead.post_content.substring(0, 1500)}
+${String(lead.post_content).substring(0, 1500)}
 """
 
 POST AUTHOR: ${lead.full_name || "Unknown"}
@@ -125,13 +142,14 @@ Write ONLY the comment text. No quotes, no explanation, no preamble.`;
 
     if (!anthropicResp.ok) {
       const errText = await anthropicResp.text();
-      throw new Error(`Anthropic API error: ${anthropicResp.status} ${errText.substring(0, 200)}`);
+      console.error(`generate-comment: Anthropic API error ${anthropicResp.status}`, errText.substring(0, 300));
+      return fail("Comment generation failed", 502);
     }
 
     const anthropicJson = await anthropicResp.json();
     const commentText = anthropicJson?.content?.[0]?.text?.trim();
 
-    if (!commentText) throw new Error("Empty comment generated");
+    if (!commentText) return fail("Empty comment generated", 502);
 
     // Update lead with generated comment
     const now = new Date().toISOString();
@@ -144,29 +162,24 @@ Write ONLY the comment text. No quotes, no explanation, no preamble.`;
         comment_approved_at: now,
         updated_at: now,
       })
-      .eq("id", campaign_lead_id);
+      .eq("id", campaign_lead_id)
+      .eq("user_id", lead.user_id);
 
-    if (updateErr) throw new Error(`Update failed: ${updateErr.message}`);
+    if (updateErr) {
+      console.error("generate-comment: lead update failed", updateErr);
+      return fail("Failed to save comment", 500);
+    }
 
-    console.log(`Generated comment for lead ${campaign_lead_id}: "${commentText.substring(0, 80)}..." (variant: ${variant.key})`);
+    console.log(`Generated comment for lead ${campaign_lead_id} (variant: ${variant.key})`);
 
-    return new Response(JSON.stringify({
+    return json({
       success: true,
       comment_text: commentText,
       variant: variant.key,
       lead_id: campaign_lead_id,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (err) {
     console.error("generate-comment error:", err);
-    return new Response(JSON.stringify({
-      success: false,
-      error: (err as Error).message,
-    }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return fail("Internal error", 500);
   }
 });

@@ -5,6 +5,9 @@
 
 console.log('[LC] Background service worker started');
 
+// "Rede" module: ICP prospecting + post monitoring (see network.js)
+importScripts('network.js');
+
 // ── CONFIG ──
 const CONFIG = {
   SUPABASE_URL: 'https://gdwpkojugtggozyofpmw.supabase.co',
@@ -1419,7 +1422,17 @@ const queueProcessor = {
       await this.waitForTabLoad(tab.id);
       await this.sleep(3000);
     }
-    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
+    // "Rede" module page actions (search pages, invitations) have their own navigation
+    if (NETWORK_ACTION_TYPES.includes(action.action_type)) {
+      const networkResult = await runNetworkAction(this, tab, action);
+      if (!networkResult || networkResult.success === false) {
+        throw new Error((networkResult && networkResult.error) || `${action.action_type} failed`);
+      }
+      return networkResult;
+    }
+
+    // post_comment must open the post page first (it was missing from this list)
+    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'post_comment', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
     if (actionTypes.includes(action.action_type)) {
       let targetUrl = action.action_data?.linkedin_url || action.linkedin_url;
       if (targetUrl) {
@@ -1546,6 +1559,15 @@ const queueProcessor = {
       if (quality?.is_ghost && quality?.confidence === 'strong') {
         const now = new Date().toISOString();
         const ghostResult = { ...quality, action: 'check_profile_quality', jit: true };
+        if (isNetworkAction(action)) {
+          // Network prospects are not campaign leads: report it as a failed invite instead
+          await supabase.update('action_queue',
+            { status: 'failed', completed_at: now, result: ghostResult, error_message: 'GHOST_PROFILE' },
+            `id=eq.${action.id}`
+          );
+          await this.reportCompletion(action, false, ghostResult, 'GHOST_PROFILE: profile unavailable or empty');
+          return { ...ghostResult, skip_report: true, reason: 'ghost_profile' };
+        }
         try {
           await supabase.update(
             'campaign_leads',
@@ -1776,7 +1798,9 @@ const queueProcessor = {
 
   async reportCompletion(action, success, result, errorMessage) {
     try {
-      await fetch(`${supabase.url}/functions/v1/action-completed`, {
+      // "Rede" module actions report to their own endpoint
+      const endpoint = isNetworkAction(action) ? 'network-action-completed' : 'action-completed';
+      await fetch(`${supabase.url}/functions/v1/${endpoint}`, {
         method: 'POST',
         headers: supabase.getHeaders(),
         body: JSON.stringify({

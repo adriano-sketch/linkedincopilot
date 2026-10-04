@@ -1,3 +1,4 @@
+// stripe-webhook (patched 2026-10): plan from price, downgrade non-paying subs, basil period fields.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -112,13 +113,27 @@ serve(async (req) => {
       const priceId = subscription.items.data[0]?.price?.id;
       const productId = subscription.items.data[0]?.price?.product as string | undefined;
       const metadataPlan = (subscription.metadata?.plan || "") as string;
-      let plan = metadataPlan ? metadataPlan.toLowerCase() : resolvePlan(priceId, productId);
-      if (plan === "free") {
-        plan = "pro";
+      // Plan comes from the PRICE first (server-controlled), metadata only as a fallback.
+      // Before: any unknown price was coerced to "pro", and canceled/unpaid
+      // subscriptions kept their paid limits.
+      let plan = resolvePlan(priceId, productId);
+      if (plan === "free" && metadataPlan && PLAN_LIMITS[metadataPlan.toLowerCase()]) {
+        plan = metadataPlan.toLowerCase();
+      }
+      const PAID_STATUSES = new Set(["active", "trialing", "past_due"]);
+      if (!PAID_STATUSES.has(subscription.status)) {
+        plan = "free";
+      }
+      if (plan === "free" && PAID_STATUSES.has(subscription.status)) {
+        console.warn(`stripe-webhook: unknown price ${priceId} / product ${productId} on sub ${subscription.id}; check STRIPE_PRICE_* env vars`);
       }
       const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
-      const cycleStart = new Date(subscription.current_period_start * 1000).toISOString().slice(0, 10);
-      const cycleEnd = new Date(subscription.current_period_end * 1000).toISOString().slice(0, 10);
+      // API 2025-08-27.basil moved current_period_* to subscription items
+      const item0: any = subscription.items.data[0] || {};
+      const periodStart = (subscription as any).current_period_start ?? item0.current_period_start ?? Math.floor(Date.now() / 1000);
+      const periodEnd = (subscription as any).current_period_end ?? item0.current_period_end ?? Math.floor(Date.now() / 1000) + 30 * 86400;
+      const cycleStart = new Date(periodStart * 1000).toISOString().slice(0, 10);
+      const cycleEnd = new Date(periodEnd * 1000).toISOString().slice(0, 10);
 
       const updates = {
         plan,
@@ -160,7 +175,8 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: (error as Error).message || "Webhook error" }), {
+    console.error("stripe-webhook error:", error);
+    return new Response(JSON.stringify({ error: "Webhook error" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

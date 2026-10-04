@@ -10,6 +10,7 @@ import AuthPage from "./pages/AuthPage";
 import Onboarding from "./pages/Onboarding";
 import SettingsPage from "./pages/SettingsPage";
 import LeadSourcing from "./pages/LeadSourcing";
+import Network from "./pages/Network";
 import NotFound from "./pages/NotFound";
 import SetupGuide from "./pages/SetupGuide";
 import HelpPage from "./pages/HelpPage";
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/leads" element={<LeadSourcing />} />
+            <Route path="/network" element={<Network />} />
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/setup-guide" element={<SetupGuide />} />
             <Route path="/help" element={<HelpPage />} />

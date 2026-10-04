@@ -1,13 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authenticate, corsHeaders, unauthorized } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Internal only (called by process-new-lead / generate-dm with the service-role key).
+  const auth = await authenticate(req, { allowService: true, allowUser: false });
+  if (!auth) return unauthorized();
 
   try {
     const { user_id, campaign_profile_id, type } = await req.json();
@@ -32,34 +41,43 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(user_id);
     if (userError || !user?.email) throw new Error("Could not find user email");
 
-    // Get campaign name
-    const { data: campaign } = await supabase
+    // Get campaign name (must belong to this user)
+    const { data: campaign, error: campaignError } = await supabase
       .from("campaign_profiles")
       .select("name")
       .eq("id", campaign_profile_id)
-      .single();
+      .eq("user_id", user_id)
+      .maybeSingle();
 
-    const campaignName = campaign?.name || "Your campaign";
+    if (campaignError) throw new Error(`Campaign lookup failed: ${campaignError.message}`);
+    if (!campaign) throw new Error("Campaign not found for this user");
+
+    const campaignName = campaign.name || "Your campaign";
+    const campaignNameHtml = escapeHtml(campaignName);
+    // Subject is plain text; strip CR/LF to avoid header weirdness.
+    const campaignNameSubject = campaignName.replace(/[\r\n]+/g, " ");
 
     // Count pending approvals
-    const { count } = await supabase
+    const { count, error: countError } = await supabase
       .from("campaign_leads")
       .select("id", { count: "exact", head: true })
       .eq("campaign_profile_id", campaign_profile_id)
+      .eq("user_id", user_id)
       .eq("status", "pending_approval");
+    if (countError) throw new Error(`Pending count failed: ${countError.message}`);
 
     const pendingCount = count || 0;
 
     const appUrl = Deno.env.get("APP_URL") || "http://localhost:3000";
 
     const typeLabel = type === "dms_ready" ? "DMs" : "connection requests";
-    const subject = `✅ ${pendingCount} ${typeLabel} ready for review — ${campaignName}`;
+    const subject = `✅ ${pendingCount} ${typeLabel} ready for review — ${campaignNameSubject}`;
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
         <h2 style="color: #1a1a1a; font-size: 20px; margin-bottom: 16px;">Messages ready for your review</h2>
         <p style="color: #4a4a4a; font-size: 15px; line-height: 1.6;">
-          <strong>${pendingCount} ${typeLabel}</strong> have been generated for <strong>${campaignName}</strong> and are waiting for your approval.
+          <strong>${pendingCount} ${typeLabel}</strong> have been generated for <strong>${campaignNameHtml}</strong> and are waiting for your approval.
         </p>
         <p style="color: #4a4a4a; font-size: 15px; line-height: 1.6;">
           Review a few samples, edit if needed, then approve to start the outreach sequence for all leads.
@@ -94,14 +112,14 @@ serve(async (req) => {
       const errText = await emailResponse.text();
       console.error("Resend error:", errText);
       // Don't throw - notification failure shouldn't block the flow
-      return new Response(JSON.stringify({ success: false, reason: "resend_error", detail: errText }), {
+      return new Response(JSON.stringify({ success: false, reason: "resend_error", status: emailResponse.status }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log(`Notification email sent to ${user.email} for campaign ${campaignName} (${pendingCount} pending)`);
+    console.log(`Notification email sent for campaign ${campaign_profile_id} (${pendingCount} pending)`);
 
-    return new Response(JSON.stringify({ success: true, sent_to: user.email }), {
+    return new Response(JSON.stringify({ success: true, pending_count: pendingCount }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

@@ -270,6 +270,7 @@ export default function Dashboard() {
             <img src={logoImg} alt="LinkedIn Copilot" className="h-9 w-auto" />
           </div>
           <div className="flex items-center gap-2">
+            <Link to="/network"><Button variant="outline" size="sm" className="gap-1"><Users className="w-3 h-3" /> Network</Button></Link>
             <Link to="/leads"><Button variant="outline" size="sm" className="gap-1"><Plus className="w-3 h-3" /> Add Leads</Button></Link>
             <Link to="/help"><Button variant="ghost" size="sm"><HelpCircle className="w-4 h-4" /></Button></Link>
             <Link to="/settings"><Button variant="ghost" size="sm"><Settings className="w-4 h-4" /></Button></Link>

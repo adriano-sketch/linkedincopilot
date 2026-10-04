@@ -14,16 +14,15 @@
  *   POST /functions/v1/user-health-alert      with { "user_id": "..." } (single)
  *   POST /functions/v1/user-health-alert      with { "user_id": "...", "force": true } (send email even if not critical)
  *
- * Returns: { checked: N, alerted: M, paused: K, reports: [...] }
+ * Auth: internal only (service-role key via Bearer or x-internal-key).
+ *
+ * Returns counts only: { checked, alerted, paused, by_status: { ok, warn, critical } }
+ * (no emails, no user ids, no per-user reports).
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { authenticate, corsHeaders, unauthorized } from "../_shared/auth.ts";
 
 type Severity = "ok" | "warn" | "critical";
 
@@ -288,13 +287,17 @@ async function computeHealth(
   const catastrophicFail = total >= 10 && failRate >= 0.8;
   const loggedOut = metrics.extension?.linkedin_logged_in === false && metrics.extension?.connected === true;
   if ((catastrophicFail || loggedOut) && ext && !ext.is_paused) {
-    await supabase
+    const { error: pauseErr } = await supabase
       .from("extension_status")
-      // NOTE: extension_status has no `updated_at` column — including it
-      // here causes a silent 400 and the auto-pause never actually fires.
       .update({ is_paused: true })
       .eq("user_id", userId);
-    autoPaused = true;
+    if (pauseErr) {
+      console.error(`user-health-alert: auto-pause failed for ${userId}:`, pauseErr);
+    } else {
+      autoPaused = true;
+    }
+  }
+  if (autoPaused) {
     issues.push({
       severity: "critical",
       code: "auto_paused",
@@ -380,6 +383,10 @@ function buildEmailHtml(report: HealthReport, appUrl: string): { subject: string
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Internal / cron only (called by watchdog and pg_cron).
+  const auth = await authenticate(req, { allowService: true, allowUser: false });
+  if (!auth) return unauthorized();
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -399,14 +406,15 @@ serve(async (req) => {
     if (targetUserId) {
       userIds = [targetUserId];
     } else {
-      const { data: users } = await supabase
+      const { data: users, error: usersErr } = await supabase
         .from("extension_status")
         .select("user_id")
         .eq("is_connected", true);
+      if (usersErr) throw usersErr;
       userIds = (users || []).map((u: any) => u.user_id);
     }
 
-    const reports: HealthReport[] = [];
+    const byStatus: Record<Severity, number> = { ok: 0, warn: 0, critical: 0 };
     let alerted = 0;
     let paused = 0;
 
@@ -457,7 +465,7 @@ serve(async (req) => {
       if (emailSent) alerted++;
       if (partial.auto_paused) paused++;
 
-      reports.push({ ...partial, email, email_sent: emailSent });
+      byStatus[partial.status]++;
     }
 
     return new Response(
@@ -465,7 +473,7 @@ serve(async (req) => {
         checked: userIds.length,
         alerted,
         paused,
-        reports,
+        by_status: byStatus,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

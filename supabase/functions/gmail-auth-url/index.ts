@@ -1,46 +1,50 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
+import { createOAuthState } from "../_shared/oauth_state.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// Changes (2026-10 patch):
+//  - Requires a logged-in user.
+//  - OAuth "state" is now a signed, user-bound, 10-minute token (was the
+//    constant "gmail_connect"). It is returned to the client as `state` and
+//    must be sent back to gmail-callback together with `code`.
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const auth = await authenticate(req, { allowService: false, allowUser: true });
+    if (!auth || auth.kind !== "user") return unauthorized();
+
     const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
-    if (!GOOGLE_CLIENT_ID) throw new Error("GOOGLE_CLIENT_ID is not configured");
+    if (!GOOGLE_CLIENT_ID) {
+      console.error("gmail-auth-url: GOOGLE_CLIENT_ID is not configured");
+      return json({ error: "Gmail connection is not configured" }, 500);
+    }
 
-    const { redirect_uri, login_hint } = await req.json();
-    if (!redirect_uri) throw new Error("redirect_uri is required");
+    const body = await req.json().catch(() => ({}));
+    const redirect_uri = typeof body.redirect_uri === "string" ? body.redirect_uri.trim() : "";
+    const login_hint = typeof body.login_hint === "string" ? body.login_hint.trim() : "";
+    if (!redirect_uri || !/^https?:\/\//i.test(redirect_uri)) return json({ error: "redirect_uri is required" }, 400);
 
-    const scopes = [
-      "https://www.googleapis.com/auth/gmail.readonly",
-    ].join(" ");
+    const { state, exp } = await createOAuthState(auth.userId);
 
     const paramsObj: Record<string, string> = {
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri,
       response_type: "code",
-      scope: scopes,
+      scope: "https://www.googleapis.com/auth/gmail.readonly",
       access_type: "offline",
       prompt: "consent",
-      state: "gmail_connect",
+      state,
     };
     if (login_hint) paramsObj.login_hint = login_hint;
     const params = new URLSearchParams(paramsObj);
 
     const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 
-    return new Response(JSON.stringify({ url }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ url, state, state_expires_at: new Date(exp).toISOString() });
   } catch (e) {
     console.error("gmail-auth-url error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Could not start Gmail connection" }, 500);
   }
 });

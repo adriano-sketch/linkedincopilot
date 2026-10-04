@@ -1,11 +1,10 @@
+// v5 - verified auth via _shared/auth.ts (no unsigned JWT decoding), atomic processing counter
+//      (add_leads_processed RPC), credit exhaustion leaves leads untouched for the next cycle,
+//      missing user_settings = zero allowance.
 // v4 - fixed ScrapIn API: POST with includes param (was GET without includes, causing all profiles to return minimal data)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { authenticate, corsHeaders, effectiveUserId as resolveUserId, unauthorized } from "../_shared/auth.ts";
 
 const MAX_LEADS_PER_CALL = 3;
 
@@ -36,20 +35,13 @@ function normalizeLinkedInUrl(rawUrl: string | null | undefined): string | null 
   }
 }
 
-function parseJwtPayload(token: string): Record<string, any> | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Users act as themselves (body user_id ignored); service callers (watchdog,
+  // scheduler) must pass user_id in the body.
+  const auth = await authenticate(req, { allowService: true, allowUser: true });
+  if (!auth) return unauthorized();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -60,53 +52,77 @@ serve(async (req) => {
     const { campaign_profile_id, user_id: requestedUserId } = await req.json();
     if (!campaign_profile_id) throw new Error("campaign_profile_id is required");
 
-    const authHeader = req.headers.get("authorization");
-    const internalKey = req.headers.get("x-internal-key");
-
-    let effectiveUserId: string | null = null;
-
-    // Internal trusted call (watchdog/scheduler)
-    if (internalKey && internalKey === supabaseKey) {
-      if (typeof requestedUserId === "string" && requestedUserId.length > 0) {
-        effectiveUserId = requestedUserId;
-      }
-    } else {
-      if (!authHeader) throw new Error("Missing authorization header");
-      const token = authHeader.replace("Bearer ", "").trim();
-
-      const supabaseUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-      const { data: { user }, error: userError } = await supabaseUser.auth.getUser(token);
-
-      if (!userError && user) {
-        effectiveUserId = user.id;
-      } else {
-        const jwtPayload = parseJwtPayload(token);
-        const isServiceRole = jwtPayload?.role === "service_role";
-        if (isServiceRole && typeof requestedUserId === "string" && requestedUserId.length > 0) {
-          effectiveUserId = requestedUserId;
-        }
-      }
+    const effectiveUserId = resolveUserId(auth, requestedUserId);
+    if (!effectiveUserId) {
+      return new Response(JSON.stringify({ error: "user_id is required for service calls" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-
-    if (!effectiveUserId) throw new Error("Unauthorized");
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ══════════════════════════════════════════════════════════
     // PROCESSING LIMIT CHECK (Credit Model v2)
     // Processing = every ScrapIn call. Limit = 3x outreach credits.
+    // Auto-resets when cycle_reset_date has passed.
     // ══════════════════════════════════════════════════════════
-    const { data: settings } = await supabase
+    const { data: settings, error: settingsError } = await supabase
       .from("user_settings")
-      .select("leads_processed_this_cycle, max_leads_per_cycle")
+      .select("leads_processed_this_cycle, max_leads_per_cycle, cycle_reset_date, cycle_start_date")
       .eq("user_id", effectiveUserId)
       .maybeSingle();
+    if (settingsError) throw new Error(`user_settings lookup failed: ${settingsError.message}`);
 
-    const currentProcessed = settings?.leads_processed_this_cycle || 0;
-    const maxOutreach = settings?.max_leads_per_cycle || 0;
+    // No user_settings row = zero allowance (previously treated as unlimited).
+    if (!settings) {
+      return new Response(JSON.stringify({
+        success: true,
+        enriched: 0,
+        remaining: 0,
+        done: true,
+        processing_limit_reached: true,
+        message: "No plan settings found for this user. Processing is disabled until a plan is assigned.",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Auto-reset cycle if cycle_reset_date has passed
+    if (settings.cycle_reset_date) {
+      const resetDate = new Date(settings.cycle_reset_date + "T00:00:00Z");
+      if (new Date() >= resetDate) {
+        const newStart = new Date().toISOString().slice(0, 10);
+        const nextReset = new Date();
+        nextReset.setMonth(nextReset.getMonth() + 1);
+        const newResetDate = nextReset.toISOString().slice(0, 10);
+        const { error: resetError } = await supabase
+          .from("user_settings")
+          .update({
+            leads_processed_this_cycle: 0,
+            leads_used_this_cycle: 0,
+            cycle_start_date: newStart,
+            cycle_reset_date: newResetDate,
+          })
+          .eq("user_id", effectiveUserId)
+          // Guard against two concurrent calls both resetting (second one would wipe fresh usage).
+          .eq("cycle_reset_date", settings.cycle_reset_date);
+        if (resetError) {
+          console.error(`Cycle auto-reset failed for user ${effectiveUserId}:`, resetError);
+        } else {
+          settings.leads_processed_this_cycle = 0;
+          console.log(`Cycle auto-reset for user ${effectiveUserId}: ${newStart} → ${newResetDate}`);
+        }
+      }
+    }
+
+    // max_leads_per_cycle <= 0 means unlimited (same convention as consume_lead_credits).
+    const currentProcessed = settings.leads_processed_this_cycle || 0;
+    const maxOutreach = settings.max_leads_per_cycle || 0;
     const maxProcessing = maxOutreach * 3;
     let remainingProcessing = maxProcessing > 0 ? Math.max(0, maxProcessing - currentProcessed) : 0;
     let processingCountToAdd = 0;
+    let processingLimitHit = false;
 
     // If processing limit already hit, return early
     if (maxProcessing > 0 && remainingProcessing <= 0) {
@@ -125,7 +141,7 @@ serve(async (req) => {
     // Get un-enriched leads for this campaign
     const { data: leads, error: leadsError } = await supabase
       .from("campaign_leads")
-      .select("id, linkedin_url, source, profile_enriched_at, full_name, first_name, last_name, title, company, industry, location, profile_quality_status")
+      .select("id, linkedin_url, source, profile_enriched_at, full_name, first_name, last_name, title, company, industry, location, profile_quality_status, enrich_retry_count")
       .eq("campaign_profile_id", campaign_profile_id)
       .eq("user_id", effectiveUserId)
       .is("profile_enriched_at", null)
@@ -205,13 +221,18 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existingSnapshot) {
-        await supabase.from("campaign_leads").update({
+        const { error: snapUpdErr } = await supabase.from("campaign_leads").update({
           snapshot_id: existingSnapshot.id,
           profile_enriched_at: now,
           profile_headline: existingSnapshot.headline || null,
           profile_about: existingSnapshot.about || null,
           updated_at: now,
         } as any).eq("id", lead.id);
+        if (snapUpdErr) {
+          console.error(`Snapshot reuse update failed for ${lead.id}:`, snapUpdErr);
+          errors.push(`DB update failed for ${lead.id}`);
+          continue;
+        }
         enrichedCount++;
 
         // Fire-and-forget: generate messages
@@ -225,22 +246,38 @@ serve(async (req) => {
       }
 
       // ── Processing limit check before calling ScrapIn ──
+      // Out of processing credits: leave the lead untouched so it is picked up
+      // again next cycle (previously it was marked 'skipped' and lost for good).
       if (maxProcessing > 0 && remainingProcessing <= 0) {
-        await supabase.from("campaign_leads").update({
-          updated_at: now,
-          status: "skipped",
-          error_message: "Processing limit reached for this cycle",
-        } as any).eq("id", lead.id);
-        enrichedCount++;
+        processingLimitHit = true;
         continue;
       }
 
       // ── Call Scrapin.io API (costs 1 processing unit) ──
+      // Charge atomically before the call (same accounting as before: every
+      // attempt counts, success or not).
+      const { data: newProcessedTotal, error: processedError } = await supabase.rpc("add_leads_processed", {
+        p_user_id: effectiveUserId,
+        p_amount: 1,
+      });
+      if (processedError) {
+        console.error(`add_leads_processed failed for user ${effectiveUserId}:`, processedError);
+        errors.push("Could not record processing usage; ScrapIn call skipped");
+        continue;
+      }
       processingCountToAdd += 1;
-      remainingProcessing -= 1;
+      if (maxProcessing > 0) {
+        remainingProcessing = typeof newProcessedTotal === "number"
+          ? Math.max(0, maxProcessing - newProcessedTotal)
+          : remainingProcessing - 1;
+      }
 
       try {
-        const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}`;
+        // ScrapIn's legacy v1 endpoint (api.scrapin.io) documents only the
+        // `apikey` query parameter. The new Reverse Contact v2 API accepts
+        // `x-api-key` / `Authorization: Bearer`, but that is not confirmed for
+        // v1, so the key stays in the query string. Do not log this URL.
+        const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${encodeURIComponent(SCRAPIN_API_KEY)}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 25000);
 
@@ -287,6 +324,28 @@ serve(async (req) => {
             enrichedCount++;
           } else {
             errors.push(`Scrapin ${res.status} for ${lead.linkedin_url}`);
+
+            // ── SCRAPIN FALLBACK: after repeated failures, push lead to pipeline ──
+            // The extension will enrich inline during visit_profile.
+            const enrichRetryCount = (lead as any).enrich_retry_count || 0;
+            if (enrichRetryCount >= 2 || res.status >= 500) {
+              console.log(`Scrapin unavailable for ${linkedinUrl} (${res.status}, retries=${enrichRetryCount}) — pushing to pipeline for extension scraping`);
+              await supabase.from("campaign_leads").update({
+                status: "ready",
+                enrichment_source: "pending_extension_scrape",
+                enrich_retry_count: enrichRetryCount + 1,
+                error_message: `Scrapin ${res.status} — will be enriched by extension during visit`,
+                next_action_at: now,
+                updated_at: now,
+              } as any).eq("id", lead.id);
+              enrichedCount++;
+            } else {
+              // Increment retry counter for next attempt
+              await supabase.from("campaign_leads").update({
+                enrich_retry_count: enrichRetryCount + 1,
+                updated_at: now,
+              } as any).eq("id", lead.id);
+            }
           }
           continue;
         }
@@ -415,7 +474,7 @@ serve(async (req) => {
         }
 
         // Save snapshot
-        const { data: snapshot } = await supabase
+        const { data: snapshot, error: snapshotInsertErr } = await supabase
           .from("profile_snapshots")
           .insert({
             user_id: effectiveUserId,
@@ -428,6 +487,7 @@ serve(async (req) => {
           } as any)
           .select("id")
           .single();
+        if (snapshotInsertErr) console.error(`profile_snapshots insert failed for ${lead.id}:`, snapshotInsertErr);
 
         // Extract previous position (index 1 of positions history)
         const previousPos = Array.isArray(positions) && positions.length > 1 ? positions[1] : null;
@@ -506,7 +566,13 @@ serve(async (req) => {
           updateData.last_name = lastName;
         }
 
-        await supabase.from("campaign_leads").update(updateData).eq("id", lead.id);
+        const { error: enrichUpdErr } = await supabase.from("campaign_leads").update(updateData).eq("id", lead.id);
+        if (enrichUpdErr) {
+          // Do not fire generate-dm for a lead whose enrichment did not persist.
+          console.error(`Enrichment update failed for ${lead.id}:`, enrichUpdErr);
+          errors.push(`DB update failed for ${lead.id}`);
+          continue;
+        }
         enrichedCount++;
 
         // Fire-and-forget: generate messages
@@ -525,19 +591,31 @@ serve(async (req) => {
           console.error("Scrapin error for lead:", lead.linkedin_url, e);
           errors.push(e.message || "Unknown error");
         }
+
+        // ── SCRAPIN FALLBACK on exception: push to pipeline after repeated failures ──
+        const enrichRetryCount = (lead as any).enrich_retry_count || 0;
+        if (enrichRetryCount >= 2) {
+          const linkedinUrl = normalizeLinkedInUrl(lead.linkedin_url);
+          console.log(`Scrapin exception for ${linkedinUrl} (retries=${enrichRetryCount}) — pushing to pipeline for extension scraping`);
+          await supabase.from("campaign_leads").update({
+            status: "ready",
+            enrichment_source: "pending_extension_scrape",
+            enrich_retry_count: enrichRetryCount + 1,
+            error_message: `Scrapin error — will be enriched by extension during visit`,
+            next_action_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as any).eq("id", lead.id);
+        } else {
+          await supabase.from("campaign_leads").update({
+            enrich_retry_count: enrichRetryCount + 1,
+            updated_at: new Date().toISOString(),
+          } as any).eq("id", lead.id);
+        }
       }
     }
 
-    // ══════════════════════════════════════════════════════════
-    // UPDATE PROCESSING COUNTER (Credit Model v2)
-    // Only processing count — enrich-leads-batch doesn't handle outreach credits
-    // ══════════════════════════════════════════════════════════
-    if (processingCountToAdd > 0) {
-      await supabase
-        .from("user_settings")
-        .update({ leads_processed_this_cycle: currentProcessed + processingCountToAdd })
-        .eq("user_id", effectiveUserId);
-    }
+    // Processing counter is now incremented atomically per ScrapIn call
+    // (add_leads_processed RPC above); no read-modify-write here.
 
     const remaining = Math.max(0, (totalRemaining || 0) - enrichedCount);
 
@@ -547,6 +625,7 @@ serve(async (req) => {
       remaining,
       done: remaining === 0,
       scrapin_calls: processingCountToAdd,
+      processing_limit_reached: processingLimitHit || undefined,
       errors: errors.length > 0 ? errors : undefined,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

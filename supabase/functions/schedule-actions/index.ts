@@ -1,10 +1,12 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// schedule-actions (patched 2026-10)
+// Changes: service-only auth (before: anyone could trigger the scheduler and the AI calls it fans out);
+// configurable daily connection limit is now actually read; the 10-day "rejected" timeout only fires
+// after 21 days AND a recent check confirmed the invite is still pending (before: leads were marked
+// rejected even when the extension was offline and never checked); removed dead counter-reset code
+// (watchdog owns the daily reset).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authenticate, corsHeaders, unauthorized } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 
 // Status → next action mapping (OUTREACH mode)
 // Day 0: visit_profile → Day 1: follow_profile → Day 2: send_connection_request
@@ -113,8 +115,11 @@ function computeThrottledTime(
   return scheduledTime.toISOString();
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await authenticate(req, { allowService: true, allowUser: false });
+  if (!auth) return unauthorized();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -133,34 +138,9 @@ serve(async (req) => {
     // Get all extension_status to know user schedules
     const { data: allExtensions } = await supabase
       .from("extension_status")
-      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits");
+      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests");
 
-    // ── Daily counter reset (inline, before any limit checks) ──
-    // Use last_heartbeat_at date as proxy since last_limit_reset_at doesn't exist
-    for (const ext of allExtensions || []) {
-      const lastHeartbeatDate = ext.last_heartbeat_at
-        ? new Date(ext.last_heartbeat_at).toISOString().slice(0, 10)
-        : null;
-
-      // Reset if heartbeat is from a previous day (counters are stale)
-      if (lastHeartbeatDate && lastHeartbeatDate !== todayDateStr && (ext.visits_today > 0 || ext.actions_today > 0)) {
-        await supabase
-          .from("extension_status")
-          .update({
-            visits_today: 0,
-            actions_today: 0,
-            connection_requests_today: 0,
-            messages_today: 0,
-          })
-          .eq("user_id", ext.user_id);
-
-        ext.visits_today = 0;
-        ext.actions_today = 0;
-        ext.connection_requests_today = 0;
-        ext.messages_today = 0;
-        console.log(`Reset daily counters for user ${ext.user_id.slice(0, 8)}…`);
-      }
-    }
+    // Daily counter reset is handled by watchdog (last_limit_reset_at).
 
     const extensionMap = new Map(
       (allExtensions || []).map(e => [e.user_id, e])
@@ -196,6 +176,71 @@ serve(async (req) => {
         success: true, scheduled: 0, timeouts: 0, leads_checked: 0,
         message: "No active campaigns",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ── Pause propagation: cancel pending actions for paused/draft campaigns ──
+    const { data: inactiveCampaigns } = await supabase
+      .from("campaign_profiles")
+      .select("id")
+      .in("status", ["paused", "draft"]);
+
+    let pauseCancelled = 0;
+    if (inactiveCampaigns && inactiveCampaigns.length > 0) {
+      for (const ic of inactiveCampaigns) {
+        // Get lead IDs for this campaign, then cancel their pending actions
+        const { data: icLeads } = await supabase
+          .from("campaign_leads")
+          .select("id")
+          .eq("campaign_profile_id", ic.id)
+          .limit(1000);
+
+        if (icLeads && icLeads.length > 0) {
+          const leadIds = icLeads.map(l => l.id);
+          // Cancel in batches of 100 lead IDs
+          for (let i = 0; i < leadIds.length; i += 100) {
+            const batch = leadIds.slice(i, i + 100);
+            const { count } = await supabase
+              .from("action_queue")
+              .update({ status: "cancelled", error_message: "Campaign paused — auto-cleanup" } as any, { count: "exact" })
+              .eq("status", "pending")
+              .in("campaign_lead_id", batch);
+            pauseCancelled += (count || 0);
+          }
+        }
+      }
+      if (pauseCancelled > 0) {
+        console.log(`Pause propagation: cancelled ${pauseCancelled} pending actions from paused/draft campaigns`);
+      }
+    }
+
+    // ── Auto-advance pending_approval leads when stage is already approved ──
+    // This handles leads that entered pending_approval AFTER the user clicked approve.
+    for (const campaign of activeCampaigns || []) {
+      if (!campaign.stage_connection_approved) continue;
+      const { data: stuckLeads } = await supabase
+        .from("campaign_leads")
+        .select("id, icp_match")
+        .eq("campaign_profile_id", campaign.id)
+        .eq("status", "pending_approval")
+        .limit(200);
+
+      if (stuckLeads && stuckLeads.length > 0) {
+        const matched = stuckLeads.filter(l => l.icp_match === true).map(l => l.id);
+        const rejected = stuckLeads.filter(l => l.icp_match === false).map(l => l.id);
+
+        if (matched.length > 0) {
+          await supabase.from("campaign_leads")
+            .update({ status: "following", next_action_at: now, updated_at: now } as any)
+            .in("id", matched);
+          console.log(`Auto-advanced ${matched.length} pending_approval → following (stage already approved)`);
+        }
+        if (rejected.length > 0) {
+          await supabase.from("campaign_leads")
+            .update({ status: "icp_rejected", updated_at: now } as any)
+            .in("id", rejected);
+          console.log(`Auto-moved ${rejected.length} pending_approval → icp_rejected (icp_match=false)`);
+        }
+      }
     }
 
     // Check how many actions were already created/completed today per user to avoid flooding
@@ -252,22 +297,50 @@ serve(async (req) => {
 
     // (Per-user pending counts are computed below after sorting leads)
 
-    // Find leads ready for next action — only from active campaigns
-    // IMPORTANT: order by oldest next_action_at and fetch up to 1000 to avoid starvation
-    // when users have multiple active campaigns with large lead volumes.
-    const { data: leads, error: leadsError } = await supabase
+    // Find leads ready for next action — only from active campaigns.
+    // Split into two queries to prevent high-priority leads (connection
+    // requests, DMs, follow-ups) from being crowded out by the 1000-row
+    // limit when there are thousands of warmup leads with older dates.
+    const selectFields = "id, user_id, linkedin_url, status, connection_note, custom_dm, custom_followup, dm_text, follow_up_text, connection_sent_at, campaign_profile_id, dm_approved, followup_sent_at, replied_at, comment_text, post_url, post_content";
+
+    // High-priority: connection requests, DMs, follow-ups, checks
+    const highPriorityStatuses = ["following", "connection_sent", "connected", "dm_sent", "waiting_reply", "followup_sent"];
+    const { data: highPriorityLeads } = await supabase
       .from("campaign_leads")
-      .select("id, user_id, linkedin_url, status, connection_note, custom_dm, custom_followup, dm_text, follow_up_text, connection_sent_at, campaign_profile_id, dm_approved, followup_sent_at, comment_text, post_url, post_content")
-      .in("status", activeStatuses)
+      .select(selectFields)
+      .in("status", highPriorityStatuses.filter(s => activeStatuses.includes(s)))
       .in("campaign_profile_id", activeCampaignIds)
       .lte("next_action_at", now)
       .not("next_action_at", "is", null)
       .order("next_action_at", { ascending: true })
-      .limit(1000);
+      .limit(500);
+
+    // Low-priority: warmup actions (visit, follow) + growth statuses
+    const lowPriorityStatuses = activeStatuses.filter(s => !highPriorityStatuses.includes(s));
+    const remainingSlots = Math.max(100, 1000 - (highPriorityLeads?.length || 0));
+    const { data: lowPriorityLeads, error: leadsError } = await supabase
+      .from("campaign_leads")
+      .select(selectFields)
+      .in("status", lowPriorityStatuses)
+      .in("campaign_profile_id", activeCampaignIds)
+      .lte("next_action_at", now)
+      .not("next_action_at", "is", null)
+      .order("next_action_at", { ascending: true })
+      .limit(remainingSlots);
 
     if (leadsError) throw leadsError;
 
-    console.log(`Found ${leads?.length || 0} leads ready for scheduling. Active campaigns: ${activeCampaignIds.length}. Now: ${now}`);
+    // Merge and deduplicate
+    const seenIds = new Set<string>();
+    const leads: typeof highPriorityLeads = [];
+    for (const lead of [...(highPriorityLeads || []), ...(lowPriorityLeads || [])]) {
+      if (!seenIds.has(lead.id)) {
+        seenIds.add(lead.id);
+        leads.push(lead);
+      }
+    }
+
+    console.log(`Found ${leads.length} leads ready for scheduling (${highPriorityLeads?.length || 0} high-pri, ${lowPriorityLeads?.length || 0} low-pri). Active campaigns: ${activeCampaignIds.length}. Now: ${now}`);
 
     let scheduled = 0;
     let timeouts = 0;
@@ -338,7 +411,7 @@ serve(async (req) => {
       const GROWTH_ACTIONS = new Set(["find_latest_post", "like_post", "post_comment"]);
       const ALWAYS_ON_ACTIONS = new Set(["check_connection_status", "check_reply_status", "visit_profile", "follow_profile", "find_latest_post", "like_post", "post_comment"]);
       const MAX_PENDING_CHECKS = 40;  // Lightweight checks
-      const MAX_PENDING_WARMUP = 40;  // Warm-up actions (visit/follow)
+      const MAX_PENDING_WARMUP = 100;  // Warm-up actions (visit/follow) — mature accounts can handle 100/day
       // Heavy actions (connection requests, DMs, follow-ups).
       // Was 20, but a healthy day processes 30–50 of these, so the
       // 20 cap was creating artificial backlog pressure and leaving
@@ -414,12 +487,14 @@ serve(async (req) => {
 
 
         // ── Per-stage approval gates ──
+        // Warmup actions (visit_profile, follow_profile) always allowed — no approval needed
         // Lightweight checks (check_connection_status, check_reply_status) always allowed
         // For backward compat: auto_approve_dms=true bypasses all stage gates
         const isAutoApprove = campaignAutoApprove.get(lead.campaign_profile_id) || false;
-        if (!isAutoApprove && !LIGHTWEIGHT_ACTIONS.has(actionType)) {
-          // Connection stage: visit_profile, follow_profile, send_connection_request
-          if ((actionType === "visit_profile" || actionType === "follow_profile" || actionType === "send_connection_request") &&
+        const isWarmupAction = actionType === "visit_profile" || actionType === "follow_profile";
+        if (!isAutoApprove && !LIGHTWEIGHT_ACTIONS.has(actionType) && !isWarmupAction) {
+          // Connection stage: only send_connection_request needs approval (warmup excluded)
+          if (actionType === "send_connection_request" &&
               !campaignStageConnection.get(lead.campaign_profile_id)) {
             addSkip("stage_connection_not_approved"); continue;
           }
@@ -482,6 +557,19 @@ serve(async (req) => {
             console.log(`Skipping lead ${lead.id}: campaign ${lead.campaign_profile_id.slice(0,8)}… hit per-campaign limit (${alreadySent}/${perCampaignLimit})`);
             continue;
           }
+        }
+
+        // ── REPLY GATE: stop ALL automation if lead has replied ──
+        // If the lead replied at any point (to invite, DM, or followup),
+        // no further automated messages should be sent. The user takes over.
+        const MESSAGING_ACTIONS = new Set(["send_dm", "send_followup", "send_connection_request"]);
+        if (MESSAGING_ACTIONS.has(actionType) && (lead as any).replied_at) {
+          console.log(`Skipping lead ${lead.id}: lead replied at ${(lead as any).replied_at} — stopping all automation`);
+          addSkip("lead_replied");
+          await supabase.from("campaign_leads")
+            .update({ status: "replied", next_action_at: null, updated_at: now } as any)
+            .eq("id", lead.id);
+          continue;
         }
 
         // ── ONE FOLLOW-UP LIMIT ──
@@ -637,16 +725,22 @@ serve(async (req) => {
       }
     }
 
-    // Check for connection timeouts (10 days)
-    const tenDaysAgo = new Date();
-    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+    // Connection timeout: 21 days pending AND the extension checked within the last 48h
+    // and still saw "not connected". If the extension was offline, we wait instead of
+    // wrongly marking the lead as rejected.
+    const timeoutCutoff = new Date();
+    timeoutCutoff.setDate(timeoutCutoff.getDate() - 21);
+    const recentCheckCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
     const { data: timedOut } = await supabase
       .from("campaign_leads")
       .select("id")
       .eq("status", "connection_sent")
-      .lt("connection_sent_at", tenDaysAgo.toISOString())
-      .not("connection_sent_at", "is", null);
+      .lt("connection_sent_at", timeoutCutoff.toISOString())
+      .not("connection_sent_at", "is", null)
+      .eq("connection_verified", false)
+      .gte("connection_verified_at", recentCheckCutoff.toISOString())
+      .limit(500);
 
     if (timedOut && timedOut.length > 0) {
       await supabase
@@ -679,7 +773,7 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("schedule-actions error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

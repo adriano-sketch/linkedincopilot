@@ -53,6 +53,15 @@ async function handleAction(action) {
       return await checkConnectionStatus();
     case 'check_reply_status':
       return await checkReplyStatus(action);
+
+    // ── Growth Mode Actions ──
+    case 'find_latest_post':
+      return await findLatestPost();
+    case 'like_post':
+      return await likePost(action.post_url);
+    case 'post_comment':
+      return await postComment(action.post_url, action.message_text);
+
     default:
       throw new Error(`Unknown action: ${action.action_type}`);
   }
@@ -323,6 +332,75 @@ function generateTrackingId() {
 }
 
 /**
+ * Verify connection degree via Voyager API before sending DM.
+ * Extracts the vanity name from the current URL (/in/vanity-name/) and
+ * queries LinkedIn's profile API for the network distance.
+ *
+ * @returns {{ isFirstDegree: boolean|null, distance: string|null, raw: any }}
+ *          isFirstDegree = null means we couldn't verify (proceed anyway)
+ */
+async function verifyConnectionDegreeViaAPI() {
+  const csrf = getCsrfToken();
+  if (!csrf) return { isFirstDegree: null, distance: null };
+
+  // Extract vanity name from current URL
+  const pathMatch = window.location.pathname.match(/^\/in\/([^/]+)/);
+  if (!pathMatch) return { isFirstDegree: null, distance: null };
+  const vanityName = pathMatch[1];
+
+  try {
+    // Use the identity/profiles endpoint which includes networkDistance
+    const resp = await fetch(`/voyager/api/identity/profiles/${vanityName}/networkinfo`, {
+      headers: {
+        'csrf-token': csrf,
+        'accept': 'application/vnd.linkedin.normalized+json+2.1',
+      },
+      credentials: 'include',
+    });
+
+    if (resp.ok) {
+      const json = await resp.json();
+      // LinkedIn returns distance as { value: "DISTANCE_1" | "DISTANCE_2" | "DISTANCE_3" | "OUT_OF_NETWORK" }
+      const distValue = json?.data?.distance?.value || json?.distance?.value || null;
+      if (distValue) {
+        const isFirst = distValue === 'DISTANCE_1';
+        console.log(`[LinkedIn Copilot] Voyager networkinfo: ${vanityName} → distance=${distValue}, isFirstDegree=${isFirst}`);
+        return { isFirstDegree: isFirst, distance: distValue, raw: json };
+      }
+    }
+
+    // Fallback: try the dash profiles endpoint
+    const resp2 = await fetch(`/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${vanityName}`, {
+      headers: {
+        'csrf-token': csrf,
+        'accept': 'application/vnd.linkedin.normalized+json+2.1',
+      },
+      credentials: 'include',
+    });
+
+    if (resp2.ok) {
+      const json2 = await resp2.json();
+      // Look for distance in included items
+      const included = json2?.included || [];
+      for (const item of included) {
+        const dist = item?.distance?.value || item?.networkDistance?.value;
+        if (dist) {
+          const isFirst = dist === 'DISTANCE_1';
+          console.log(`[LinkedIn Copilot] Voyager dash/profiles: ${vanityName} → distance=${dist}, isFirstDegree=${isFirst}`);
+          return { isFirstDegree: isFirst, distance: dist, raw: { source: 'dash_profiles' } };
+        }
+      }
+    }
+
+    console.warn(`[LinkedIn Copilot] verifyConnectionDegreeViaAPI: could not determine degree for ${vanityName}`);
+    return { isFirstDegree: null, distance: null };
+  } catch (err) {
+    console.warn('[LinkedIn Copilot] verifyConnectionDegreeViaAPI error:', err.message);
+    return { isFirstDegree: null, distance: null };
+  }
+}
+
+/**
  * Send a DM via LinkedIn's Voyager REST API, completely bypassing DOM compose.
  *
  * @param {string} recipientProfileId — The profile ID part of the recipient URN
@@ -556,6 +634,28 @@ async function sendMessage(messageText) {
     } catch (_) {}
 
     if (recipientProfileId) {
+      // ── PRE-FLIGHT: Verify connection degree via API before sending ──
+      // This prevents sending DMs to non-1st-degree connections that the DOM
+      // detection incorrectly identified as connected (false positives from InMail
+      // "Message" buttons + "1st" text matching non-degree content).
+      try {
+        const degreeCheck = await verifyConnectionDegreeViaAPI();
+        if (degreeCheck.isFirstDegree === false) {
+          console.error(`[LinkedIn Copilot] PRE-FLIGHT BLOCK: Recipient is ${degreeCheck.distance}, not 1st-degree. Refusing to send DM.`);
+          throw new Error(`RECIPIENT_NOT_FIRST_DEGREE_CONNECTION: Pre-flight API check shows distance=${degreeCheck.distance}. Lead is NOT actually connected.`);
+        }
+        if (degreeCheck.isFirstDegree === true) {
+          console.log('[LinkedIn Copilot] Pre-flight OK: Recipient confirmed as 1st-degree connection');
+        } else {
+          console.log('[LinkedIn Copilot] Pre-flight: Could not verify degree, proceeding anyway');
+        }
+      } catch (preFlightErr) {
+        if (/RECIPIENT_NOT_FIRST_DEGREE/i.test(preFlightErr.message)) {
+          throw preFlightErr; // Rethrow the definitive block
+        }
+        console.warn('[LinkedIn Copilot] Pre-flight degree check failed (non-blocking):', preFlightErr.message);
+      }
+
       try {
         console.log('[LinkedIn Copilot] Message button is <a> link — using Voyager API to send directly');
         const apiResult = await sendMessageViaVoyagerAPI(recipientProfileId, messageText);
@@ -1377,11 +1477,31 @@ async function checkConnectionStatus() {
   const CONNECTED = ['connected', 'conectado', 'conectada', 'connecté', 'connectée', 'connesso', 'connessa'];
   const REMOVE = ['remove connection', 'remover conexão', 'remover conexao', 'retirer la relation', 'eliminar conexión', 'eliminar conexion'];
 
-  const degreeTexts = [...profileSection.querySelectorAll('span, li, div')]
+  // ── Degree badge detection (strict) ──
+  // Only match "1st" in SHORT text elements (≤ 12 chars) — the actual badge is tiny
+  // (e.g., "1st", "· 1st", "1st degree", "1º grau"). This avoids false positives
+  // from longer text like "Endorsed by 1st-degree connections" or "1st to react".
+  const allTextEls = [...profileSection.querySelectorAll('span, li, div')];
+  const shortTexts = allTextEls
     .map((el) => normalize(el.textContent || ''))
-    .filter((txt) => txt && txt.length <= 48);
-  const degreeBlob = degreeTexts.join(' | ');
-  const hasFirstDegree = /(\b1st\b|\b1º\b|\b1er\b|\b1\.? grau\b|\b1\.? grado\b|\b1\.? degree\b)/i.test(degreeBlob);
+    .filter((txt) => txt && txt.length <= 12);
+  const shortBlob = shortTexts.join(' | ');
+  const hasFirstDegree = /(\b1st\b|\b1º\b|\b1er\b|\b1\.? grau\b|\b1\.? grado\b|\b1\.? degree\b)/i.test(shortBlob);
+
+  // Also check for NON-first degree badges — if found, definitely NOT connected
+  const allTexts = allTextEls
+    .map((el) => normalize(el.textContent || ''))
+    .filter((txt) => txt && txt.length <= 20);
+  const allBlob = allTexts.join(' | ');
+  const hasNonFirstDegree = /(\b2nd\b|\b3rd\b|\b2º\b|\b3º\b|\b2e\b|\b3e\b|\b2\.? grau\b|\b3\.? grau\b)/i.test(allBlob);
+
+  // If a 2nd/3rd degree badge is found, this person is definitively NOT a 1st-degree connection
+  if (hasNonFirstDegree) {
+    const msgAvail = hasAction(MESSAGE);
+    return { success: true, action: 'check_connection_status', is_connected: false, note: msgAvail ? 'non_first_degree_with_message' : 'non_first_degree_badge', confidence: 'strong',
+      debug: { url: window.location.href, profileName: normalize(profileNameEl.textContent), buttonsFound: profileButtons.length, buttonTexts: buttonData.map(b => b.text).slice(0, 6), hasFirstDegree, hasNonFirstDegree, shortBlobSample: shortBlob.substring(0, 100), profileSectionTag: profileSection.tagName, profileSectionClass: profileSection.className }
+    };
+  }
 
   if (hasAction(PENDING)) {
     return { success: true, action: 'check_connection_status', is_connected: false, note: 'pending', confidence: 'weak' };
@@ -1397,7 +1517,17 @@ async function checkConnectionStatus() {
   }
   if (hasAction(MESSAGE)) {
     if (hasFirstDegree) {
-      return { success: true, action: 'check_connection_status', is_connected: true, note: 'message_button_1st', confidence: 'strong' };
+      // Extra guard: if we found multiple "message" buttons, one might be InMail
+      const msgButtonCount = buttonData.filter(b => b.text === 'message' || b.text === 'mensagem' || b.text === 'mensaje').length;
+      if (msgButtonCount >= 2) {
+        // Suspicious: likely has both InMail "Message" and regular actions — downgrade confidence
+        return { success: true, action: 'check_connection_status', is_connected: true, note: 'message_button_1st_multi', confidence: 'medium',
+          debug: { url: window.location.href, profileName: normalize(profileNameEl.textContent), buttonsFound: profileButtons.length, buttonTexts: buttonData.map(b => b.text).slice(0, 6), hasFirstDegree, hasNonFirstDegree, msgButtonCount, shortBlobSample: shortBlob.substring(0, 100), profileSectionTag: profileSection.tagName, profileSectionClass: profileSection.className }
+        };
+      }
+      return { success: true, action: 'check_connection_status', is_connected: true, note: 'message_button_1st', confidence: 'strong',
+        debug: { url: window.location.href, profileName: normalize(profileNameEl.textContent), buttonsFound: profileButtons.length, buttonTexts: buttonData.map(b => b.text).slice(0, 6), hasFirstDegree, hasNonFirstDegree, shortBlobSample: shortBlob.substring(0, 100), profileSectionTag: profileSection.tagName, profileSectionClass: profileSection.className }
+      };
     }
     return { success: true, action: 'check_connection_status', is_connected: false, note: 'message_without_1st', confidence: 'weak' };
   }
@@ -1542,6 +1672,440 @@ function extractLinkedinSlug(url) {
   if (!url) return null;
   const m = url.match(/\/in\/([^/?#]+)/i);
   return m ? decodeURIComponent(m[1]).toLowerCase() : null;
+}
+
+// ══════════════════════════════════════════════
+// GROWTH MODE — FIND LATEST POST
+// ──────────────────────────────────────────────
+// Navigates to the "recent activity" / posts section of a profile
+// and extracts the most recent post's URL and text content.
+// ══════════════════════════════════════════════
+async function findLatestPost() {
+  // Verify we're on a profile page
+  const currentPath = window.location.pathname;
+  if (!currentPath.startsWith('/in/')) {
+    throw new Error(`WRONG_PAGE: findLatestPost requires /in/... but got ${currentPath}`);
+  }
+
+  await sleep(1000 + Math.random() * 1500);
+
+  // Strategy 1: Look for "Activity" / "Recent Activity" section on the profile
+  // LinkedIn shows a "Show all activity" or "See all posts" link
+  const activitySelectors = [
+    'a[href*="/recent-activity/"]',
+    'a[href*="/recent-activity/all/"]',
+    'a[href*="/recent-activity/shares/"]',
+    'a[href*="/detail/recent-activity/"]',
+  ];
+
+  let activityLink = null;
+  for (const sel of activitySelectors) {
+    activityLink = document.querySelector(sel);
+    if (activityLink) break;
+  }
+
+  // If no activity link found, try scrolling down to find the activity section
+  if (!activityLink) {
+    for (let i = 0; i < 5; i++) {
+      window.scrollBy(0, 600);
+      await sleep(800);
+      for (const sel of activitySelectors) {
+        activityLink = document.querySelector(sel);
+        if (activityLink) break;
+      }
+      if (activityLink) break;
+    }
+  }
+
+  // Extract the vanity name for the activity URL
+  const vanityMatch = currentPath.match(/^\/in\/([^/]+)/);
+  const vanityName = vanityMatch ? vanityMatch[1] : null;
+
+  if (!activityLink && vanityName) {
+    // Navigate directly to the activity page
+    const activityUrl = `https://www.linkedin.com/in/${vanityName}/recent-activity/all/`;
+    console.log('[LinkedIn Copilot] No activity link found, navigating directly to:', activityUrl);
+    window.location.href = activityUrl;
+    await sleep(3000 + Math.random() * 2000);
+    await waitForLinkedInReady();
+  } else if (activityLink) {
+    activityLink.click();
+    await sleep(3000 + Math.random() * 2000);
+    await waitForLinkedInReady();
+  }
+
+  // Now we should be on the activity page — find the latest post
+  await sleep(1500);
+
+  // LinkedIn activity feed: each post is in a container with data-urn or
+  // inside .feed-shared-update-v2 or similar
+  const postSelectors = [
+    '.feed-shared-update-v2',
+    '[data-urn*="activity"]',
+    '.profile-creator-shared-feed-update__container',
+    '.occludable-update',
+  ];
+
+  let postEl = null;
+  for (const sel of postSelectors) {
+    const posts = document.querySelectorAll(sel);
+    if (posts.length > 0) {
+      postEl = posts[0]; // First = most recent
+      break;
+    }
+  }
+
+  if (!postEl) {
+    // Try scrolling once more
+    window.scrollBy(0, 400);
+    await sleep(1500);
+    for (const sel of postSelectors) {
+      const posts = document.querySelectorAll(sel);
+      if (posts.length > 0) {
+        postEl = posts[0];
+        break;
+      }
+    }
+  }
+
+  if (!postEl) {
+    return {
+      success: true,
+      action: 'find_latest_post',
+      found: false,
+      note: 'no_posts_found',
+      url: window.location.href,
+    };
+  }
+
+  // Extract post text
+  const textEl = postEl.querySelector(
+    '.feed-shared-text, .break-words, .update-components-text, [dir="ltr"]'
+  );
+  const postText = textEl ? textEl.textContent.trim().substring(0, 1500) : '';
+
+  // Extract post URL (the activity/post permalink)
+  let postUrl = null;
+  const postLink = postEl.querySelector(
+    'a[href*="/feed/update/"], a[href*="/posts/"], a[href*="/pulse/"]'
+  );
+  if (postLink) {
+    postUrl = postLink.href.split('?')[0]; // Clean URL
+  }
+
+  // Fallback: try data-urn attribute
+  if (!postUrl) {
+    const urnEl = postEl.closest('[data-urn]') || postEl.querySelector('[data-urn]');
+    const urn = urnEl ? urnEl.getAttribute('data-urn') : null;
+    if (urn) {
+      // Convert urn:li:activity:12345 → /feed/update/urn:li:activity:12345
+      postUrl = `https://www.linkedin.com/feed/update/${urn}`;
+    }
+  }
+
+  // Extract post author (to verify it's actually their post, not a reshare)
+  const authorEl = postEl.querySelector(
+    '.update-components-actor__name, .feed-shared-actor__name, [data-anonymize="person-name"]'
+  );
+  const postAuthor = authorEl ? authorEl.textContent.trim() : null;
+
+  // Extract engagement metrics if visible
+  const likesEl = postEl.querySelector(
+    '.social-details-social-counts__reactions-count, [aria-label*="reaction"], [aria-label*="like"]'
+  );
+  const likesText = likesEl ? likesEl.textContent.trim() : null;
+
+  const commentsEl = postEl.querySelector(
+    '.social-details-social-counts__comments, [aria-label*="comment"]'
+  );
+  const commentsText = commentsEl ? commentsEl.textContent.trim() : null;
+
+  console.log(`[LinkedIn Copilot] Found latest post: ${postUrl}, author: ${postAuthor}, text: ${postText.substring(0, 80)}...`);
+
+  return {
+    success: true,
+    action: 'find_latest_post',
+    found: true,
+    post_url: postUrl,
+    post_content: postText,
+    post_author: postAuthor,
+    engagement: { likes: likesText, comments: commentsText },
+    note: postUrl ? 'post_found' : 'post_found_no_url',
+  };
+}
+
+// ══════════════════════════════════════════════
+// GROWTH MODE — LIKE POST
+// ──────────────────────────────────────────────
+// Likes the most recent visible post on the current page.
+// Can be called on a profile activity page or on a specific post URL.
+// ══════════════════════════════════════════════
+async function likePost(postUrl) {
+  await sleep(1000 + Math.random() * 1500);
+
+  // If we're on the post URL directly, find the like button
+  // If we're on the activity page, like the first post
+
+  const postContainers = document.querySelectorAll(
+    '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update, .profile-creator-shared-feed-update__container'
+  );
+
+  let targetPost = postContainers.length > 0 ? postContainers[0] : document;
+
+  // If we have a specific post URL and we're on that page, the main content is the post
+  if (postUrl && window.location.href.includes('/feed/update/')) {
+    targetPost = document;
+  }
+
+  // Find the Like button — LinkedIn uses various structures
+  const likeSelectors = [
+    'button[aria-label*="Like" i]:not([aria-label*="Unlike" i])',
+    'button[aria-label*="Gostei" i]:not([aria-label*="Descurtir" i])',
+    'button[aria-label*="Me gusta" i]',
+    'button[aria-label*="J\'aime" i]',
+    'button.react-button:not(.react-button--active)',
+    'button[data-reaction-type] span.react-button__text',
+  ];
+
+  let likeBtn = null;
+  for (const sel of likeSelectors) {
+    const candidates = targetPost.querySelectorAll(sel);
+    for (const btn of candidates) {
+      if (btn.offsetParent === null) continue; // Skip hidden
+      // Check it's not already liked (active state)
+      const isActive = btn.classList.contains('react-button--active') ||
+                       btn.getAttribute('aria-pressed') === 'true';
+      if (!isActive) {
+        likeBtn = btn;
+        break;
+      }
+    }
+    if (likeBtn) break;
+  }
+
+  // Fallback: find any reaction button that's not active
+  if (!likeBtn) {
+    const allButtons = targetPost.querySelectorAll('button');
+    for (const btn of allButtons) {
+      if (btn.offsetParent === null) continue;
+      const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+      const text = (btn.textContent || '').toLowerCase().trim();
+      if ((label.includes('like') || label.includes('gost') || text === 'like' || text === 'gostei') &&
+          !label.includes('unlike') && !label.includes('descurtir') &&
+          btn.getAttribute('aria-pressed') !== 'true') {
+        likeBtn = btn;
+        break;
+      }
+    }
+  }
+
+  if (!likeBtn) {
+    // Already liked or button not found
+    return {
+      success: true,
+      action: 'like_post',
+      liked: false,
+      note: 'like_button_not_found_or_already_liked',
+      url: window.location.href,
+    };
+  }
+
+  // Scroll the button into view and click
+  likeBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await sleep(500 + Math.random() * 500);
+
+  likeBtn.click();
+  await sleep(1500 + Math.random() * 1000);
+
+  // Verify it was liked (button should now be active)
+  const isNowActive = likeBtn.classList.contains('react-button--active') ||
+                      likeBtn.getAttribute('aria-pressed') === 'true';
+
+  console.log(`[LinkedIn Copilot] Like post result: ${isNowActive ? 'liked' : 'uncertain'}`);
+
+  return {
+    success: true,
+    action: 'like_post',
+    liked: true,
+    confirmed: isNowActive,
+    url: window.location.href,
+  };
+}
+
+// ══════════════════════════════════════════════
+// GROWTH MODE — POST COMMENT
+// ──────────────────────────────────────────────
+// Posts a comment on a LinkedIn post. Assumes we're already on the
+// post page or the activity feed with the target post visible.
+// ══════════════════════════════════════════════
+async function postComment(postUrl, commentText) {
+  if (!commentText || commentText.trim().length === 0) {
+    throw new Error('No comment text provided');
+  }
+
+  await sleep(1000 + Math.random() * 1500);
+
+  // Find the first post container
+  const postContainers = document.querySelectorAll(
+    '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update'
+  );
+  const targetPost = postContainers.length > 0 ? postContainers[0] : document;
+
+  // Step 1: Click the "Comment" button to open the comment box
+  const commentBtnSelectors = [
+    'button[aria-label*="Comment" i]',
+    'button[aria-label*="Comentar" i]',
+    'button[aria-label*="Commenter" i]',
+    'button[aria-label*="Comentario" i]',
+  ];
+
+  let commentBtn = null;
+  for (const sel of commentBtnSelectors) {
+    const candidates = targetPost.querySelectorAll(sel);
+    for (const btn of candidates) {
+      if (btn.offsetParent === null) continue;
+      commentBtn = btn;
+      break;
+    }
+    if (commentBtn) break;
+  }
+
+  // Fallback: text-based search
+  if (!commentBtn) {
+    const allButtons = targetPost.querySelectorAll('button');
+    for (const btn of allButtons) {
+      if (btn.offsetParent === null) continue;
+      const text = (btn.textContent || '').toLowerCase().trim();
+      if (text === 'comment' || text === 'comentar' || text === 'commenter') {
+        commentBtn = btn;
+        break;
+      }
+    }
+  }
+
+  if (!commentBtn) {
+    throw new Error('Comment button not found on post');
+  }
+
+  commentBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await sleep(500 + Math.random() * 500);
+  commentBtn.click();
+  await sleep(2000 + Math.random() * 1500);
+
+  // Step 2: Find the comment input (contenteditable div or textarea)
+  const commentInputSelectors = [
+    '.comments-comment-box__form .ql-editor',
+    '.comments-comment-texteditor .ql-editor',
+    '[contenteditable="true"][data-placeholder*="comment" i]',
+    '[contenteditable="true"][data-placeholder*="comentar" i]',
+    '[contenteditable="true"][aria-label*="comment" i]',
+    '[contenteditable="true"][role="textbox"]',
+    '.editor-content [contenteditable="true"]',
+  ];
+
+  let commentInput = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    for (const sel of commentInputSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.offsetParent !== null) {
+        commentInput = el;
+        break;
+      }
+    }
+    if (commentInput) break;
+    await sleep(1000);
+  }
+
+  if (!commentInput) {
+    throw new Error('Comment input not found after clicking comment button');
+  }
+
+  // Step 3: Focus and type the comment with human-like delays
+  commentInput.focus();
+  await sleep(300);
+
+  // Clear any existing content
+  commentInput.innerHTML = '';
+  await sleep(200);
+
+  // Type character by character with random delays for human-like behavior
+  const text = commentText.trim();
+  for (let i = 0; i < text.length; i++) {
+    // Insert text progressively
+    commentInput.textContent = text.substring(0, i + 1);
+    // Dispatch input event so LinkedIn's React picks it up
+    commentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Random typing speed: fast for most chars, occasional pause
+    if (i % 20 === 0 && i > 0) {
+      await sleep(200 + Math.random() * 400); // Thinking pause
+    } else {
+      await sleep(30 + Math.random() * 70);
+    }
+  }
+
+  // Final input event
+  commentInput.dispatchEvent(new Event('input', { bubbles: true }));
+  await sleep(1000 + Math.random() * 500);
+
+  // Step 4: Find and click the Submit/Post button for the comment
+  const submitSelectors = [
+    '.comments-comment-box__submit-button',
+    'button.comments-comment-box__submit-button',
+    'button[aria-label*="Post comment" i]',
+    'button[aria-label*="Publicar" i]',
+    'button[aria-label*="Publier" i]',
+    'button[type="submit"]',
+  ];
+
+  let submitBtn = null;
+  for (const sel of submitSelectors) {
+    const candidates = document.querySelectorAll(sel);
+    for (const btn of candidates) {
+      if (btn.offsetParent === null) continue;
+      if (btn.disabled) continue;
+      submitBtn = btn;
+      break;
+    }
+    if (submitBtn) break;
+  }
+
+  // Fallback: find "Post" button near the comment input
+  if (!submitBtn) {
+    const commentBox = commentInput.closest('.comments-comment-box, .comments-comment-texteditor, form');
+    if (commentBox) {
+      const btns = commentBox.querySelectorAll('button');
+      for (const btn of btns) {
+        const text = (btn.textContent || '').toLowerCase().trim();
+        if ((text === 'post' || text === 'publicar' || text === 'publier' || text === 'submit') && !btn.disabled) {
+          submitBtn = btn;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!submitBtn) {
+    throw new Error('Comment submit button not found or disabled');
+  }
+
+  submitBtn.click();
+  await sleep(2500 + Math.random() * 1500);
+
+  // Step 5: Verify comment was posted (comment box should be empty or closed)
+  const inputAfter = document.querySelector(commentInputSelectors[0]) || commentInput;
+  const inputText = (inputAfter.textContent || '').trim();
+  const success = inputText.length === 0 || inputText !== text;
+
+  console.log(`[LinkedIn Copilot] Comment posted: ${success ? 'yes' : 'uncertain'}, text preview: "${text.substring(0, 50)}..."`);
+
+  return {
+    success: true,
+    action: 'post_comment',
+    posted: success,
+    comment_preview: text.substring(0, 100),
+    url: window.location.href,
+  };
 }
 
 // ══════════════════════════════════════════════

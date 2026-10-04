@@ -16,7 +16,7 @@
  *   POST /functions/v1/campaign-metrics
  *   Body:
  *     {
- *       "user_id": "uuid",                // required
+ *       "user_id": "uuid",                // service callers only; users get auth.userId (body value ignored)
  *       "campaign_profile_id": "uuid",    // optional — filter to one campaign
  *       "window_days": 30                 // optional — defaults to 30
  *     }
@@ -34,11 +34,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 
 // ─────────────────────────────────────────────────────────────────────
 // Industry benchmarks for cold B2B LinkedIn outreach (2026, realistic).
@@ -333,21 +329,21 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const auth = await authenticate(req, { allowService: true, allowUser: true });
+    if (!auth) return unauthorized();
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = await req.json().catch(() => ({}));
-    const user_id: string | undefined = body.user_id;
-    const campaign_profile_id: string | undefined = body.campaign_profile_id;
+    // Users always act as themselves; only service callers may pass user_id.
+    const user_id = effectiveUserId(auth, body.user_id);
+    const campaign_profile_id: string | undefined =
+      typeof body.campaign_profile_id === "string" && body.campaign_profile_id ? body.campaign_profile_id : undefined;
     const window_days: number = Number.isFinite(body.window_days) ? Math.max(1, Math.min(365, body.window_days)) : 30;
 
-    if (!user_id) {
-      return new Response(JSON.stringify({ error: "user_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!user_id) return json({ error: "user_id required" }, 400);
 
     // Pull the columns we need to classify funnel state. Note: replied_at /
     // meeting_booked_at / reply_sentiment intentionally omitted — this
@@ -408,7 +404,7 @@ serve(async (req) => {
       .select("id", { count: "exact", head: true })
       .eq("user_id", user_id);
 
-    return new Response(JSON.stringify({
+    return json({
       user_id,
       campaign_profile_id: campaign_profile_id || null,
       lifetime: {
@@ -431,14 +427,9 @@ serve(async (req) => {
       } : null,
       messages_generated_total: messagesCount || 0,
       updated_at: new Date().toISOString(),
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("campaign-metrics error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Internal error" }, 500);
   }
 });

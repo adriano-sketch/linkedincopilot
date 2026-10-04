@@ -1,51 +1,37 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// increment-leads-used (patched 2026-10)
+// Changes: shared auth helper; atomic increment via consume_lead_credits RPC
+// (before: read-modify-write lost increments under concurrency); count capped.
+import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await authenticate(req, { allowService: true, allowUser: true });
+  if (!auth) return unauthorized();
+
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
+    const body = await req.json().catch(() => ({}));
+    const userId = effectiveUserId(auth, body.user_id);
+    if (!userId) return json({ error: "user_id required" }, 400);
 
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (userError || !user) throw new Error("Unauthorized");
+    const count = Number(body.count);
+    if (!Number.isInteger(count) || count <= 0 || count > 1000) return json({ error: "Invalid count" }, 400);
 
-    const { count } = await req.json();
-    if (!count || count <= 0) throw new Error("Invalid count");
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: ok, error } = await supabase.rpc("consume_lead_credits", { p_user_id: userId, p_amount: count });
+    if (error) throw error;
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Increment leads_used_this_cycle
-    const { data: settings } = await supabaseAdmin
+    const { data: settings } = await supabase
       .from("user_settings")
-      .select("leads_used_this_cycle")
-      .eq("user_id", user.id)
-      .single();
+      .select("leads_used_this_cycle, max_leads_per_cycle")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    const currentUsed = settings?.leads_used_this_cycle || 0;
-
-    await supabaseAdmin
-      .from("user_settings")
-      .update({ leads_used_this_cycle: currentUsed + count })
-      .eq("user_id", user.id);
-
-    return new Response(JSON.stringify({ success: true, leads_used: currentUsed + count }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (!ok) return json({ success: false, error: "Lead credits exhausted", leads_used: settings?.leads_used_this_cycle ?? null }, 402);
+    return json({ success: true, leads_used: settings?.leads_used_this_cycle ?? null });
   } catch (e) {
     console.error("increment-leads-used error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "internal_error" }, 500);
   }
 });

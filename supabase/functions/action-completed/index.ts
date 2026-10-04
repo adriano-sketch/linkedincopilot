@@ -1,3 +1,5 @@
+// action-completed (patched 2026-10): late-acceptance recovery, 21-day connection window,
+// atomic daily counters, engagement_count fix, credits_exhausted treated as terminal.
 // LinkedIn Copilot — action-completed edge function
 // Deploy trigger: updated SUPABASE_DB_URL secret (Apr 3, 2026)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -33,7 +35,9 @@ const STATUS_ORDER: Record<string, number> = {
   engagement_done: 7,
   // Terminal statuses
   skipped_inmail: 15,
-  connection_rejected: 15,
+  // Same rank as connection_sent so a late acceptance can still move the lead to "connected"
+  // (before: rank 15 blocked the upgrade, and accepted connections were lost).
+  connection_rejected: 5,
   error: 15,
   skipped: 15,
   do_not_contact: 15,
@@ -204,7 +208,7 @@ serve(async (req) => {
     }
 
     const { data: currentLead } = await supabase.from("campaign_leads")
-      .select("status, connection_verified, connection_verified_at")
+      .select("status, connection_verified, connection_verified_at, engagement_count")
       .eq("id", action.campaign_lead_id)
       .single();
 
@@ -214,7 +218,7 @@ serve(async (req) => {
     // a manual DB cleanup sets a lead to error/skipped but a pending action
     // completes afterwards and reverts it back to an active status.
     const TERMINAL_STATUSES = new Set([
-      "error", "skipped", "skipped_inmail", "do_not_contact", "icp_rejected",
+      "error", "skipped", "skipped_inmail", "do_not_contact", "icp_rejected", "credits_exhausted",
     ]);
     if (currentLead && TERMINAL_STATUSES.has(currentLead.status)) {
       console.warn(
@@ -307,6 +311,44 @@ serve(async (req) => {
           ok: true,
           limit_detected: true,
           rescheduled: (pendingActions?.length || 0) + 1,
+        }), { headers: { "Content-Type": "application/json" } });
+      }
+
+      // ── TERMINAL ERRORS: immediately stop retrying ──
+      // NOT_FIRST_DEGREE means check_connection_status was a false positive.
+      // No amount of retrying will fix this — mark the lead immediately.
+      const isTerminalError = error_message && (
+        error_message.includes("NOT_FIRST_DEGREE") ||
+        error_message.includes("RECIPIENT_NOT_FIRST_DEGREE")
+      );
+      if (isTerminalError) {
+        console.warn(`Lead ${action.campaign_lead_id}: terminal error — ${error_message?.substring(0, 80)}`);
+        await supabase.from("campaign_leads")
+          .update({
+            status: "skipped_not_connected",
+            error_message: `Terminal: ${error_message?.substring(0, 200) || "NOT_FIRST_DEGREE"}`,
+            next_action_at: null,
+            updated_at: now,
+          } as any)
+          .eq("id", action.campaign_lead_id);
+
+        // Cancel any remaining pending actions for this lead
+        await supabase.from("action_queue")
+          .update({ status: "cancelled", error_message: "Lead skipped: NOT_FIRST_DEGREE terminal error" } as any)
+          .eq("campaign_lead_id", action.campaign_lead_id)
+          .eq("status", "pending");
+
+        await supabase.from("activity_log").insert({
+          user_id: user.id,
+          campaign_lead_id: action.campaign_lead_id,
+          action: `${action.action_type}_terminal_error`,
+          details: { error: error_message, retry_count: retryCount },
+        });
+
+        return new Response(JSON.stringify({
+          ok: true,
+          terminal_error: true,
+          lead_status: "skipped_not_connected",
         }), { headers: { "Content-Type": "application/json" } });
       }
 
@@ -411,6 +453,192 @@ serve(async (req) => {
         leadUpdate.profile_visited_at = now;
         // Next day — follow profile
         leadUpdate.next_action_at = rbt(1);
+
+        // ── INLINE PROFILE ENRICHMENT (replaces Scrapin) ──
+        // If the extension scraped profile data during the visit, process it
+        // directly here to eliminate the Scrapin API dependency.
+        const profileData = (result as any)?.profileData;
+        if (profileData && profileData.fullName) {
+          try {
+            console.log(`Inline enrichment for lead ${action.campaign_lead_id}: ${profileData.fullName}`);
+
+            const pd = profileData;
+            const positions = pd.positions || [];
+            const educations = pd.education || [];
+            const skills = pd.skills || [];
+            const currentPos = positions.length > 0 ? positions[0] : null;
+            const previousPos = positions.length > 1 ? positions[1] : null;
+
+            // Build experience text (same format as enrich-leads-batch)
+            const experienceText = positions
+              .map((pos: any) => {
+                const t = pos.title || "";
+                const c = pos.companyName || "";
+                const d = pos.dateRange || "";
+                return `${t} at ${c}${d ? ` (${d})` : ""}`;
+              })
+              .filter((s: string) => s.trim() !== "at")
+              .join("\n");
+
+            // Build education text
+            const educationText = educations
+              .map((edu: any) => {
+                const school = edu.schoolName || "";
+                const degree = edu.degreeName || "";
+                const field = edu.fieldOfStudy || "";
+                return `${degree}${field ? ` in ${field}` : ""} at ${school}`;
+              })
+              .filter((s: string) => s.trim() !== "at")
+              .join("\n");
+
+            const skillsText = skills.join(", ");
+
+            const rawText = [
+              pd.headline ? `Headline: ${pd.headline}` : "",
+              pd.about ? `About: ${pd.about}` : "",
+              experienceText ? `Experience:\n${experienceText}` : "",
+              educationText ? `Education:\n${educationText}` : "",
+              skillsText ? `Skills: ${skillsText}` : "",
+              pd.location ? `Location: ${pd.location}` : "",
+            ].filter(Boolean).join("\n\n");
+
+            // Ghost detection (same logic as enrich-leads-batch)
+            const hasAbout = (pd.about || "").trim().length > 20;
+            const hasSkills = Array.isArray(skills) && skills.length >= 2;
+            const hasEducation = Array.isArray(educations) && educations.length > 0;
+            const hasPosition = Array.isArray(positions) && positions.length >= 1;
+            const signalCount = [hasAbout, hasSkills, hasEducation, hasPosition].filter(Boolean).length;
+
+            if (signalCount === 0) {
+              console.log(`Ghost profile detected via extension scrape: ${pd.fullName}`);
+              // Save to ghost_profiles blacklist
+              await supabase.from("ghost_profiles").upsert({
+                linkedin_url: action.linkedin_url || pd.profileUrl,
+                reason: "ghost_extension_scrape",
+                signal_count: signalCount,
+                source: "extension_visit",
+                detected_at: now,
+              }, { onConflict: "linkedin_url" } as any);
+
+              leadUpdate.status = "skipped";
+              leadUpdate.error_message = "Ghost profile (minimal data from extension scrape)";
+              leadUpdate.profile_quality_status = "ghost";
+              leadUpdate.profile_enriched_at = now;
+              leadUpdate.next_action_at = null;
+            } else {
+              // Build structured snapshot (same format as enrich-leads-batch)
+              const structuredSnapshot = {
+                headline: pd.headline || "",
+                about: pd.about || "",
+                location: pd.location || null,
+                industry: null, // Not available from DOM scrape
+                experience: positions.map((pos: any) => ({
+                  title: pos.title || "",
+                  companyName: pos.companyName || "",
+                  description: pos.description || "",
+                  startDate: null,
+                  endDate: null,
+                })),
+                education: educations.map((edu: any) => ({
+                  schoolName: edu.schoolName || "",
+                  degreeName: edu.degreeName || "",
+                  fieldOfStudy: edu.fieldOfStudy || "",
+                })),
+                skills: skills.slice(0, 20),
+                followerCount: 0,
+                connectionCount: 0,
+              };
+
+              // Education display
+              const firstEdu = educations.length > 0 ? educations[0] : null;
+              const educationDisplay = firstEdu
+                ? [firstEdu.degreeName || "", firstEdu.fieldOfStudy || "", "at", firstEdu.schoolName || ""]
+                    .filter(Boolean).join(" ").trim()
+                : null;
+
+              // Save profile snapshot
+              const { data: snapshot } = await supabase
+                .from("profile_snapshots")
+                .insert({
+                  user_id: user.id,
+                  linkedin_url: action.linkedin_url || pd.profileUrl,
+                  headline: pd.headline || "",
+                  about: pd.about || "",
+                  experience: experienceText || null,
+                  raw_text: rawText,
+                  source: "extension_scrape",
+                } as any)
+                .select("id")
+                .single();
+
+              // Update the lead with all enrichment data
+              leadUpdate.profile_enriched_at = now;
+              leadUpdate.profile_headline = pd.headline || null;
+              leadUpdate.profile_about = pd.about || null;
+              leadUpdate.profile_current_title = currentPos?.title || null;
+              leadUpdate.profile_current_company = currentPos?.companyName || null;
+              leadUpdate.profile_previous_title = previousPos?.title || null;
+              leadUpdate.profile_previous_company = previousPos?.companyName || null;
+              leadUpdate.profile_education = educationDisplay;
+              leadUpdate.profile_skills = skills.length > 0 ? skills.slice(0, 20) : null;
+              leadUpdate.profile_snapshot = structuredSnapshot;
+              leadUpdate.location = pd.location || null;
+              leadUpdate.enrichment_source = "extension_scrape";
+              if (snapshot) leadUpdate.snapshot_id = snapshot.id;
+              if (pd.fullName) {
+                leadUpdate.full_name = pd.fullName;
+                leadUpdate.first_name = pd.firstName || null;
+                leadUpdate.last_name = pd.lastName || null;
+              }
+              leadUpdate.error_message = null;
+
+              // Fire-and-forget: generate messages immediately (no Scrapin needed!)
+              const baseUrl = Deno.env.get("SUPABASE_URL");
+              const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+              if (baseUrl && serviceKey) {
+                fetch(`${baseUrl}/functions/v1/generate-dm`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${serviceKey}`,
+                  },
+                  body: JSON.stringify({
+                    campaign_lead_id: action.campaign_lead_id,
+                    user_id: user.id,
+                  }),
+                }).catch((e) => console.error("generate-dm fire-and-forget failed:", e));
+
+                // Also kick ICP check
+                // Get the campaign_profile_id from the lead
+                const { data: leadForIcp } = await supabase
+                  .from("campaign_leads")
+                  .select("campaign_profile_id")
+                  .eq("id", action.campaign_lead_id)
+                  .single();
+
+                if (leadForIcp?.campaign_profile_id) {
+                  fetch(`${baseUrl}/functions/v1/icp-check`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${serviceKey}`,
+                      "x-internal-key": serviceKey,
+                    },
+                    body: JSON.stringify({
+                      campaign_profile_id: leadForIcp.campaign_profile_id,
+                      user_id: user.id,
+                    }),
+                  }).catch((e) => console.error("icp-check fire-and-forget failed:", e));
+                }
+              }
+
+              console.log(`Inline enrichment complete for ${pd.fullName} — generate-dm + icp-check triggered`);
+            }
+          } catch (enrichErr) {
+            // Never let inline enrichment break the visit_profile happy path
+            console.error("Inline enrichment failed (non-fatal):", enrichErr);
+          }
+        }
         break;
       }
 
@@ -463,8 +691,9 @@ serve(async (req) => {
 
         if (strongConnected) {
           leadUpdate.status = "connected";
+          leadUpdate.connected_at = now;
           leadUpdate.connection_accepted_at = now;
-          leadUpdate.next_action_at = rbt(0);
+          leadUpdate.next_action_at = rbt(1); // Wait 1 day before DM to let LinkedIn API sync
           leadUpdate.connection_verified = true;
           leadUpdate.connection_verified_at = now;
           leadUpdate.connection_verification_note = note || "verified";
@@ -481,7 +710,8 @@ serve(async (req) => {
             .single();
           const sentAt = leadData?.connection_sent_at ? new Date(leadData.connection_sent_at) : new Date();
           const daysSince = (Date.now() - sentAt.getTime()) / (1000 * 60 * 60 * 24);
-          if (daysSince < 10) {
+          // Pending invites often get accepted after 2-3 weeks; keep checking up to 21 days.
+          if (daysSince < 21) {
             leadUpdate.next_action_at = rbt(1);
           } else {
             leadUpdate.status = "connection_rejected";
@@ -669,32 +899,13 @@ serve(async (req) => {
       details: { result },
     });
 
-    // Update extension daily counters
-    const counterUpdate: any = {
-      last_action_at: now,
-    };
-    // Read current counters once
-    const { data: ext } = await supabase
-      .from("extension_status")
-      .select("connection_requests_today, messages_today, actions_today, visits_today")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (ext) {
-      counterUpdate.actions_today = (ext.actions_today || 0) + 1;
-
-      if (action.action_type === "visit_profile" || action.action_type === "follow_profile") {
-        counterUpdate.visits_today = (ext.visits_today || 0) + 1;
-      } else if (action.action_type === "send_connection_request") {
-        counterUpdate.connection_requests_today = (ext.connection_requests_today || 0) + 1;
-      } else if (action.action_type === "send_dm" || action.action_type === "send_followup") {
-        counterUpdate.messages_today = (ext.messages_today || 0) + 1;
-      }
-    }
-
-    await supabase.from("extension_status")
-      .update(counterUpdate)
-      .eq("user_id", user.id);
+    // Update extension daily counters atomically (before: read-modify-write that also wrote a
+    // non-existent column, so the whole update failed silently and counters never moved).
+    const { error: counterErr } = await supabase.rpc("bump_extension_counters", {
+      p_user_id: user.id,
+      p_action_type: action.action_type,
+    });
+    if (counterErr) console.error("bump_extension_counters failed:", counterErr);
 
     return new Response(JSON.stringify({ success: true, new_status: leadUpdate.status }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

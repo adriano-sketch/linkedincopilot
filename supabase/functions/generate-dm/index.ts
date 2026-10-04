@@ -1,12 +1,16 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// generate-dm (patched 2026-10)
+// Changes:
+//  - Auth required (before: no auth at all; anyone could pass any user_id and spend
+//    that user's credits + your Anthropic key). Users act only as themselves and only
+//    on their own leads; internal callers use the service key.
+//  - Credits reserved atomically BEFORE calling the AI (consume_lead_credits) and refunded
+//    on failure. Exhausted credits -> status 'credits_exhausted' (before: 'icp_rejected',
+//    which polluted ICP stats and got re-enriched).
+//  - jobs row is marked 'fail' with the error (before: stuck in 'running' forever).
+//  - On failure the lead's updated_at is bumped so generate-dm-cron backs off 30 min.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildMessagePrompts } from "../_shared/ai-prompts.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
+import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 // Shared prompt + helpers live in _shared/ai-prompts.ts
 
 // ─────────────────────────────────────────────────────────────────────
@@ -88,110 +92,74 @@ function pickVariant(seed: string): Variant {
   return DM_VARIANTS[idx];
 }
 
-serve(async (req) => {
+
+const ADVANCED_STATUSES = new Set([
+  "ready", "visiting_profile", "following", "connection_sent",
+  "connected", "dm_sent", "waiting_reply", "followup_sent",
+]);
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
-    const requestBody = await req.json();
-    const { user_id, campaign_lead_id } = requestBody;
-    if (!user_id) throw new Error("user_id required");
-    if (!campaign_lead_id) throw new Error("campaign_lead_id required");
+  const auth = await authenticate(req, { allowService: true, allowUser: true });
+  if (!auth) return unauthorized();
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  let jobId: string | null = null;
+  let creditReserved = false;
+  let userId: string | null = null;
+  let campaignLeadId: string | null = null;
+
+  try {
+    const requestBody = await req.json().catch(() => ({}));
+    userId = effectiveUserId(auth, requestBody.user_id);
+    campaignLeadId = typeof requestBody.campaign_lead_id === "string" ? requestBody.campaign_lead_id : null;
+    if (!userId) return json({ error: "user_id required" }, 400);
+    if (!campaignLeadId) return json({ error: "campaign_lead_id required" }, 400);
+
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const ANTHROPIC_MODEL_NOTE = Deno.env.get("ANTHROPIC_MODEL_NOTE")
       || Deno.env.get("ANTHROPIC_MODEL_ICP")
-      || Deno.env.get("ANTHROPIC_MODEL")
       || "claude-haiku-4-5";
-    const ANTHROPIC_MODEL_DM = Deno.env.get("ANTHROPIC_MODEL_DM")
-      || Deno.env.get("ANTHROPIC_MODEL")
-      || "claude-sonnet-4-6";
-    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+    const ANTHROPIC_MODEL_DM = Deno.env.get("ANTHROPIC_MODEL_DM") || "claude-sonnet-4-6";
+    if (!ANTHROPIC_API_KEY) return json({ error: "config_error" }, 500);
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Fetch lead with enrichment data from Scrapin
+    // Lead must belong to the user
     const { data: lead, error: leadError } = await supabase
       .from("campaign_leads")
       .select("*")
-      .eq("id", campaign_lead_id)
-      .single();
-
-    if (leadError || !lead) throw new Error("Campaign lead not found");
-
-    const { data: creditSettings } = await supabase
-      .from("user_settings")
-      .select("leads_used_this_cycle, max_leads_per_cycle")
-      .eq("user_id", user_id)
+      .eq("id", campaignLeadId)
+      .eq("user_id", userId)
       .maybeSingle();
-    const currentUsed = creditSettings?.leads_used_this_cycle || 0;
-    const maxLeads = creditSettings?.max_leads_per_cycle || 0;
+    if (leadError) throw leadError;
+    if (!lead) return json({ error: "Campaign lead not found" }, 404);
 
-    const leadName = lead.full_name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "Unknown";
-    const leadTitle = lead.title || lead.profile_current_title || "N/A";
-    const leadCompany = lead.company || lead.profile_current_company || "N/A";
-    const leadHeadline = lead.profile_headline || leadTitle;
-    const leadAbout = lead.profile_about || "N/A";
-    const currentPositionTitle = lead.profile_current_title || leadTitle;
-    const currentPositionCompany = lead.profile_current_company || leadCompany;
-    const currentPositionDescription = "";
-    const previousPositionTitle = lead.profile_previous_title || "N/A";
-    const previousPositionCompany = lead.profile_previous_company || "N/A";
-    const educationSchool = lead.profile_education || "N/A";
-    const skillsList = Array.isArray(lead.profile_skills) ? lead.profile_skills.slice(0, 5).join(", ") : "N/A";
-    const fullProfileText = [leadHeadline, leadAbout, currentPositionTitle, currentPositionCompany].filter(Boolean).join(" | ");
-    const campaignProfileId = lead.campaign_profile_id;
-
-    console.log(`Generating messages for lead ${campaign_lead_id}: ${leadName} at ${leadCompany}`);
-
-    const { data: job } = await supabase
-      .from("jobs")
-      .insert({ user_id, type: "generate_dm", status: "running" })
-      .select("id")
-      .single();
-
-    // Get master profile
     const { data: masterProfile } = await supabase
       .from("profiles")
       .select("sender_name, sender_title, company_name, company_description")
-      .eq("user_id", user_id)
+      .eq("user_id", userId)
       .maybeSingle();
+    if (!masterProfile) return json({ error: "User profile not found" }, 404);
 
-    if (!masterProfile) throw new Error("User profile not found");
-
-    // Get campaign profile — prefer lead/event's campaign, fallback to default
+    // Campaign profile — lead's campaign, fallback to user's default, fallback to legacy profile
+    const campaignProfileId = lead.campaign_profile_id;
     let campaignProfile: any = null;
-
     if (campaignProfileId) {
-      const { data } = await supabase
-        .from("campaign_profiles")
-        .select("*")
-        .eq("id", campaignProfileId)
-        .single();
+      const { data } = await supabase.from("campaign_profiles").select("*")
+        .eq("id", campaignProfileId).eq("user_id", userId).maybeSingle();
       campaignProfile = data;
     }
-
     if (!campaignProfile) {
-      const { data } = await supabase
-        .from("campaign_profiles")
-        .select("*")
-        .eq("user_id", user_id)
-        .eq("is_default", true)
-        .limit(1)
-        .maybeSingle();
+      const { data } = await supabase.from("campaign_profiles").select("*")
+        .eq("user_id", userId).eq("is_default", true).limit(1).maybeSingle();
       campaignProfile = data;
     }
-
     if (!campaignProfile) {
-      const { data: oldProfile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", user_id)
-        .maybeSingle();
-      
-      if (!oldProfile) throw new Error("Complete your campaign setup first");
-      
+      const { data: oldProfile } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
+      if (!oldProfile) return json({ error: "Complete your campaign setup first" }, 400);
       campaignProfile = {
         name: "Default",
         campaign_objective: oldProfile.campaign_objective || "start_conversation",
@@ -205,45 +173,48 @@ serve(async (req) => {
       };
     }
 
-    if (maxLeads > 0 && currentUsed >= maxLeads) {
-      await supabase
-        .from("campaign_leads")
-        .update({
-          status: "icp_rejected",
-          icp_match: false,
-          icp_checked_at: new Date().toISOString(),
-          icp_match_reason: "Lead credits exhausted",
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq("id", campaign_lead_id);
-
-      return new Response(JSON.stringify({ error: "Lead credits exhausted" }), {
-        status: 402,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Reserve one credit atomically (refunded below if generation fails)
+    const { data: reserved, error: creditErr } = await supabase.rpc("consume_lead_credits", {
+      p_user_id: userId, p_amount: 1,
+    });
+    if (creditErr) throw creditErr;
+    if (!reserved) {
+      await supabase.from("campaign_leads").update({
+        status: "credits_exhausted",
+        error_message: "Lead credits exhausted",
+        next_action_at: null,
+        updated_at: new Date().toISOString(),
+      } as any).eq("id", campaignLeadId).eq("user_id", userId);
+      return json({ error: "Lead credits exhausted" }, 402);
     }
+    creditReserved = true;
 
-    // Fetch vertical context if available
+    const { data: job } = await supabase.from("jobs")
+      .insert({ user_id: userId, type: "generate_dm", status: "running" })
+      .select("id").single();
+    jobId = job?.id ?? null;
+
+    const leadName = lead.full_name || `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || "Unknown";
+    const leadTitle = lead.title || lead.profile_current_title || "N/A";
+    const leadCompany = lead.company || lead.profile_current_company || "N/A";
+    const leadHeadline = lead.profile_headline || leadTitle;
+    const leadAbout = lead.profile_about || "N/A";
+    const currentPositionTitle = lead.profile_current_title || leadTitle;
+    const currentPositionCompany = lead.profile_current_company || leadCompany;
+    const skillsList = Array.isArray(lead.profile_skills) ? lead.profile_skills.slice(0, 5).join(", ") : "N/A";
+    const fullProfileText = [leadHeadline, leadAbout, currentPositionTitle, currentPositionCompany].filter(Boolean).join(" | ");
+
     let verticalContext: any = null;
     if (campaignProfile.vertical_id) {
-      const { data: vertical } = await supabase
-        .from("verticals")
+      const { data: vertical } = await supabase.from("verticals")
         .select("name, primary_compliance, fear_trigger, default_pain_points")
-        .eq("id", campaignProfile.vertical_id)
-        .single();
+        .eq("id", campaignProfile.vertical_id).maybeSingle();
       verticalContext = vertical;
     }
 
-    // Parse structured snapshot data from profile_snapshot on lead
     const snapshot = (lead.profile_snapshot && typeof lead.profile_snapshot === "object") ? lead.profile_snapshot as Record<string, any> : {};
-    const experience = snapshot.experience || snapshot.positions;
-    const currentPosition = Array.isArray(experience) ? experience[0] : null;
-    const previousPosition = Array.isArray(experience) ? experience[1] : null;
     const education = snapshot.education || snapshot.educations;
     const firstEducation = Array.isArray(education) ? education[0] : (typeof education === "object" && education ? education : null);
-    const skills = snapshot.skills;
-    const educationDegree = firstEducation?.degreeName || firstEducation?.degree || "N/A";
-    const educationField = firstEducation?.fieldOfStudy || firstEducation?.field || "N/A";
 
     const promptInputs = {
       sender: {
@@ -273,12 +244,12 @@ serve(async (req) => {
         about: leadAbout,
         currentTitle: currentPositionTitle,
         currentCompany: currentPositionCompany,
-        currentDescription: currentPositionDescription,
-        previousTitle: previousPositionTitle,
-        previousCompany: previousPositionCompany,
-        educationSchool,
-        educationDegree,
-        educationField,
+        currentDescription: "",
+        previousTitle: lead.profile_previous_title || "N/A",
+        previousCompany: lead.profile_previous_company || "N/A",
+        educationSchool: lead.profile_education || "N/A",
+        educationDegree: firstEducation?.degreeName || firstEducation?.degree || "N/A",
+        educationField: firstEducation?.fieldOfStudy || firstEducation?.field || "N/A",
         skills: skillsList,
         industry: lead.industry || "N/A",
         location: lead.location || "N/A",
@@ -287,10 +258,7 @@ serve(async (req) => {
       vertical: verticalContext,
     };
 
-    // Pick a DM strategy variant for this lead (deterministic by lead id so
-    // retries stay stable). We inject the variant hint into the DM prompt
-    // ONLY — the connection note variant space is too small to benefit.
-    const variant = pickVariant(campaign_lead_id);
+    const variant = pickVariant(campaignLeadId);
     const variantInjection = `
 
 ══════ STRATEGY VARIANT FOR THIS DM ══════
@@ -308,54 +276,32 @@ Follow this variant's guidance for the FIRST DM. The follow-up should use a diff
     const callAnthropic = async (model: string, system: string, user: string) => {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 800,
-          temperature: 0.7,
-          system,
-          messages: [
-            { role: "user", content: user },
-          ],
-        }),
+        headers: { "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model, max_tokens: 800, temperature: 0.7, system, messages: [{ role: "user", content: user }] }),
       });
-
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Anthropic error:", response.status, errorText);
+        console.error("Anthropic error:", response.status, await response.text());
         throw new Error(`Anthropic API error: ${response.status}`);
       }
-
       const aiData = await response.json();
-      const contentBlocks = Array.isArray(aiData.content) ? aiData.content : [];
-      const content = contentBlocks
-        .filter((b: any) => b && b.type === "text")
-        .map((b: any) => b.text || "")
-        .join("")
-        .trim();
+      const content = (Array.isArray(aiData.content) ? aiData.content : [])
+        .filter((b: any) => b && b.type === "text").map((b: any) => b.text || "").join("").trim();
       if (!content) throw new Error("No text in AI response");
-
-      let jsonStr = content.trim();
-      if (jsonStr.startsWith("```")) {
-        jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-      }
+      let jsonStr = content;
+      if (jsonStr.startsWith("```")) jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       if (!jsonStr.startsWith("{")) {
         const start = jsonStr.indexOf("{");
         const end = jsonStr.lastIndexOf("}");
-        if (start !== -1 && end !== -1) {
-          jsonStr = jsonStr.slice(start, end + 1);
-        }
+        if (start !== -1 && end !== -1) jsonStr = jsonStr.slice(start, end + 1);
       }
       if (!jsonStr.startsWith("{")) throw new Error("No JSON in AI response");
       return JSON.parse(jsonStr);
     };
 
-    const noteArgs = await callAnthropic(ANTHROPIC_MODEL_NOTE, noteSystem, noteUser);
-    const dmArgs = await callAnthropic(ANTHROPIC_MODEL_DM, dmSystem, dmUser);
+    const [noteArgs, dmArgs] = await Promise.all([
+      callAnthropic(ANTHROPIC_MODEL_NOTE, noteSystem, noteUser),
+      callAnthropic(ANTHROPIC_MODEL_DM, dmSystem, dmUser),
+    ]);
 
     const args = {
       connection_note: noteArgs.connection_note,
@@ -367,19 +313,16 @@ Follow this variant's guidance for the FIRST DM. The follow-up should use a diff
     if (!args.connection_note || !args.custom_dm || !args.custom_followup) {
       throw new Error("AI response missing required fields");
     }
+    // LinkedIn hard limit for connection notes is 200 chars (300 for premium). Never send an over-limit note.
+    if (args.connection_note.length > 200) {
+      args.connection_note = args.connection_note.slice(0, 197).replace(/\s+\S*$/, "") + "...";
+    }
+    if (args.custom_dm.length > 350) console.warn(`custom_dm over limit: ${args.custom_dm.length} chars`);
+    if (args.custom_followup.length > 280) console.warn(`custom_followup over limit: ${args.custom_followup.length} chars`);
 
-    // Validation — log warnings but don't block
-    const noteLen = (args.connection_note || "").length;
-    const dmLen = (args.custom_dm || "").length;
-    const fuLen = (args.custom_followup || "").length;
-    if (noteLen > 200) console.warn(`connection_note over limit: ${noteLen} chars`);
-    if (dmLen > 350) console.warn(`custom_dm over limit: ${dmLen} chars`);
-    if (fuLen > 280) console.warn(`custom_followup over limit: ${fuLen} chars`);
-
-    // Save to generated_messages — include variant tagging so we can later
-    // correlate variant → reply rate.
-    await supabase.from("generated_messages").insert({
-      user_id,
+    const now = new Date().toISOString();
+    const { error: gmErr } = await supabase.from("generated_messages").insert({
+      user_id: userId,
       connection_note: args.connection_note,
       dm1: args.custom_dm,
       followup1: args.custom_followup,
@@ -392,47 +335,52 @@ Follow this variant's guidance for the FIRST DM. The follow-up should use a diff
         campaign_profile_id: campaignProfileId || null,
       },
     } as any);
+    if (gmErr) console.error("generated_messages insert failed:", gmErr);
 
-    if (job) {
-      await supabase.from("jobs").update({ status: "success" }).eq("id", job.id);
+    const updateData: any = {
+      connection_note: args.connection_note,
+      custom_dm: args.custom_dm,
+      dm_text: args.custom_dm,
+      custom_followup: args.custom_followup,
+      follow_up_text: args.custom_followup,
+      dm_generated_at: now,
+      messages_generated_at: now,
+      dm_variant: variant.key,
+      error_message: null,
+      updated_at: now,
+    };
+    if (ADVANCED_STATUSES.has(lead.status)) {
+      updateData.next_action_at = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    } else {
+      updateData.status = "pending_approval";
     }
 
-    // Update campaign_lead with generated messages (and variant key for
-    // cheap reply-rate joins).
-    // Set status to pending_approval so user can review before auto-run
-    await supabase.from("campaign_leads")
-      .update({
-        connection_note: args.connection_note || null,
-        custom_dm: args.custom_dm,
-        dm_text: args.custom_dm,
-        custom_followup: args.custom_followup || null,
-        follow_up_text: args.custom_followup || null,
-        status: "pending_approval",
-        dm_generated_at: new Date().toISOString(),
-        messages_generated_at: new Date().toISOString(),
-        dm_variant: variant.key,
-        updated_at: new Date().toISOString(),
-      } as any)
-      .eq("id", campaign_lead_id);
+    const { error: updErr } = await supabase.from("campaign_leads").update(updateData)
+      .eq("id", campaignLeadId).eq("user_id", userId);
+    if (updErr) throw updErr;
 
-    await supabase
-      .from("user_settings")
-      .update({ leads_used_this_cycle: currentUsed + 1 })
-      .eq("user_id", user_id);
+    if (jobId) await supabase.from("jobs").update({ status: "success" }).eq("id", jobId);
 
-    return new Response(JSON.stringify({
+    return json({
       success: true,
       connection_note: args.connection_note,
       dm1: args.custom_dm,
       followup1: args.custom_followup,
       dm_variant: variant.key,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("generate-dm error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("generate-dm error:", msg);
+    if (creditReserved && userId) {
+      const { error: refundErr } = await supabase.rpc("consume_lead_credits", { p_user_id: userId, p_amount: -1 });
+      if (refundErr) console.error("credit refund failed:", refundErr);
+    }
+    if (jobId) await supabase.from("jobs").update({ status: "fail", error: msg.slice(0, 500) }).eq("id", jobId);
+    if (campaignLeadId && userId) {
+      // Bump updated_at so generate-dm-cron waits before retrying this lead
+      await supabase.from("campaign_leads").update({ updated_at: new Date().toISOString() } as any)
+        .eq("id", campaignLeadId).eq("user_id", userId);
+    }
+    return json({ error: "generation_failed" }, 500);
   }
 });

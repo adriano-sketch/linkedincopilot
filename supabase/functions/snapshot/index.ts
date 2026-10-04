@@ -1,30 +1,49 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, json } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-extension-token, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// Chrome extension endpoint. Auth: x-extension-token -> profiles.extension_token.
+//
+// Changes (2026-10 patch):
+//  - Dedupe of NEEDS_SNAPSHOT events now only removes events whose name
+//    matches EXACTLY (case-insensitive, trimmed, whitespace-collapsed) or
+//    whose linkedin_url matches. The old substring match deleted unrelated
+//    people (e.g. capturing "Ana Paula Souza" deleted pending "Ana", "Paula").
+//  - Critical writes are error-checked; raw errors are not returned.
+//  - Inputs are type-checked and size-capped.
+
+const MAX_TEXT = 100_000;
+const MAX_SHORT = 2_000;
+
+function str(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s ? s.slice(0, max) : null;
+}
+
+function normName(s: unknown): string {
+  return typeof s === "string" ? s.trim().replace(/\s+/g, " ").toLowerCase() : "";
+}
+
+function normUrl(s: unknown): string {
+  return typeof s === "string" ? s.trim().replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase() : "";
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const extensionToken = req.headers.get("x-extension-token");
-    if (!extensionToken) {
-      return new Response(JSON.stringify({ error: "Missing extension token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!extensionToken) return json({ error: "Missing extension token" }, 401);
 
-    const { linkedin_url, name, headline, about, experience, raw_text } = await req.json();
-    if (!name || !raw_text) {
-      return new Response(JSON.stringify({ error: "name and raw_text are required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const body = await req.json().catch(() => ({}));
+    const name = str(body.name, 300);
+    const raw_text = str(body.raw_text, MAX_TEXT);
+    const linkedin_url = str(body.linkedin_url, MAX_SHORT);
+    const headline = str(body.headline, MAX_SHORT);
+    const about = str(body.about, MAX_TEXT);
+    const experience = str(body.experience, MAX_TEXT);
+    if (!name || !raw_text) return json({ error: "name and raw_text are required" }, 400);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,10 +57,8 @@ serve(async (req) => {
       .maybeSingle();
 
     if (profileError || !profile) {
-      return new Response(JSON.stringify({ error: "Invalid extension token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (profileError) console.error("snapshot: token lookup failed", profileError);
+      return json({ error: "Invalid extension token" }, 401);
     }
 
     const userId = profile.user_id;
@@ -91,7 +108,10 @@ serve(async (req) => {
         })
         .select("id")
         .single();
-      if (eventError) throw eventError;
+      if (eventError || !newEvent) {
+        console.error("snapshot: event insert failed", eventError);
+        return json({ error: "Failed to save snapshot" }, 500);
+      }
       eventId = newEvent.id;
     }
 
@@ -105,56 +125,57 @@ serve(async (req) => {
       about,
       experience: experience || null,
     });
-    if (snapError) throw snapError;
+    if (snapError) {
+      console.error("snapshot: profile_snapshots insert failed", snapError);
+      return json({ error: "Failed to save snapshot" }, 500);
+    }
 
     // Update event status and enrich with snapshot data
-    await supabase
+    const eventUpdate: Record<string, unknown> = { status: "SNAPSHOT_RECEIVED" };
+    if (linkedin_url) eventUpdate.linkedin_url = linkedin_url;
+    if (headline) eventUpdate.title = headline;
+    const { error: evUpdErr } = await supabase
       .from("linkedin_events")
-      .update({
-        status: "SNAPSHOT_RECEIVED",
-        linkedin_url: linkedin_url || undefined,
-        title: headline || undefined,
-      })
-      .eq("id", eventId);
-
-    // Remove duplicate NEEDS_SNAPSHOT events for the same person
-    // Match by linkedin_url or by name (case-insensitive partial match)
-    if (linkedin_url) {
-      await supabase
-        .from("linkedin_events")
-        .delete()
-        .eq("user_id", userId)
-        .eq("status", "NEEDS_SNAPSHOT")
-        .eq("linkedin_url", linkedin_url)
-        .neq("id", eventId);
+      .update(eventUpdate)
+      .eq("id", eventId)
+      .eq("user_id", userId);
+    if (evUpdErr) {
+      console.error("snapshot: event status update failed", evUpdErr);
+      return json({ error: "Failed to save snapshot" }, 500);
     }
-    // Also remove NEEDS_SNAPSHOT events where the name is contained in the captured name
-    // e.g., Gmail detects "James" but extension captures "James Meyers"
-    const { data: needsSnapshotEvents } = await supabase
-      .from("linkedin_events")
-      .select("id, name")
-      .eq("user_id", userId)
-      .eq("status", "NEEDS_SNAPSHOT");
 
-    if (needsSnapshotEvents && needsSnapshotEvents.length > 0) {
-      const nameLower = name.toLowerCase();
-      const dupeIds = needsSnapshotEvents
-        .filter((e) => e.id !== eventId && (
-          nameLower.includes(e.name.toLowerCase()) ||
-          e.name.toLowerCase().includes(nameLower)
-        ))
-        .map((e) => e.id);
+    // Remove duplicate NEEDS_SNAPSHOT events for the SAME person only:
+    // exact name match (case-insensitive, trimmed) or same linkedin_url.
+    const { data: pending, error: pendingErr } = await supabase
+      .from("linkedin_events")
+      .select("id, name, linkedin_url")
+      .eq("user_id", userId)
+      .eq("status", "NEEDS_SNAPSHOT")
+      .neq("id", eventId);
+    if (pendingErr) {
+      console.error("snapshot: dedupe lookup failed", pendingErr);
+    } else if (pending && pending.length > 0) {
+      const nameKey = normName(name);
+      const urlKey = normUrl(linkedin_url);
+      const dupeIds = pending
+        .filter((e: any) =>
+          (nameKey && normName(e.name) === nameKey) ||
+          (urlKey && e.linkedin_url && normUrl(e.linkedin_url) === urlKey)
+        )
+        .map((e: any) => e.id);
 
       if (dupeIds.length > 0) {
-        await supabase
+        const { error: delErr } = await supabase
           .from("linkedin_events")
           .delete()
           .eq("user_id", userId)
+          .eq("status", "NEEDS_SNAPSHOT")
           .in("id", dupeIds);
+        if (delErr) console.error("snapshot: dedupe delete failed", delErr);
       }
     }
 
-    // Trigger DM generation by calling generate-dm
+    // Trigger DM generation by calling generate-dm (fire-and-forget, internal call)
     const generateUrl = `${supabaseUrl}/functions/v1/generate-dm`;
     fetch(generateUrl, {
       method: "POST",
@@ -163,16 +184,11 @@ serve(async (req) => {
         Authorization: `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({ event_id: eventId, user_id: userId }),
-    }).catch(console.error);
+    }).catch((err) => console.error("snapshot: generate-dm trigger failed", err));
 
-    return new Response(JSON.stringify({ success: true, event_id: eventId }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: true, event_id: eventId });
   } catch (e) {
     console.error("snapshot error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Internal error" }, 500);
   }
 });

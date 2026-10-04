@@ -1,16 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { authenticate, corsHeaders, unauthorized } from "../_shared/auth.ts";
 
 const ALERT_EMAIL = "support@scantosell.io";
 
 interface CheckResult {
   name: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "skipped";
   message?: string;
   latency_ms?: number;
 }
@@ -31,6 +27,10 @@ async function checkWithTimeout(name: string, fn: () => Promise<void>, timeoutMs
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Internal / cron only.
+  const auth = await authenticate(req, { allowService: true, allowUser: false });
+  if (!auth) return unauthorized();
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const resendKey = Deno.env.get("RESEND_API_KEY");
@@ -44,34 +44,29 @@ serve(async (req) => {
     if (error) throw new Error(error.message);
   }));
 
-  // 2. Get a sample user's API keys for external checks
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("apollo_api_key")
-    .not("apollo_api_key", "is", null)
-    .limit(1);
-
-  const sampleProfile = profiles?.[0];
-
-  // 4. Apollo API
-  if (sampleProfile?.apollo_api_key) {
+  // 2/4. Apollo API: uses the platform's own key (APOLLO_API_KEY secret).
+  // Never borrow a customer's apollo_api_key from profiles.
+  const apolloKey = Deno.env.get("APOLLO_API_KEY");
+  if (apolloKey) {
     checks.push(checkWithTimeout("Apollo API", async () => {
       const res = await fetch("https://api.apollo.io/api/v1/auth/health", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": sampleProfile.apollo_api_key },
+        headers: { "Content-Type": "application/json", "x-api-key": apolloKey },
       });
+      await res.body?.cancel();
       if (!res.ok) {
         // Try alt endpoint
         const alt = await fetch("https://api.apollo.io/api/v1/mixed_people/search", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": sampleProfile.apollo_api_key },
+          headers: { "Content-Type": "application/json", "x-api-key": apolloKey },
           body: JSON.stringify({ per_page: 1, page: 1 }),
         });
+        await alt.body?.cancel();
         if (!alt.ok) throw new Error(`HTTP ${alt.status}`);
       }
     }));
   } else {
-    checks.push(Promise.resolve({ name: "Apollo API", status: "ok" as const, message: "Skipped – no API key configured" }));
+    checks.push(Promise.resolve({ name: "Apollo API", status: "skipped" as const, message: "Skipped: APOLLO_API_KEY not set" }));
   }
 
   // 6. Active campaigns with stale leads (workflow health)
@@ -101,7 +96,7 @@ serve(async (req) => {
     const failureRows = failures.map(f =>
       `<tr><td style="padding:8px;border:1px solid #ddd;color:#dc2626;font-weight:bold">${f.name}</td><td style="padding:8px;border:1px solid #ddd">${f.message}</td><td style="padding:8px;border:1px solid #ddd">${f.latency_ms}ms</td></tr>`
     ).join("");
-    const okRows = results.filter(r => r.status === "ok").map(r =>
+    const okRows = results.filter(r => r.status !== "error").map(r =>
       `<tr><td style="padding:8px;border:1px solid #ddd;color:#16a34a">${r.name}</td><td style="padding:8px;border:1px solid #ddd">${r.message || "OK"}</td><td style="padding:8px;border:1px solid #ddd">${r.latency_ms ?? "-"}ms</td></tr>`
     ).join("");
 

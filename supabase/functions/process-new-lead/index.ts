@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { authenticate, corsHeaders, effectiveUserId, unauthorized } from "../_shared/auth.ts";
 
 function normalizeLinkedInUrl(rawUrl: string | null | undefined): string | null {
   if (!rawUrl) return null;
@@ -103,10 +99,14 @@ function truncateText(text: string, maxLength: number): string {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Users act as themselves (body user_id ignored); service callers must pass user_id.
+  const auth = await authenticate(req, { allowService: true, allowUser: true });
+  if (!auth) return unauthorized();
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const SCRAPIN_API_KEY = Deno.env.get("SCRAPIN_API_KEY");
+    // SCRAPIN_API_KEY no longer needed — enrichment is done by extension during visit_profile
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const ANTHROPIC_MODEL_NOTE = Deno.env.get("ANTHROPIC_MODEL_NOTE")
       || Deno.env.get("ANTHROPIC_MODEL_ICP")
@@ -116,16 +116,16 @@ serve(async (req) => {
       || Deno.env.get("ANTHROPIC_MODEL")
       || "claude-sonnet-4-6";
 
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
-
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (userError || !user) throw new Error("Unauthorized");
-
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { lead_ids, campaign_profile_id } = await req.json();
+    const { lead_ids, campaign_profile_id, user_id: bodyUserId } = await req.json();
+    const userId = effectiveUserId(auth, bodyUserId);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "user_id is required for service calls" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (!campaign_profile_id) throw new Error("campaign_profile_id required");
     if (!lead_ids || lead_ids.length === 0) throw new Error("lead_ids required");
 
@@ -134,7 +134,7 @@ serve(async (req) => {
       .from("campaign_profiles")
       .select("*")
       .eq("id", campaign_profile_id)
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .single();
 
     if (!campaign) throw new Error("Campaign not found");
@@ -143,7 +143,7 @@ serve(async (req) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("sender_name, sender_title, company_name, company_description, value_proposition")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (!profile) throw new Error("Profile not found");
@@ -153,20 +153,59 @@ serve(async (req) => {
       .from("campaign_leads")
       .select("*")
       .in("id", lead_ids)
-      .eq("user_id", user.id);
+      .eq("user_id", userId);
 
     if (!leads || leads.length === 0) throw new Error("No leads found");
 
-    const results = { processed: 0, icp_rejected: 0, enriched: 0, messages_generated: 0, errors: [] as string[] };
+    const results = { processed: 0, icp_rejected: 0, credits_exhausted: 0, enriched: 0, messages_generated: 0, errors: [] as string[] };
 
-    const { data: creditSettings } = await supabase
+    // Credit snapshot, used only as a GATE for the no-snapshot path (credits for
+    // those leads are charged later by generate-dm when messages are created).
+    // Actual consumption on this function's own generation path is atomic via
+    // the consume_lead_credits RPC. No user_settings row = no credits.
+    const { data: creditSettings, error: creditSettingsError } = await supabase
       .from("user_settings")
       .select("leads_used_this_cycle, max_leads_per_cycle")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .maybeSingle();
+    if (creditSettingsError) throw new Error(`user_settings lookup failed: ${creditSettingsError.message}`);
     let currentUsed = creditSettings?.leads_used_this_cycle || 0;
     const maxLeads = creditSettings?.max_leads_per_cycle || 0;
-    let creditsToAdd = 0;
+    const hasCreditsForGate = () =>
+      !!creditSettings && (maxLeads <= 0 || currentUsed < maxLeads);
+
+    const markCreditsExhausted = async (leadId: string, extra: Record<string, unknown> = {}) => {
+      const { error } = await supabase.from("campaign_leads")
+        .update({
+          ...extra,
+          status: "credits_exhausted",
+          error_message: "Lead credits exhausted",
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq("id", leadId);
+      if (error) console.error(`credits_exhausted update failed for ${leadId}:`, error);
+      results.credits_exhausted++;
+      results.processed++;
+    };
+
+    const consumeCredit = async (): Promise<boolean> => {
+      const { data, error } = await supabase.rpc("consume_lead_credits", { p_user_id: userId, p_amount: 1 });
+      if (error) {
+        console.error(`consume_lead_credits failed for ${userId}:`, error);
+        throw new Error("Could not reserve lead credit");
+      }
+      if (data === true) currentUsed += 1;
+      return data === true;
+    };
+
+    // Give back a credit reserved for a generation that did not complete.
+    // consume_lead_credits with a negative amount is an atomic decrement (the
+    // limit condition is always true when subtracting).
+    const refundCredit = async () => {
+      const { error } = await supabase.rpc("consume_lead_credits", { p_user_id: userId, p_amount: -1 });
+      if (error) console.error(`credit refund failed for ${userId}:`, error);
+      else currentUsed = Math.max(0, currentUsed - 1);
+    };
 
     for (const lead of leads) {
       try {
@@ -232,7 +271,7 @@ serve(async (req) => {
             .eq("id", lead.id);
 
           await supabase.from("activity_log").insert({
-            user_id: user.id,
+            user_id: userId,
             campaign_lead_id: lead.id,
             action: "icp_rejected",
             details: { reasons: icpResult.reasons },
@@ -242,169 +281,96 @@ serve(async (req) => {
           continue;
         }
 
-        await supabase.from("campaign_leads")
-          .update({
-            icp_match: true,
-            icp_checked_at: new Date().toISOString(),
-            status: "enriching",
-            updated_at: new Date().toISOString(),
-          } as any)
-          .eq("id", lead.id);
+        // ── Scrapin-free flow (v2) ──
+        // Instead of calling Scrapin API here, push lead directly to 'ready'.
+        // The Chrome extension will scrape profile data from LinkedIn DOM
+        // during the visit_profile warmup step (zero external API cost).
+        //
+        // If we have an existing snapshot for this LinkedIn URL (from a
+        // previous scrape), use it immediately. Otherwise, the lead enters
+        // the pipeline un-enriched and gets enriched inline during visit_profile.
 
-        // Step 1: Enrich via Scrapin.io
-        let profileData: any = null;
-        let scrapinFailureReason: string | null = null;
-        if (SCRAPIN_API_KEY && normalizedLinkedinUrl) {
-          try {
-            const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(normalizedLinkedinUrl)}`;
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 25000);
-            const scrapinResponse = await fetch(scrapinUrl, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (scrapinResponse.ok) {
-              const payload = await scrapinResponse.json();
-              if (payload?.success && payload?.person) {
-                profileData = payload.person;
-              }
-            } else {
-              await scrapinResponse.text();
-              scrapinFailureReason = scrapinResponse.status === 404 ? "404_not_found" : "scrapin_no_data";
-            }
-          } catch (e) {
-            console.error(`Scrapin enrichment failed for ${lead.id}:`, e);
-            scrapinFailureReason = "scrapin_no_data";
-          }
-        }
-
-        // Save enrichment data
         const enrichUpdate: any = {
+          icp_match: true,
+          icp_checked_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
 
-        if (profileData) {
-          enrichUpdate.profile_snapshot = profileData;
-          enrichUpdate.profile_headline = profileData.headline || null;
-          enrichUpdate.profile_about = profileData.summary || profileData.about || null;
-          const positions = profileData.positionHistory || profileData.positions || [];
-          enrichUpdate.profile_current_title = positions?.[0]?.title || null;
-          enrichUpdate.profile_current_company = positions?.[0]?.companyName || positions?.[0]?.company || null;
-          enrichUpdate.profile_previous_title = positions?.[1]?.title || null;
-          enrichUpdate.profile_previous_company = positions?.[1]?.companyName || positions?.[1]?.company || null;
-          const educations = profileData.educationHistory || profileData.educations || [];
-          enrichUpdate.profile_education = Array.isArray(educations)
-            ? educations.map((e: any) => `${e.degreeName || e.degree || ""} ${e.schoolName || e.school || ""}`).join("; ").trim() || null
-            : null;
-          const skills = profileData.skills || [];
-          enrichUpdate.profile_skills = Array.isArray(skills)
-            ? skills.map((s: any) => typeof s === "string" ? s : s.name || "").filter(Boolean)
-            : null;
-          enrichUpdate.profile_enriched_at = new Date().toISOString();
-          enrichUpdate.status = "enriched";
+        // Check for existing profile snapshot (free, no API call)
+        let hasExistingSnapshot = false;
+        if (normalizedLinkedinUrl) {
+          const { data: existingSnapshot } = await supabase
+            .from("profile_snapshots")
+            .select("id, headline, about, experience, raw_text")
+            .eq("linkedin_url", normalizedLinkedinUrl)
+            .limit(1)
+            .maybeSingle();
 
-          // Also update name fields if missing
-          const fullName = profileData.fullName || `${profileData.firstName || ""} ${profileData.lastName || ""}`.trim();
-          if (!lead.full_name && fullName) {
-            enrichUpdate.full_name = fullName;
-            enrichUpdate.first_name = profileData.firstName || fullName.split(" ")[0] || null;
-            enrichUpdate.last_name = profileData.lastName || null;
+          if (existingSnapshot) {
+            hasExistingSnapshot = true;
+            enrichUpdate.snapshot_id = existingSnapshot.id;
+            enrichUpdate.profile_enriched_at = new Date().toISOString();
+            enrichUpdate.profile_headline = existingSnapshot.headline || null;
+            enrichUpdate.profile_about = existingSnapshot.about || null;
+            enrichUpdate.enrichment_source = "existing_snapshot";
+            enrichUpdate.status = "ready";
+            enrichUpdate.next_action_at = new Date().toISOString();
           }
+        }
 
-          // ── Ghost detection: minimal LinkedIn presence ──
-          const about = profileData.summary || profileData.about || "";
-          const hasAbout = about.trim().length > 20;
-          const hasSkills = Array.isArray(skills) && skills.length >= 2;
-          const hasEducation = Array.isArray(educations) && educations.length > 0;
-          const hasMultiplePositions = Array.isArray(positions) && positions.length > 1;
-          const followerCount = profileData.followersCount || profileData.followerCount || 0;
-          const connectionCount = profileData.connectionsCount || profileData.connectionCount || 0;
-
-          const signalCount = [hasAbout, hasSkills, hasEducation, hasMultiplePositions, followerCount > 10, connectionCount > 50].filter(Boolean).length;
-
-          if (signalCount <= 1) {
-            const ghostReason = `Ghost profile (signals: ${signalCount}/6)`;
-
-            const ghostUrl = normalizedLinkedinUrl || lead.linkedin_url;
-            if (ghostUrl) {
-              await supabase.from("ghost_profiles").upsert({
-                linkedin_url: ghostUrl,
-                reason: "ghost_minimal_data",
-                signal_count: signalCount,
-                source: "process-new-lead",
-                detected_at: new Date().toISOString(),
-                raw_data: {
-                  hasAbout, hasSkills, hasEducation, hasMultiplePositions,
-                  followerCount, connectionCount,
-                  headline: (profileData.headline || "").substring(0, 100),
-                  name: fullName,
-                },
-              }, { onConflict: "linkedin_url" }).select().maybeSingle();
-            }
-
-            await supabase.from("campaign_leads").update({
-              status: "skipped",
-              profile_enriched_at: new Date().toISOString(),
-              error_message: ghostReason,
-              profile_quality_status: "ghost",
-              profile_headline: profileData.headline || null,
-              profile_about: about || null,
-              updated_at: new Date().toISOString(),
-            } as any).eq("id", lead.id);
-
-            results.processed++;
+        if (!hasExistingSnapshot) {
+          // Credit gate on the no-snapshot path too: do not push leads into the
+          // outreach pipeline when the user has no credits left.
+          if (!hasCreditsForGate()) {
+            await markCreditsExhausted(lead.id, {
+              icp_match: true,
+              icp_checked_at: enrichUpdate.icp_checked_at,
+            });
             continue;
           }
 
-          results.enriched++;
-        } else {
-          const ghostUrl = normalizedLinkedinUrl || lead.linkedin_url;
-          if (ghostUrl) {
-            await supabase.from("ghost_profiles").upsert({
-              linkedin_url: ghostUrl,
-              reason: scrapinFailureReason || "scrapin_no_data",
-              signal_count: 0,
-              source: "process-new-lead",
-              detected_at: new Date().toISOString(),
-            }, { onConflict: "linkedin_url" }).select().maybeSingle();
-          }
+          // No snapshot available — push to pipeline for extension scraping
+          enrichUpdate.status = "ready";
+          enrichUpdate.enrichment_source = "pending_extension_scrape";
+          enrichUpdate.next_action_at = new Date().toISOString();
 
-          await supabase.from("campaign_leads")
-            .update({
-              status: "skipped",
-              profile_enriched_at: new Date().toISOString(),
-              error_message: "No profile data available",
-              profile_quality_status: "ghost",
-              updated_at: new Date().toISOString(),
-            } as any)
+          const { error: pushError } = await supabase.from("campaign_leads")
+            .update(enrichUpdate)
             .eq("id", lead.id);
+          if (pushError) throw new Error(`Lead update failed: ${pushError.message}`);
 
+          // Messages are generated after the extension scrapes the profile
+          // during visit_profile (they need headline/about to be personalized).
+          results.enriched++;
           results.processed++;
           continue;
         }
 
-        await supabase.from("campaign_leads")
+        // Step 2: Generate messages with AI. Reserve 1 credit atomically first;
+        // it is refunded if generation does not complete.
+        const reserved = await consumeCredit();
+        if (!reserved) {
+          // Keep the snapshot enrichment, but do not enter the pipeline.
+          const { status: _s, next_action_at: _n, ...enrichOnly } = enrichUpdate;
+          await markCreditsExhausted(lead.id, enrichOnly);
+          continue;
+        }
+
+        const { error: enrichError } = await supabase.from("campaign_leads")
           .update(enrichUpdate)
           .eq("id", lead.id);
-
-        // Step 2: Generate messages with AI (outreach credits are consumed only on success)
-        if (maxLeads > 0 && currentUsed >= maxLeads) {
-          await supabase.from("campaign_leads")
-            .update({
-              status: "icp_rejected",
-              icp_match: false,
-              icp_checked_at: new Date().toISOString(),
-              icp_match_reason: "Lead credits exhausted",
-              updated_at: new Date().toISOString(),
-            } as any)
-            .eq("id", lead.id);
-          results.icp_rejected++;
-          results.processed++;
-          continue;
+        if (enrichError) {
+          await refundCredit();
+          throw new Error(`Lead update failed: ${enrichError.message}`);
         }
+        results.enriched++;
 
         if (!ANTHROPIC_API_KEY) {
-          await supabase.from("campaign_leads")
+          await refundCredit();
+          const { error: enrichedErr } = await supabase.from("campaign_leads")
             .update({ status: "enriched", updated_at: new Date().toISOString() } as any)
             .eq("id", lead.id);
+          if (enrichedErr) console.error(`status=enriched update failed for ${lead.id}:`, enrichedErr);
           results.processed++;
           continue;
         }
@@ -510,7 +476,7 @@ Sign messages as "${senderFirstName}".`;
           if (customDm.length > 350) customDm = customDm.substring(0, 347) + "...";
           if (customFollowup.length > 280) customFollowup = customFollowup.substring(0, 277) + "...";
 
-          await supabase.from("campaign_leads")
+          const { error: saveError } = await supabase.from("campaign_leads")
             .update({
               connection_note: connectionNote,
               custom_dm: customDm,
@@ -522,19 +488,20 @@ Sign messages as "${senderFirstName}".`;
               updated_at: new Date().toISOString(),
             } as any)
             .eq("id", lead.id);
+          if (saveError) throw new Error(`Saving generated messages failed: ${saveError.message}`);
 
-          await supabase.from("activity_log").insert({
-            user_id: user.id,
+          const { error: logError } = await supabase.from("activity_log").insert({
+            user_id: userId,
             campaign_lead_id: lead.id,
             action: "messages_generated",
             details: { connection_note_length: connectionNote.length, dm_length: customDm.length },
           });
+          if (logError) console.error(`activity_log insert failed for ${lead.id}:`, logError);
 
           results.messages_generated++;
-          creditsToAdd += 1;
-          currentUsed += 1;
         } catch (aiError) {
           console.error(`AI generation failed for ${lead.id}:`, aiError);
+          await refundCredit();
           await supabase.from("campaign_leads")
             .update({
               status: "enriched",
@@ -571,19 +538,15 @@ Sign messages as "${senderFirstName}".`;
           "Authorization": `Bearer ${serviceKey}`,
         },
         body: JSON.stringify({
-          user_id: user.id,
+          user_id: userId,
           campaign_profile_id,
           type: "connection_notes_ready",
         }),
       }).catch(err => console.error("notify-approval-ready error:", err));
     }
 
-    if (creditsToAdd > 0) {
-      await supabase
-        .from("user_settings")
-        .update({ leads_used_this_cycle: currentUsed })
-        .eq("user_id", user.id);
-    }
+    // Credits were consumed atomically per lead (consume_lead_credits RPC);
+    // no read-modify-write of leads_used_this_cycle here.
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

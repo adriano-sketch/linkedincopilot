@@ -1,48 +1,83 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// Security notes (2026-10 patch):
+//  - Caller must be an authenticated user or a service caller.
+//  - Users always act as themselves (body user_id ignored).
+//  - The campaign lead must belong to the effective user BEFORE we spend a
+//    ScrapIn credit, and every read/update is scoped by user_id.
+//  - Snapshot reuse is limited to the same user's snapshots (no cross-tenant
+//    linking of another user's snapshot).
+//  - Each real ScrapIn call is counted via add_leads_processed().
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const auth = await authenticate(req, { allowService: true, allowUser: true });
+    if (!auth) return unauthorized();
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const SCRAPIN_API_KEY = Deno.env.get("SCRAPIN_API_KEY");
-    if (!SCRAPIN_API_KEY) throw new Error("SCRAPIN_API_KEY not configured");
+    if (!SCRAPIN_API_KEY) {
+      console.error("capture-profile: SCRAPIN_API_KEY not configured");
+      return json({ error: "Enrichment is not configured" }, 500);
+    }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { linkedin_url, user_id, campaign_lead_id } = await req.json();
-    if (!linkedin_url) {
-      return new Response(JSON.stringify({ error: "linkedin_url required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const body = await req.json().catch(() => ({}));
+    const linkedin_url: unknown = body.linkedin_url;
+    const campaign_lead_id: string | null =
+      typeof body.campaign_lead_id === "string" && body.campaign_lead_id ? body.campaign_lead_id : null;
+    const userId = effectiveUserId(auth, body.user_id);
+
+    if (!userId) return json({ error: "user_id required" }, 400);
+    if (typeof linkedin_url !== "string" || !/^https?:\/\/([a-z0-9-]+\.)?linkedin\.com\//i.test(linkedin_url.trim())) {
+      return json({ error: "valid linkedin_url required" }, 400);
+    }
+    const linkedinUrl = linkedin_url.trim();
+
+    // Verify lead ownership BEFORE spending any credit.
+    if (campaign_lead_id) {
+      const { data: lead, error: leadErr } = await supabase
+        .from("campaign_leads")
+        .select("id")
+        .eq("id", campaign_lead_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (leadErr) {
+        console.error("capture-profile: lead lookup failed", leadErr);
+        return json({ error: "Failed to load lead" }, 500);
+      }
+      if (!lead) return json({ error: "Lead not found" }, 404);
     }
 
-    // Check for existing snapshot to save credits
-    const { data: existingSnapshot } = await supabase
+    // Check for existing snapshot (same user only) to save credits
+    const { data: existingSnapshot, error: existingErr } = await supabase
       .from("profile_snapshots")
       .select("id")
-      .eq("linkedin_url", linkedin_url)
+      .eq("user_id", userId)
+      .eq("linkedin_url", linkedinUrl)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (existingErr) console.error("capture-profile: snapshot lookup failed", existingErr);
 
     if (existingSnapshot) {
       if (campaign_lead_id) {
-        await supabase.from("campaign_leads")
+        const { error: linkErr } = await supabase.from("campaign_leads")
           .update({ snapshot_id: existingSnapshot.id, updated_at: new Date().toISOString() } as any)
-          .eq("id", campaign_lead_id);
+          .eq("id", campaign_lead_id)
+          .eq("user_id", userId);
+        if (linkErr) {
+          console.error("capture-profile: failed to link existing snapshot", linkErr);
+          return json({ error: "Failed to update lead" }, 500);
+        }
       }
-      return new Response(JSON.stringify({
-        success: true, snapshot_id: existingSnapshot.id, reused: true,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ success: true, snapshot_id: existingSnapshot.id, reused: true });
     }
 
     // Call Scrapin.io API
@@ -51,37 +86,43 @@ serve(async (req) => {
 
     let scrapinResponse: Response;
     try {
-      const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(linkedin_url)}`;
+      const scrapinUrl = `https://api.scrapin.io/v1/enrichment/profile?apikey=${SCRAPIN_API_KEY}&linkedInUrl=${encodeURIComponent(linkedinUrl)}`;
       scrapinResponse = await fetch(scrapinUrl, { signal: controller.signal });
       clearTimeout(timeout);
     } catch (error: any) {
       clearTimeout(timeout);
-      if (error.name === "AbortError") {
-        return new Response(JSON.stringify({
+      if (error?.name === "AbortError") {
+        return json({
           success: false, reason: "timeout",
           message: "Profile capture timed out. Manual capture available.",
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        });
       }
       throw error;
     }
 
     if (!scrapinResponse.ok) {
       const errorText = await scrapinResponse.text();
-      console.error(`Scrapin error (${scrapinResponse.status}):`, errorText);
-      return new Response(JSON.stringify({
+      console.error(`Scrapin error (${scrapinResponse.status}):`, errorText.slice(0, 500));
+      return json({
         success: false, reason: scrapinResponse.status === 404 ? "profile_not_found" : "scrapin_error",
-        message: scrapinResponse.status === 404 
+        message: scrapinResponse.status === 404
           ? "Profile not found or is private. Manual capture required."
           : "Profile scrape failed. Manual capture available as fallback.",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
+    }
+
+    // A successful ScrapIn response consumes a credit: count it (atomic RPC).
+    {
+      const { error: usageErr } = await supabase.rpc("add_leads_processed", { p_user_id: userId, p_amount: 1 });
+      if (usageErr) console.error("capture-profile: add_leads_processed failed", usageErr);
     }
 
     const data = await scrapinResponse.json();
     if (!data.success || !data.person) {
-      return new Response(JSON.stringify({
+      return json({
         success: false, reason: "profile_not_found",
         message: "Profile not found or is private. Manual capture required.",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
     }
 
     const p = data.person;
@@ -135,8 +176,8 @@ serve(async (req) => {
     const { data: snapshot, error: snapshotError } = await supabase
       .from("profile_snapshots")
       .insert({
-        user_id,
-        linkedin_url,
+        user_id: userId,
+        linkedin_url: linkedinUrl,
         headline,
         about,
         experience: experienceText || null,
@@ -146,11 +187,12 @@ serve(async (req) => {
       .select("id")
       .single();
 
-    if (snapshotError) throw snapshotError;
+    if (snapshotError || !snapshot) {
+      console.error("capture-profile: snapshot insert failed", snapshotError);
+      return json({ error: "Failed to save profile snapshot" }, 500);
+    }
 
     // Update campaign_lead with FULL enrichment so generate-dm has rich data.
-    // Previously this function only wrote snapshot_id/full_name and left all
-    // the profile_* columns NULL, which broke per-lead DM personalization.
     if (campaign_lead_id) {
       const currentPos = Array.isArray(positions) && positions.length > 0 ? positions[0] : null;
       const previousPos = Array.isArray(positions) && positions.length > 1 ? positions[1] : null;
@@ -217,25 +259,25 @@ serve(async (req) => {
       }
       if (headline) updateData.title = headline;
 
-      await supabase.from("campaign_leads")
+      const { error: leadUpdErr } = await supabase.from("campaign_leads")
         .update(updateData)
-        .eq("id", campaign_lead_id);
+        .eq("id", campaign_lead_id)
+        .eq("user_id", userId);
+      if (leadUpdErr) {
+        console.error("capture-profile: lead enrichment update failed", leadUpdErr);
+        return json({ error: "Failed to update lead", snapshot_id: snapshot.id }, 500);
+      }
     }
 
-    return new Response(JSON.stringify({
+    return json({
       success: true,
       snapshot_id: snapshot.id,
       profile_name: fullName,
       has_about: !!about,
       has_experience: (Array.isArray(positions) ? positions : []).length > 0,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("capture-profile error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Internal error" }, 500);
   }
 });

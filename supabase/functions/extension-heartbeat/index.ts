@@ -1,53 +1,66 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// Changes (2026-10 patch):
+//  - Auth via shared helper (logged-in user JWT, getUser-verified).
+//  - The client can NO LONGER set daily counters (actions_today,
+//    connection_requests_today, messages_today, visits_today). They are only
+//    incremented server-side (bump_extension_counters) and reset here at the
+//    day boundary. Any counter fields in the body are ignored.
+//  - Update/insert errors are checked and logged.
+//  - Raw internal errors are not returned to the client.
+
+const MAX_STR = 512;
+
+function cleanStr(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s ? s.slice(0, MAX_STR) : null;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const auth = await authenticate(req, { allowService: false, allowUser: true });
+    if (!auth || auth.kind !== "user") return unauthorized();
+    const userId = auth.userId;
 
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (userError || !user) throw new Error("Unauthorized");
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const {
-      linkedin_logged_in = false,
-      actions_today = 0,
-      connection_requests_today = 0,
-      messages_today = 0,
-      browser_fingerprint,
-      linkedin_profile_url,
-    } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    // Only these fields are accepted from the client. Counters are ignored on purpose.
+    const linkedin_logged_in = body.linkedin_logged_in === true;
+    const browser_fingerprint = cleanStr(body.browser_fingerprint);
+    const linkedinProfileRaw = cleanStr(body.linkedin_profile_url);
+    const linkedin_profile_url =
+      linkedinProfileRaw && /^https?:\/\/([a-z0-9-]+\.)?linkedin\.com\//i.test(linkedinProfileRaw) ? linkedinProfileRaw : null;
 
     const now = new Date();
 
-    // Check if we need to reset daily counters
-    const { data: existing } = await supabase
+    const { data: existing, error: existingErr } = await supabase
       .from("extension_status")
-      .select("last_limit_reset_at")
-      .eq("user_id", user.id)
+      .select("id, last_limit_reset_at")
+      .eq("user_id", userId)
       .maybeSingle();
+    if (existingErr) {
+      console.error("extension-heartbeat: status lookup failed", existingErr);
+      return json({ error: "Heartbeat failed" }, 500);
+    }
 
+    // Daily reset (server-side only, UTC day boundary).
     let shouldReset = false;
+    let stampResetOnly = false;
     if (existing?.last_limit_reset_at) {
       const lastReset = new Date(existing.last_limit_reset_at);
       shouldReset = lastReset.toDateString() !== now.toDateString();
+    } else if (existing) {
+      // Never stamped before: start tracking from now without wiping counters.
+      stampResetOnly = true;
     }
 
-    const upsertData: any = {
-      user_id: user.id,
+    const writeData: Record<string, unknown> = {
       is_connected: true,
       last_heartbeat_at: now.toISOString(),
       linkedin_logged_in,
@@ -55,55 +68,65 @@ serve(async (req) => {
     };
 
     if (shouldReset) {
-      upsertData.actions_today = 0;
-      upsertData.connection_requests_today = 0;
-      upsertData.messages_today = 0;
-      upsertData.last_limit_reset_at = now.toISOString();
-    } else {
-      upsertData.actions_today = actions_today;
-      upsertData.connection_requests_today = connection_requests_today;
-      upsertData.messages_today = messages_today;
+      writeData.actions_today = 0;
+      writeData.connection_requests_today = 0;
+      writeData.messages_today = 0;
+      writeData.visits_today = 0;
+      writeData.last_limit_reset_at = now.toISOString();
+    } else if (stampResetOnly) {
+      writeData.last_limit_reset_at = now.toISOString();
     }
 
-    if (browser_fingerprint) upsertData.browser_fingerprint = browser_fingerprint;
-    if (linkedin_profile_url) upsertData.linkedin_profile_url = linkedin_profile_url;
+    if (browser_fingerprint) writeData.browser_fingerprint = browser_fingerprint;
+    if (linkedin_profile_url) writeData.linkedin_profile_url = linkedin_profile_url;
 
-    // Upsert
-    const { data: ext } = await supabase
-      .from("extension_status")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (ext) {
-      await supabase.from("extension_status")
-        .update(upsertData)
-        .eq("user_id", user.id);
+    if (existing) {
+      const { error: updErr } = await supabase
+        .from("extension_status")
+        .update(writeData)
+        .eq("user_id", userId);
+      if (updErr) {
+        console.error("extension-heartbeat: update failed", updErr);
+        return json({ error: "Heartbeat failed" }, 500);
+      }
     } else {
-      await supabase.from("extension_status")
-        .insert(upsertData);
+      const { error: insErr } = await supabase
+        .from("extension_status")
+        .insert({ ...writeData, user_id: userId, last_limit_reset_at: now.toISOString() });
+      if (insErr) {
+        // Concurrent first heartbeat may have created the row: fall back to update.
+        if ((insErr as any).code === "23505") {
+          const { error: updErr2 } = await supabase
+            .from("extension_status")
+            .update(writeData)
+            .eq("user_id", userId);
+          if (updErr2) {
+            console.error("extension-heartbeat: update after conflict failed", updErr2);
+            return json({ error: "Heartbeat failed" }, 500);
+          }
+        } else {
+          console.error("extension-heartbeat: insert failed", insErr);
+          return json({ error: "Heartbeat failed" }, 500);
+        }
+      }
     }
 
     // Return pending actions count for the extension
-    const { count } = await supabase
+    const { count, error: countErr } = await supabase
       .from("action_queue")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("status", "pending")
       .lte("scheduled_for", now.toISOString());
+    if (countErr) console.error("extension-heartbeat: pending count failed", countErr);
 
-    return new Response(JSON.stringify({
+    return json({
       success: true,
       pending_actions: count || 0,
       daily_reset: shouldReset,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("extension-heartbeat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Heartbeat failed" }, 500);
   }
 });

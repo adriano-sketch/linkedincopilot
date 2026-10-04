@@ -1,35 +1,10 @@
 /**
- * classify-reply
- * ──────────────
- * Takes a reply text and asks Claude Haiku (via tool_use to guarantee
- * well-formed JSON) to classify it into:
- *   sentiment: positive | neutral | negative | not_interested | auto_reply
- *   intent:    meeting  | ask_more | reject  | out_of_office | other
- *   summary:   one-line human gloss
- *
- * Then writes the classification back to campaign_leads and — if the
- * intent is "meeting" — advances the lead status to "meeting_booked".
- * If the intent is "reject" or sentiment is "not_interested", advances
- * to "lost" so the follow-up sequence stops.
- *
- * Called fire-and-forget from action-completed right after a reply is
- * detected. Idempotent: if reply_classified_at is already set, we skip.
- *
- * POST /functions/v1/classify-reply
- *   {
- *     "user_id":         "uuid",      // required
- *     "campaign_lead_id":"uuid",      // required
- *     "reply_text":      "text"       // optional — falls back to DB value
- *   }
+ * classify-reply (patched 2026-10)
+ * Internal only: called fire-and-forget by action-completed with the service key.
+ * Change: requires service-role auth (before: anyone could call it and spend Anthropic credits).
  */
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 const CLASSIFY_TOOL = {
   name: "classify_linkedin_reply",
@@ -72,11 +47,7 @@ You MUST call the classify_linkedin_reply tool exactly once. Do not emit prose.`
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
       model,
       max_tokens: 400,
@@ -92,144 +63,77 @@ You MUST call the classify_linkedin_reply tool exactly once. Do not emit prose.`
     console.error("classify-reply: anthropic error", resp.status, await resp.text());
     return null;
   }
-
   const data = await resp.json();
   const blocks = Array.isArray(data.content) ? data.content : [];
   const tool = blocks.find((b: any) => b?.type === "tool_use" && b?.name === "classify_linkedin_reply");
-  if (!tool || !tool.input || typeof tool.input !== "object") {
-    console.error("classify-reply: no tool_use block", JSON.stringify(data).slice(0, 400));
-    return null;
-  }
+  if (!tool || !tool.input || typeof tool.input !== "object") return null;
   const { sentiment, intent, summary } = tool.input;
   if (!sentiment || !intent) return null;
   return { sentiment, intent, summary: summary || "" };
 }
 
-// Terminal statuses for the lead once classification completes.
-// Anything else leaves the lead in "replied" so the human can review.
 function terminalStatusFor(sentiment: string, intent: string): string | null {
   if (intent === "meeting") return "meeting_booked";
   if (intent === "reject" || sentiment === "not_interested") return "lost";
   return null;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    // Hard default to haiku-4-5 — the generic ANTHROPIC_MODEL env var in
-    // this project currently points at a deprecated Sonnet build, and this
-    // classifier MUST be fast + cheap anyway. Override via
-    // ANTHROPIC_MODEL_REPLY_CLASSIFIER if you want to experiment.
-    const model =
-      Deno.env.get("ANTHROPIC_MODEL_REPLY_CLASSIFIER") ||
-      "claude-haiku-4-5";
+  const auth = await authenticate(req, { allowService: true, allowUser: false });
+  if (!auth) return unauthorized();
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+  try {
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    const model = Deno.env.get("ANTHROPIC_MODEL_REPLY_CLASSIFIER") || "claude-haiku-4-5";
 
     const body = await req.json().catch(() => ({}));
     const user_id: string | undefined = body.user_id;
     const campaign_lead_id: string | undefined = body.campaign_lead_id;
-    if (!user_id || !campaign_lead_id) {
-      return new Response(JSON.stringify({ error: "user_id and campaign_lead_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!user_id || !campaign_lead_id) return json({ error: "user_id and campaign_lead_id required" }, 400);
 
-    // Fetch the lead. Skip if already classified (idempotent).
     const { data: lead, error: leadErr } = await supabase
       .from("campaign_leads")
       .select("id, user_id, status, reply_text, reply_classified_at")
       .eq("id", campaign_lead_id)
       .eq("user_id", user_id)
       .maybeSingle();
-
     if (leadErr) throw leadErr;
-    if (!lead) {
-      return new Response(JSON.stringify({ error: "lead not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (lead.reply_classified_at) {
-      return new Response(JSON.stringify({ ok: true, skipped: "already_classified" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!lead) return json({ error: "lead not found" }, 404);
+    if (lead.reply_classified_at) return json({ ok: true, skipped: "already_classified" });
 
     const replyText = (body.reply_text || lead.reply_text || "").toString().trim();
-    if (!replyText) {
-      return new Response(JSON.stringify({ ok: true, skipped: "no_reply_text" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(JSON.stringify({ ok: false, error: "ANTHROPIC_API_KEY not set" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!replyText) return json({ ok: true, skipped: "no_reply_text" });
+    if (!ANTHROPIC_API_KEY) return json({ ok: false, error: "config_error" }, 500);
 
     const classification = await classify(replyText, ANTHROPIC_API_KEY, model);
     if (!classification) {
-      // Don't fail loudly — persist reply_text at least and leave
-      // sentiment null so a background retry can pick it up later.
-      await supabase
-        .from("campaign_leads")
-        .update({ reply_text: replyText })
-        .eq("id", campaign_lead_id);
-      return new Response(JSON.stringify({ ok: false, error: "classification_failed" }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      await supabase.from("campaign_leads").update({ reply_text: replyText }).eq("id", campaign_lead_id);
+      return json({ ok: false, error: "classification_failed" }, 502);
     }
 
-    const update: Record<string, any> = {
+    const update: Record<string, unknown> = {
       reply_text: replyText,
       reply_sentiment: classification.sentiment,
       reply_intent: classification.intent,
       reply_classified_at: new Date().toISOString(),
     };
-
-    // Terminal status advancement (optional).
     const nextStatus = terminalStatusFor(classification.sentiment, classification.intent);
     if (nextStatus) {
       update.status = nextStatus;
-      update.next_action_at = null; // Stop the sequence.
+      update.next_action_at = null;
     }
 
-    const { error: updateErr } = await supabase
-      .from("campaign_leads")
-      .update(update)
-      .eq("id", campaign_lead_id);
-
+    const { error: updateErr } = await supabase.from("campaign_leads").update(update).eq("id", campaign_lead_id);
     if (updateErr) {
       console.error("classify-reply: update failed", updateErr);
-      return new Response(JSON.stringify({ ok: false, error: updateErr.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ ok: false, error: "update_failed" }, 500);
     }
-
-    return new Response(JSON.stringify({
-      ok: true,
-      classification,
-      next_status: nextStatus,
-      summary: classification.summary,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ ok: true, classification, next_status: nextStatus });
   } catch (e) {
     console.error("classify-reply error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "internal_error" }, 500);
   }
 });

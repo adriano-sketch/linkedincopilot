@@ -19,7 +19,7 @@
  *   POST /functions/v1/analyze-icp-fit
  *   Body:
  *     {
- *       "user_id": "uuid",             // required
+ *       "user_id": "uuid",             // service callers only; users get auth.userId
  *       "campaign_profile_id": "uuid"  // optional — analyze stored campaign
  *       // OR pass campaign fields inline:
  *       "icp_description": "...",
@@ -44,11 +44,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 
 interface IcpInput {
   icp_description?: string | null;
@@ -295,6 +291,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const auth = await authenticate(req, { allowService: true, allowUser: true });
+    if (!auth) return unauthorized();
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -305,13 +304,9 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = await req.json().catch(() => ({}));
-    const user_id: string | undefined = body.user_id;
-    if (!user_id) {
-      return new Response(JSON.stringify({ error: "user_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Users always act as themselves; only service callers may pass user_id.
+    const user_id = effectiveUserId(auth, body.user_id);
+    if (!user_id) return json({ error: "user_id required" }, 400);
 
     let icp: IcpInput = {
       icp_description: body.icp_description,
@@ -326,13 +321,18 @@ serve(async (req) => {
 
     // If a stored campaign_profile_id was passed, load it as the source of truth.
     if (body.campaign_profile_id) {
-      const { data: cp } = await supabase
+      const { data: cp, error: cpErr } = await supabase
         .from("campaign_profiles")
-        .select("*")
+        .select("icp_description, icp_titles, icp_industries, pain_points, value_proposition, proof_points, campaign_objective, campaign_angle")
         .eq("id", body.campaign_profile_id)
         .eq("user_id", user_id)
-        .single();
-      if (cp) {
+        .maybeSingle();
+      if (cpErr) {
+        console.error("analyze-icp-fit: campaign lookup failed", cpErr);
+        return json({ error: "Failed to load campaign" }, 500);
+      }
+      if (!cp) return json({ error: "Campaign not found" }, 404);
+      {
         icp = {
           icp_description: cp.icp_description,
           icp_titles: cp.icp_titles,
@@ -374,7 +374,7 @@ serve(async (req) => {
 
     const verdict = verdictFromScore(score);
 
-    return new Response(JSON.stringify({
+    return json({
       score,
       verdict,
       strengths: strengths.slice(0, 8),
@@ -384,14 +384,9 @@ serve(async (req) => {
       projected: ai?.projected || null,
       ai_available: !!ai,
       updated_at: new Date().toISOString(),
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("analyze-icp-fit error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "Internal error" }, 500);
   }
 });

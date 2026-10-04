@@ -1,22 +1,44 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { authenticate, corsHeaders, unauthorized } from "../_shared/auth.ts";
 
 const MAX_PER_RUN = 10;
+// A lead touched in the last RETRY_COOLDOWN_MIN minutes that still has no note
+// is skipped this run, so one failing lead cannot block the head of the queue.
+const RETRY_COOLDOWN_MIN = 30;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Internal / cron only.
+  const auth = await authenticate(req, { allowService: true, allowUser: false });
+  if (!auth) return unauthorized();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find ICP-matched leads that don't have messages generated yet
+    // Only leads from active campaigns.
+    const { data: activeCampaigns, error: campErr } = await supabase
+      .from("campaign_profiles")
+      .select("id")
+      .eq("status", "active");
+    if (campErr) throw campErr;
+
+    const activeIds = (activeCampaigns || []).map((c: any) => c.id);
+    if (activeIds.length === 0) {
+      return new Response(JSON.stringify({ success: true, message: "No active campaigns", generated: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const cooldownCutoff = new Date(Date.now() - RETRY_COOLDOWN_MIN * 60000).toISOString();
+
+    // Find ICP-matched leads that don't have messages generated yet.
+    // - error_message is null: leads whose last generate attempt failed with an error are excluded
+    // - updated_at older than the cooldown (or null): recently attempted leads wait their turn
+    // - ordered by updated_at asc: least recently touched first (round-robin, no starvation)
     const { data: leads, error } = await supabase
       .from("campaign_leads")
       .select("id, user_id, campaign_profile_id")
@@ -24,7 +46,9 @@ serve(async (req) => {
       .is("connection_note", null)
       .is("error_message", null)
       .not("profile_enriched_at", "is", null)
-      .order("created_at", { ascending: true })
+      .in("campaign_profile_id", activeIds)
+      .or(`updated_at.is.null,updated_at.lt.${cooldownCutoff}`)
+      .order("updated_at", { ascending: true, nullsFirst: true })
       .limit(MAX_PER_RUN);
 
     if (error) throw error;
@@ -38,6 +62,11 @@ serve(async (req) => {
 
     let generated = 0;
     let errors = 0;
+
+    // NOTE: this cron does not write to the lead on failure (that would hide it
+    // from the watchdog's "enriched but no message after 2h" alert). It relies on
+    // generate-dm setting error_message (excluded above) and/or updated_at when
+    // an attempt fails.
 
     for (const lead of leads) {
       try {
@@ -58,6 +87,7 @@ serve(async (req) => {
           console.error(`generate-dm failed for ${lead.id}: ${errText}`);
           errors++;
         } else {
+          await resp.body?.cancel();
           generated++;
           console.log(`Generated messages for lead ${lead.id}`);
         }

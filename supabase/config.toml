@@ -58,3 +58,11 @@ verify_jwt = false
 verify_jwt = false
 [functions.classify-reply]
 verify_jwt = false
+[functions.generate-comment]
+verify_jwt = false
+[functions.network-process]
+verify_jwt = false
+[functions.network-action-completed]
+verify_jwt = false
+[functions.network-scheduler]
+verify_jwt = false
