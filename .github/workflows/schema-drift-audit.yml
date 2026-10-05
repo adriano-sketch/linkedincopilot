@@ -34,9 +34,32 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # On main, "Supabase Deploy" runs in parallel and applies new migrations.
+      # Wait for it (same commit) so the audit does not read the schema before
+      # a new column exists and report a false drift.
+      - name: Wait for Supabase Deploy of this commit
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            STATE=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "Supabase Deploy" --commit "$GITHUB_SHA" \
+                      --json status,conclusion -q '.[0] | "\(.status) \(.conclusion)"' 2>/dev/null || true)
+            if [ -z "$STATE" ]; then
+              [ "$i" -ge 3 ] && { echo "No deploy run for this commit, continuing."; exit 0; }
+            elif [ "${STATE%% *}" = "completed" ]; then
+              echo "Supabase Deploy finished: $STATE"; exit 0
+            else
+              echo "Supabase Deploy still running ($STATE)..."
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for deploy, auditing anyway."
 
       - name: Setup Python
         uses: actions/setup-python@v5
