@@ -22,9 +22,9 @@ export type PickedContact = {
 };
 
 const SCORE_FILTERS = [
-  { value: '80', label: 'Strong matches (80+)' },
-  { value: '60', label: 'Likely matches (60+)' },
-  { value: '30', label: 'Everyone scored 30+' },
+  { value: '80', label: 'Strong fit (80+): clearly matches' },
+  { value: '60', label: 'Likely fit (60+): probably matches' },
+  { value: '30', label: 'Possible fit (30+): worth a look' },
 ];
 
 function ScorePill({ score }: { score: number }) {
@@ -141,12 +141,23 @@ export default function ContactPicker({
     setKeywordInput('');
   };
   const startSearch = async () => {
-    if (keywords.length === 0) { toast.error('Add at least one keyword'); return; }
     if (description.trim().length < 8) { toast.error('Describe who you are looking for first'); return; }
+    let terms = keywords;
+    if (terms.length === 0) {
+      // No keywords yet: derive them from the description so one click is enough.
+      try {
+        terms = await suggestKeywords.mutateAsync(description.trim());
+        setKeywords(terms);
+      } catch {
+        toast.error('Could not suggest keywords. Add one and try again.');
+        return;
+      }
+      if (terms.length === 0) { toast.error('Add at least one keyword'); return; }
+    }
     try {
       // Saved first: people found by the extension are scored against it automatically.
       if (campaignId) await supabase.from('campaign_profiles').update({ icp_description: description.trim() }).eq('id', campaignId);
-      const r = await searchLinkedIn.mutateAsync({ keywords, pages: 5 });
+      const r = await searchLinkedIn.mutateAsync({ keywords: terms, pages: 2 });
       if (r.already_running) toast.info('A search is already running for this campaign.');
       else if (r.extension_online === false) toast.warning('Search queued. It starts when the Chrome extension is online, during your active hours.');
       else toast.success('Search started. Matches appear here in a few minutes.');
@@ -188,7 +199,7 @@ export default function ContactPicker({
                 Open <a className="text-gold-dark font-medium underline inline-flex items-center gap-0.5" href="https://www.linkedin.com/mypreferences/d/download-my-data" target="_blank" rel="noreferrer">Get a copy of your data<ExternalLink className="w-3 h-3" /></a>
               </li>
               <li>Choose only <strong>Connections</strong> and request the archive</li>
-              <li>LinkedIn emails it in about 10 minutes. Upload the .zip or Connections.csv here</li>
+              <li>LinkedIn emails it, usually within an hour (it says up to 24h). Upload the .zip or Connections.csv here. Contacts stay saved for all your campaigns</li>
             </ol>
             <input ref={fileRef} type="file" accept=".csv,.zip,text/csv,application/zip" className="hidden" onChange={onFile} />
             <Button variant="outline" className="mt-auto h-10" onClick={() => fileRef.current?.click()} disabled={importConnections.isPending}>
@@ -199,7 +210,7 @@ export default function ContactPicker({
 
           <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-2.5">
             <div className="font-semibold text-sm flex items-center gap-2"><Search className="w-4 h-4" />Let the extension search LinkedIn</div>
-            <p className="text-xs text-muted-foreground m-0">Searches only your 1st-degree connections, up to 50 people. Uses your monthly search budget.</p>
+            <p className="text-xs text-muted-foreground m-0">Searches only your 1st-degree connections, one keyword at a time (up to 20 people each). Each page uses 1 search from your monthly budget. For all your contacts, the export file is better.</p>
             <div className="flex flex-wrap gap-1.5">
               {keywords.map(k => (
                 <span key={k} className="inline-flex items-center gap-1 text-xs bg-secondary rounded-full pl-2.5 pr-1 py-0.5">
@@ -208,17 +219,15 @@ export default function ContactPicker({
                 </span>
               ))}
             </div>
-            <div className="flex gap-1.5">
-              <Input value={keywordInput} onChange={e => setKeywordInput(e.target.value)} placeholder="Add keyword"
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } }} className="h-9 text-sm" />
-              <Button variant="ghost" size="sm" className="h-9 shrink-0" onClick={suggest} disabled={suggestKeywords.isPending}>
-                {suggestKeywords.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                <span className="ml-1">Suggest</span>
-              </Button>
-            </div>
-            <Button variant="outline" className="mt-auto h-10" onClick={startSearch} disabled={searchLinkedIn.isPending || searching}>
+            <Input value={keywordInput} onChange={e => setKeywordInput(e.target.value)} placeholder="Add a keyword and press Enter"
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } }} className="h-9 text-sm" />
+            <Button variant="ghost" size="sm" className="h-9 self-start px-2 text-gold-dark" onClick={suggest} disabled={suggestKeywords.isPending}>
+              {suggestKeywords.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              <span className="ml-1">Suggest keywords from my description</span>
+            </Button>
+            <Button variant="outline" className="mt-auto h-10" onClick={startSearch} disabled={searchLinkedIn.isPending || suggestKeywords.isPending || searching}>
               {searching || searchLinkedIn.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Search className="w-4 h-4 mr-1.5" />}
-              {searching ? `Searching page ${lastRun?.page || 1}…` : 'Search my connections'}
+              {searching ? `Searching "${(lastRun?.query || '').slice(0, 24)}"…` : 'Search my connections'}
             </Button>
           </div>
         </div>
@@ -227,6 +236,11 @@ export default function ContactPicker({
           {scoring ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1.5" />}
           {scoring ? 'Analyzing your contacts…' : 'Find matches'}
         </Button>
+        {contactCount === 0 && !scoring && (
+          <p className="text-xs text-muted-foreground text-center -mt-2 m-0">
+            {searching ? 'Waiting for the extension to bring the first contacts…' : 'Load contacts first: upload the file or run the search above.'}
+          </p>
+        )}
         {progress && (
           <div className="flex flex-col gap-1.5">
             <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} />
@@ -242,7 +256,7 @@ export default function ContactPicker({
             Select all shown ({matches.length})
           </label>
           <Select value={minScore} onValueChange={setMinScore}>
-            <SelectTrigger className="w-[200px] h-9"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
             <SelectContent>{SCORE_FILTERS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>

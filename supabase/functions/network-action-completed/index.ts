@@ -146,21 +146,28 @@ async function handleConnectionsSearch(supabase: Supa, userId: string, action: a
   }
 
   const page = Number(data.page) || 1;
-  const maxPages = Math.max(1, Math.min(10, Number(data.max_pages) || 5));
-  const exhausted = result?.has_next === false || profiles.length === 0 || page >= maxPages;
+  const maxPages = Math.max(1, Math.min(5, Number(data.max_pages) || 2));
+  const keywords: string[] = Array.isArray(data.keywords) ? data.keywords.map(String) : [];
+  const kwIndex = Math.max(0, Number(data.kw_index) || 0);
+  const searchesLeft = Number.isFinite(Number(data.searches_left)) ? Number(data.searches_left) : 0;
+  const keywordDone = result?.has_next === false || profiles.length === 0 || page >= maxPages;
   if (runId) {
     await supabase.from("network_search_runs").update({
       status: "completed", completed_at: now, results_count: profiles.length, new_count: saved,
     }).eq("id", runId).eq("user_id", userId);
   }
 
-  if (!exhausted && campaignId) {
-    const keywords: string[] = Array.isArray(data.keywords) ? data.keywords : [];
-    const nextPage = page + 1;
-    const url = buildConnectionsSearchUrl(keywords, nextPage);
+  // Next page of this keyword, or the next keyword, while the search allowance lasts.
+  let next: { kw: number; page: number } | null = null;
+  if (searchesLeft > 0 && campaignId) {
+    if (!keywordDone) next = { kw: kwIndex, page: page + 1 };
+    else if (kwIndex + 1 < keywords.length) next = { kw: kwIndex + 1, page: 1 };
+  }
+  if (next) {
+    const url = buildConnectionsSearchUrl(keywords[next.kw], next.page);
     const { data: run } = await supabase.from("network_search_runs").insert({
-      user_id: userId, campaign_profile_id: campaignId, kind: "connections", page: nextPage, search_url: url,
-      query: keywords.join(" | ").slice(0, 400), status: "queued",
+      user_id: userId, campaign_profile_id: campaignId, kind: "connections", page: next.page, search_url: url,
+      query: keywords[next.kw].slice(0, 400), status: "queued",
     }).select("id").single();
     const delayMs = (45 + Math.random() * 75) * 1000;
     await supabase.from("action_queue").insert({
@@ -170,9 +177,13 @@ async function handleConnectionsSearch(supabase: Supa, userId: string, action: a
       priority: 3,
       status: "pending",
       scheduled_for: new Date(Date.now() + delayMs).toISOString(),
-      action_data: { ...data, search_run_id: run?.id || null, search_url: url, page: nextPage },
+      action_data: {
+        ...data, search_run_id: run?.id || null, search_url: url,
+        page: next.page, kw_index: next.kw, searches_left: searchesLeft - 1,
+      },
     });
   }
+  const exhausted = !next;
 
   if (saved > 0 && campaignId) fireAndForget("contacts-match", { op: "score", user_id: userId, campaign_id: campaignId });
   return { ok: true, found: profiles.length, saved, exhausted };

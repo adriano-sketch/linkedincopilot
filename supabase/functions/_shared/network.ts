@@ -71,11 +71,13 @@ export function buildPeopleSearchUrl(icp: Icp, page: number): string {
   return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
 }
 
-/** People search restricted to the user's OWN connections (1st degree), for "my contacts". */
-export function buildConnectionsSearchUrl(keywords: string[], page: number): string {
-  const terms = keywords.map(quoteTerm).filter(Boolean).slice(0, 8);
+/** People search restricted to the user's OWN connections (1st degree), for "my contacts".
+ *  One keyword per search: LinkedIn returns nothing for long OR chains of quoted phrases. The
+ *  keyword goes unquoted, so "gerente de manutenção" matches people with all those words. */
+export function buildConnectionsSearchUrl(keyword: string, page: number): string {
+  const kw = String(keyword || "").replace(/["()]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
   const params = new URLSearchParams();
-  if (terms.length) params.set("keywords", (terms.length > 1 ? terms.join(" OR ") : terms[0]).slice(0, 400));
+  if (kw) params.set("keywords", kw);
   params.set("network", JSON.stringify(["F"]));
   params.set("origin", "FACETED_SEARCH");
   if (page > 1) params.set("page", String(page));

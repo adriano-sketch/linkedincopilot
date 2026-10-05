@@ -71,11 +71,11 @@ export function useContactSearchStatus(campaignId: string | null) {
     },
     queryFn: async () => {
       const { data, error } = await db.from('network_search_runs')
-        .select('id, status, page, results_count, new_count, created_at')
+        .select('id, status, page, query, results_count, new_count, created_at')
         .eq('campaign_profile_id', campaignId).eq('kind', 'connections')
         .order('created_at', { ascending: false }).limit(10);
       if (error) throw error;
-      return (data || []) as { id: string; status: string; page: number; results_count: number | null; new_count: number | null; created_at: string }[];
+      return (data || []) as { id: string; status: string; page: number; query: string | null; results_count: number | null; new_count: number | null; created_at: string }[];
     },
   });
 }

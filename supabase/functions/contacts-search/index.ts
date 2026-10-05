@@ -4,7 +4,8 @@
 // Found people land in linkedin_connections and are scored by contacts-match.
 // Auth: the user's JWT. Deployed with verify_jwt=false; auth is enforced here.
 //
-// Body: { campaign_id, keywords: string[], pages?: number (1-10, default 5) }
+// Body: { campaign_id, keywords: string[], pages?: number (per keyword, 1-5, default 2) }
+// Keywords are searched one at a time (LinkedIn returns nothing for long OR chains).
 // Each results page is one people search on the user's account, so it counts toward the
 // monthly search budget shown in Network > Limits.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -26,7 +27,7 @@ Deno.serve(async (req) => {
     const keywords: string[] = Array.isArray(body.keywords)
       ? body.keywords.map((k: unknown) => String(k).replace(/["()]/g, "").trim()).filter((k: string) => k.length >= 2).slice(0, 8)
       : [];
-    const maxPages = Math.max(1, Math.min(10, Math.round(Number(body.pages) || 5)));
+    const maxPages = Math.max(1, Math.min(5, Math.round(Number(body.pages) || 2)));
     if (!campaignId) return json({ error: "campaign_id required" }, 400);
     if (keywords.length === 0) return json({ error: "add at least one keyword" }, 400);
 
@@ -56,11 +57,11 @@ Deno.serve(async (req) => {
       .eq("user_id", userId).eq("campaign_profile_id", campaignId).eq("kind", "connections").eq("status", "queued").limit(1);
     if (running && running.length) return json({ ok: true, already_running: true });
 
-    const pages = Math.min(maxPages, left);
-    const url = buildConnectionsSearchUrl(keywords, 1);
+    const totalSearches = Math.min(maxPages * keywords.length, left);
+    const url = buildConnectionsSearchUrl(keywords[0], 1);
     const { data: run, error: runErr } = await supabase.from("network_search_runs").insert({
       user_id: userId, campaign_profile_id: campaignId, kind: "connections", page: 1, search_url: url,
-      query: keywords.join(" | ").slice(0, 400), status: "queued",
+      query: keywords[0].slice(0, 400), status: "queued",
     }).select("id").single();
     if (runErr) throw runErr;
 
@@ -73,13 +74,13 @@ Deno.serve(async (req) => {
       scheduled_for: new Date(Date.now() + 15 * 1000).toISOString(),
       action_data: {
         module: "network", purpose: "connections", campaign_id: campaignId, search_run_id: run.id,
-        search_url: url, page: 1, max_pages: pages, keywords,
+        search_url: url, page: 1, max_pages: maxPages, keywords, kw_index: 0, searches_left: totalSearches - 1,
       },
     });
     if (qErr) throw qErr;
 
     const online = ext.last_heartbeat_at && Date.now() - new Date(ext.last_heartbeat_at).getTime() < 10 * 60 * 1000;
-    return json({ ok: true, pages, extension_online: !!online });
+    return json({ ok: true, pages: totalSearches, extension_online: !!online });
   } catch (e) {
     console.error("contacts-search error:", e);
     return json({ error: "internal_error" }, 500);
