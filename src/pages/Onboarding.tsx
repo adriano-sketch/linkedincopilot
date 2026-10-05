@@ -44,7 +44,7 @@ export default function Onboarding() {
         company_name: profile.company_name || '',
         company_description: profile.company_description || '',
       });
-      if (profile.onboarding_completed) navigate('/dashboard');
+      if (profile.onboarding_completed) navigate('/today');
     }
   }, [profile, navigate]);
 
@@ -91,7 +91,7 @@ export default function Onboarding() {
         onboarding_completed: true,
       });
       toast.success('Setup complete! 🚀');
-      navigate('/dashboard');
+      navigate('/today');
     } catch {
       toast.error('Failed to complete setup');
     }

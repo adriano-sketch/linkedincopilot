@@ -1,3 +1,4 @@
+import AppShell from '@/components/app/AppShell';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,20 +43,9 @@ const quickGuides = [
 
 export default function HelpPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-4xl mx-auto flex items-center justify-between h-14 px-4">
-          <div className="flex items-center gap-3">
-            <Link to="/dashboard">
-              <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
-            </Link>
-            <Logo short className="text-base" markClassName="w-7 h-7" />
-            <h1 className="text-lg font-display font-bold uppercase tracking-wide">Help Center</h1>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto p-4 space-y-8 mt-4">
+    <AppShell>
+      <h1 className="font-display font-bold uppercase text-4xl leading-none m-0 mb-6">Help center</h1>
+      <div className="max-w-4xl space-y-8">
         {/* Campaign Flow */}
         <section>
           <h2 className="text-xl font-display font-bold uppercase tracking-tight mb-1">How it Works</h2>
@@ -180,7 +170,7 @@ export default function HelpPage() {
             </Card>
           </div>
         </section>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

@@ -63,7 +63,7 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
         <Stat icon={Sparkles} label="Open business signals" value={stats?.opportunities_open ?? 0} />
       </div>
 
-      {stats && stats.by_icp.length > 0 && (
+      {stats?.by_icp?.length ? (
         <Card className="rounded-2xl">
           <CardHeader className="pb-2"><CardTitle className="text-base">By ICP</CardTitle></CardHeader>
           <CardContent>
@@ -93,7 +93,7 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
             </Table>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       <Card className="rounded-2xl">
         <CardHeader className="pb-2 flex flex-row flex-wrap gap-3 items-center justify-between">

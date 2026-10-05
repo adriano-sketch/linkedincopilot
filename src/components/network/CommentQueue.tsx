@@ -118,8 +118,8 @@ function PostCard({
   );
 }
 
-export default function CommentQueue() {
-  const [filter, setFilter] = useState<PostFilter>('pending');
+export default function CommentQueue({ initialFilter = 'pending', hidePending = false }: { initialFilter?: PostFilter; hidePending?: boolean } = {}) {
+  const [filter, setFilter] = useState<PostFilter>(initialFilter);
   const { posts, isLoading, approve, dismiss, saveDraft, unschedule } = useMonitoredPosts(filter);
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -181,7 +181,7 @@ export default function CommentQueue() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <Tabs value={filter} onValueChange={v => setFilter(v as PostFilter)}>
           <TabsList>
-            <TabsTrigger value="pending">To approve</TabsTrigger>
+            {!hidePending && <TabsTrigger value="pending">To approve</TabsTrigger>}
             <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
             <TabsTrigger value="posted">Posted</TabsTrigger>
             <TabsTrigger value="dismissed">Skipped</TabsTrigger>

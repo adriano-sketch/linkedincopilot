@@ -38,7 +38,7 @@ const STEPS = [
   {
     key: 'connect',
     label: 'AI Connection Note',
-    description: 'GPT-5 writes a personalized connection note using profile data.',
+    description: 'Claude writes a personalized connection note using profile data.',
     icon: UserPlus,
   },
   {

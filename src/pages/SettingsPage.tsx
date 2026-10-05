@@ -1,3 +1,4 @@
+import AppShell from '@/components/app/AppShell';
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -199,12 +200,9 @@ export default function SettingsPage() {
     (Date.now() - new Date(extensionStatus.last_heartbeat_at).getTime() < 120000);
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-2xl mx-auto space-y-4">
-        <div className="flex items-center gap-3">
-          <Link to="/dashboard"><Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button></Link>
-          <h1 className="text-2xl font-bold">Settings</h1>
-        </div>
+    <AppShell>
+      <div className="max-w-3xl space-y-4">
+        <h1 className="font-display font-bold uppercase text-4xl leading-none m-0 mb-2">Settings</h1>
 
         {/* Master Profile */}
         <Card>
@@ -494,6 +492,6 @@ export default function SettingsPage() {
         }}
         isPending={updateCampaign.isPending}
       />
-    </div>
+    </AppShell>
   );
 }

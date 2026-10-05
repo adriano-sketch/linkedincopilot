@@ -43,7 +43,7 @@ export default function Landing() {
   const networkRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!loading && user) navigate('/dashboard');
+    if (!loading && user) navigate('/today');
   }, [user, loading, navigate]);
 
   useEffect(() => {

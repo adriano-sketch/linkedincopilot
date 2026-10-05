@@ -19,7 +19,7 @@ import CampaignWizard, { CampaignFormData } from '@/components/CampaignWizard';
 import CampaignEditDialog from '@/components/CampaignEditDialog';
 import CampaignStepper from '@/components/CampaignStepper';
 import DmApprovalQueue from '@/components/DmApprovalQueue';
-import ExtensionStatusBar from '@/components/ExtensionStatusBar';
+import AppShell from '@/components/app/AppShell';
 import LeadSequenceView from '@/components/LeadSequenceView';
 import ProcessingProgressCard from '@/components/ProcessingProgressCard';
 import { Settings, LogOut, RefreshCw, Users, Loader2, Rocket, Plus, Upload, Pause, Play, HelpCircle, Search, ShieldCheck } from 'lucide-react';
@@ -36,7 +36,7 @@ export default function Dashboard() {
   const [searchParams] = useSearchParams();
 
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(searchParams.get('campaign'));
-  const [showNewCampaign, setShowNewCampaign] = useState(false);
+  const [showNewCampaign, setShowNewCampaign] = useState(searchParams.get('new') === '1');
   const [editingCampaign, setEditingCampaign] = useState<typeof campaigns[0] | null>(null);
   const [activeTab, setActiveTab] = useState<string>('sequence');
   const [pipelineFilter, setPipelineFilter] = useState<string | null>(null);
@@ -61,6 +61,13 @@ export default function Dashboard() {
   }, [campaigns, selectedCampaignId]);
 
   const { leads, pipelineCounts, updateLeadStatus, refresh: refreshLeads } = useCampaignLeads(selectedCampaignId);
+
+  // Top bar "New campaign" and the ⌘K palette navigate here with ?new=1 / ?campaign=<id>.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') setShowNewCampaign(true);
+    const c = searchParams.get('campaign');
+    if (c) setSelectedCampaignId(c);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/');
@@ -168,12 +175,12 @@ export default function Dashboard() {
 
   if (authLoading || profileLoading) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-6xl mx-auto space-y-4">
+      <AppShell>
+        <div className="space-y-4">
           <Skeleton className="h-10 w-48" />
           <Skeleton className="h-64 w-full" />
         </div>
-      </div>
+      </AppShell>
     );
   }
 
@@ -251,38 +258,24 @@ export default function Dashboard() {
   ) : pendingApprovalCount > 0;
 
   if (showNewCampaign) {
+    const closeWizard = () => { setShowNewCampaign(false); if (searchParams.get('new')) navigate('/dashboard', { replace: true }); };
     return (
-      <div className="min-h-screen bg-background p-4">
-        <div className="max-w-lg mx-auto">
-          <Button variant="ghost" onClick={() => setShowNewCampaign(false)} className="mb-4">← Back to Dashboard</Button>
-          <CampaignWizard onComplete={handleNewCampaignComplete} onCancel={() => setShowNewCampaign(false)} isPending={createCampaign.isPending} />
+      <AppShell>
+        <div className="max-w-3xl mx-auto">
+          <Button variant="ghost" onClick={closeWizard} className="mb-4">← Back to campaigns</Button>
+          <CampaignWizard onComplete={(...a: Parameters<typeof handleNewCampaignComplete>) => { closeWizard(); return handleNewCampaignComplete(...a); }} onCancel={closeWizard} isPending={createCampaign.isPending} />
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50/40 via-background to-slate-50/60">
-      {/* Top bar */}
-      <header className="border-b border-border bg-card">
-        <div className="max-w-6xl mx-auto flex items-center justify-between h-14 px-4">
-          <div className="flex items-center gap-2">
-            <Logo className="text-base" markClassName="w-7 h-7" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Link to="/network"><Button variant="outline" size="sm" className="gap-1"><Users className="w-3 h-3" /> Network</Button></Link>
-            <Link to="/leads"><Button variant="outline" size="sm" className="gap-1"><Plus className="w-3 h-3" /> Add Leads</Button></Link>
-            <Link to="/help"><Button variant="ghost" size="sm"><HelpCircle className="w-4 h-4" /></Button></Link>
-            <Link to="/settings"><Button variant="ghost" size="sm"><Settings className="w-4 h-4" /></Button></Link>
-            <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4" /></Button>
-          </div>
+    <AppShell>
+      <div className="space-y-5">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-display font-bold uppercase text-4xl leading-none m-0">Campaigns</h1>
+          <p className="text-muted-foreground m-0">Pick a campaign to see its people, messages and results.</p>
         </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-4 space-y-4 mt-2">
-        {/* Extension Status Bar */}
-        <ExtensionStatusBar />
-
         {/* Campaign Selector */}
         <div className="flex items-center justify-between flex-wrap gap-2">
           <CampaignSelector
@@ -305,7 +298,7 @@ export default function Dashboard() {
             )}
             {campaignIsActive && (
               <>
-                <Badge variant="default" className="text-xs bg-emerald-600">🟢 Active</Badge>
+                <Badge variant="default" className="text-xs bg-emerald-600">Running</Badge>
                 <Button variant="outline" size="sm" onClick={() => handlePauseResume('pause')} disabled={togglingPause}>
                   {togglingPause ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Pause className="w-3 h-3 mr-1" /> Pause</>}
                 </Button>
@@ -314,7 +307,7 @@ export default function Dashboard() {
             )}
             {campaignIsPaused && (
               <>
-                <Badge variant="secondary" className="text-xs">⏸ Paused</Badge>
+                <Badge variant="secondary" className="text-xs">Paused</Badge>
                 <Button variant="outline" size="sm" onClick={() => handlePauseResume('resume')} disabled={togglingPause}>
                   {togglingPause ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Play className="w-3 h-3 mr-1" /> Resume</>}
                 </Button>
@@ -523,15 +516,15 @@ export default function Dashboard() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
-            <TabsTrigger value="sequence">📊 Sequence View</TabsTrigger>
-            <TabsTrigger value="pipeline">📋 Lead Table</TabsTrigger>
+            <TabsTrigger value="sequence">Sequence</TabsTrigger>
+            <TabsTrigger value="pipeline">People</TabsTrigger>
             <TabsTrigger value="approval" className="relative">
-              📬 Approval Queue
+              Approvals
               {needsApproval && (
                 <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 text-[10px] px-1.5">!</Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="health">📈 Health</TabsTrigger>
+            <TabsTrigger value="health">Health</TabsTrigger>
           </TabsList>
 
           {/* Sequence View Tab */}
@@ -671,7 +664,7 @@ export default function Dashboard() {
             />
           </TabsContent>
         </Tabs>
-      </main>
+      </div>
 
       <CampaignEditDialog
         campaign={editingCampaign}
@@ -693,6 +686,6 @@ export default function Dashboard() {
         isPending={updateCampaign.isPending}
         isDeleting={deleteCampaign.isPending}
       />
-    </div>
+    </AppShell>
   );
 }
