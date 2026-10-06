@@ -148,6 +148,188 @@ async function lcReadPeopleSearch() {
   return result;
 }
 
+// ── Page reader: Sales Navigator lead search ──────────────────────────────
+// Reads the lead cards, then turns each Sales Navigator lead into the person's public
+// linkedin.com/in/ URL (the rest of the system, invites and acceptance sync, works on those).
+// Leads whose public URL cannot be found are left out. If nothing can be used, it returns
+// sales_nav_unavailable so the backend falls back to the regular search for 24h.
+async function lcReadSalesNavSearch() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
+  const lower = (t) => norm(t).toLowerCase();
+  const leadLinks = () => Array.from(document.querySelectorAll('a[href*="/sales/lead/"]'));
+  const unavailable = (reason, extra) => ({
+    success: true, sales_nav_unavailable: true, reason, profiles: [], has_next: false,
+    debug: { url: location.href, sample: ((document.querySelector('main') || document.body || {}).innerText || '').slice(0, 400), ...(extra || {}) },
+  });
+
+  // Wait for results, an empty state, or a redirect away from the search (no license / contract chooser)
+  for (let i = 0; i < 30; i++) {
+    if (leadLinks().length > 0) break;
+    const body = lower(document.body && document.body.innerText);
+    if (/no leads matched|no results|nenhum lead|nenhum resultado/.test(body)) break;
+    if (!location.pathname.startsWith('/sales/search')) break;
+    await sleep(500);
+  }
+  if (!location.pathname.startsWith('/sales/search')) {
+    return unavailable(/contract/i.test(location.pathname) ? 'contract_chooser' : 'not_on_sales_navigator');
+  }
+
+  const bodyText = lower(document.body && document.body.innerText);
+  if (/commercial use limit|limite de uso comercial|reached the (monthly|daily) limit/.test(bodyText)) {
+    return { success: true, limit_reached: true, profiles: [], has_next: false };
+  }
+
+  // Results live in their own scrolling panel: scroll it like a person so all 25 cards render.
+  const first = leadLinks()[0];
+  let scroller = document.querySelector('#search-results-container');
+  if (!scroller && first) {
+    let el = first.parentElement;
+    while (el && el !== document.body) {
+      const st = getComputedStyle(el);
+      if (/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 50) { scroller = el; break; }
+      el = el.parentElement;
+    }
+  }
+  for (let i = 0; i < 8; i++) {
+    if (scroller) scroller.scrollBy(0, 450 + Math.random() * 250); else window.scrollBy(0, 450 + Math.random() * 250);
+    await sleep(700 + Math.random() * 700);
+  }
+  await sleep(1000);
+
+  const leads = [];
+  const seen = new Set();
+  for (const a of leadLinks()) {
+    const href = a.getAttribute('href') || '';
+    const m = href.match(/\/sales\/lead\/([^,/?#]+),([^,/?#]+),([^/?#]+)/);
+    if (!m || seen.has(m[1])) continue;
+    const box = a.closest('li') || a.closest('[data-x-search-result]') || a.closest('article');
+    if (!box) continue;
+    seen.add(m[1]);
+    const pick = (sel) => norm((box.querySelector(sel) || {}).textContent);
+    const text = norm(box.innerText);
+    const name = pick('[data-anonymize="person-name"]') || norm(a.textContent);
+    if (!name || /linkedin member|membro do linkedin/i.test(name)) continue;
+    const title = pick('[data-anonymize="title"]') || null;
+    const company = pick('[data-anonymize="company-name"]') || null;
+    const loc = pick('[data-anonymize="location"]') || null;
+    const degM = text.match(/\b(1st|2nd|3rd\+?)\b|\b(1º|2º|3º\+?)/i);
+    let degree = degM ? (degM[1] || degM[2]).toLowerCase() : null;
+    if (degree && degree.includes('º')) degree = degree.startsWith('1') ? '1st' : degree.startsWith('2') ? '2nd' : '3rd';
+    leads.push({
+      id: m[1], authType: m[2], authToken: decodeURIComponent(m[3]),
+      name, title, company, location: loc, degree,
+      is_pending: /\bpending\b|pendente/i.test(text),
+      recently_posted: /recently posted|posted on linkedin|publicou recentemente|publicou no linkedin/i.test(text),
+      changed_jobs: /changed jobs|recently hired|new in role|mudou de emprego|novo cargo/i.test(text),
+    });
+  }
+
+  if (leads.length === 0) {
+    const empty = /no leads matched|no results|nenhum lead|nenhum resultado/.test(lower(document.body.innerText));
+    if (empty) return { success: true, profiles: [], has_next: false, page_url: location.href };
+    return unavailable('no_lead_cards', { links: leadLinks().length });
+  }
+
+  // Public profile URL for each lead (the same call Sales Navigator makes when a lead is opened)
+  const csrf = ((document.cookie.match(/JSESSIONID=["']?([^;"']+)/) || [])[1] || '').replace(/"/g, '');
+  const resolve = async (l) => {
+    const path = `/sales-api/salesApiProfiles/(profileId:${l.id},authType:${l.authType},authToken:${encodeURIComponent(l.authToken)})` +
+      '?decoration=%28entityUrn%2CflagshipProfileUrl%29';
+    const r = await fetch(path, {
+      credentials: 'include',
+      headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0', accept: 'application/json' },
+    });
+    if (!r.ok) throw new Error(`profile ${r.status}`);
+    const t = await r.text();
+    const mm = t.match(/linkedin\.com\/in\/([^"\\/?#]+)/);
+    return mm ? `https://www.linkedin.com/in/${mm[1]}` : null;
+  };
+
+  const profiles = [];
+  let failures = 0;
+  let lastError = null;
+  for (const l of leads) {
+    if (failures >= 3 && profiles.length === 0) break; // the lookup is not working: stop early
+    let url = null;
+    try { url = await resolve(l); } catch (e) { lastError = String(e && e.message || e); }
+    if (!url) { failures++; } else {
+      profiles.push({
+        profile_url: url,
+        name: l.name,
+        headline: l.title && l.company ? `${l.title} at ${l.company}` : (l.title || l.company || null),
+        location: l.location,
+        current_company: l.company,
+        degree: l.degree,
+        mutual_connections: null,
+        is_pending: l.is_pending,
+        is_connected: l.degree === '1st',
+        recently_posted: l.recently_posted,
+        changed_jobs: l.changed_jobs,
+        snippet: [l.title, l.company].filter(Boolean).join(' | ') || null,
+      });
+    }
+    await sleep(350 + Math.random() * 550);
+  }
+  if (profiles.length === 0) return unavailable('profile_lookup_failed', { leads: leads.length, error: lastError });
+
+  const nextBtn = Array.from(document.querySelectorAll('button')).find((b) => {
+    const l = lower(`${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`);
+    return /\bnext\b|avançar|próxim/.test(l) && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+  });
+
+  return {
+    success: true, reader: 'sales_navigator', profiles, has_next: !!nextBtn, page_url: location.href,
+    leads_on_page: leads.length, unresolved: leads.length - profiles.length,
+  };
+}
+
+// ── Page check: which LinkedIn plan is this account on? ───────────────────
+// Runs inside any linkedin.com tab. Returns { tier, signals } or { tier: null } when unsure.
+async function lcDetectLinkedInTier() {
+  const csrf = ((document.cookie.match(/JSESSIONID=["']?([^;"']+)/) || [])[1] || '').replace(/"/g, '');
+  const signals = { licenses_checked: false, sales_nav_license: false, nav_link: false, premium: null };
+
+  try {
+    const r = await fetch('/sales-api/salesApiIdentity?q=findLicensesByCurrentMember&includeRecentlyRevokedLicenses=false', {
+      credentials: 'include',
+      headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0', accept: 'application/json' },
+    });
+    if (r.ok) {
+      const j = await r.json().catch(() => null);
+      const els = (j && (j.elements || j.data && j.data.elements)) || [];
+      signals.licenses_checked = Array.isArray(els);
+      signals.sales_nav_license = Array.isArray(els) && els.some((e) => e && e.active !== false && e.revoked !== true);
+    } else if (r.status === 403 || r.status === 404) {
+      signals.licenses_checked = true; // the API answered: no Sales Navigator seat
+    }
+  } catch (_) { /* inconclusive */ }
+
+  const nav = document.querySelector('#global-nav, header.global-nav, header');
+  if (nav) {
+    signals.nav_link = Array.from(nav.querySelectorAll('a[href*="/sales/"]')).some((a) =>
+      /sales nav/i.test(`${a.textContent || ''} ${a.getAttribute('aria-label') || ''}`));
+  }
+
+  try {
+    const r = await fetch('/voyager/api/me', {
+      credentials: 'include',
+      headers: { 'csrf-token': csrf, accept: 'application/vnd.linkedin.normalized+json+2.1' },
+    });
+    if (r.ok) {
+      const t = await r.text();
+      signals.premium = /"premiumSubscriber"\s*:\s*true/.test(t);
+    }
+  } catch (_) { /* inconclusive */ }
+
+  let tier = null;
+  // The license check is the source of truth; the nav link only counts when that check was inconclusive.
+  if (signals.sales_nav_license || (signals.nav_link && !signals.licenses_checked)) tier = 'sales_navigator';
+  else if (signals.premium === true) tier = 'premium';
+  else if (signals.premium === false) tier = 'free';
+  return { tier, signals };
+}
+
 // ── Page reader: post (content) search results ─────────────────────────────
 async function lcReadPostSearch() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -292,6 +474,49 @@ async function lcWithdrawInvites(profileUrls) {
 }
 
 // ── Orchestration (runs in the service worker) ────────────────────────────
+
+const TIER_CHECK_EVERY_MS = 12 * 60 * 60 * 1000;
+
+/** Detect the LinkedIn plan at most every 12h (or when forced) and store it in extension_status. */
+async function lcMaybeDetectTier(force) {
+  if (!supabase.userId) return null;
+  const last = await getLocalData('tier_checked_at');
+  if (!force && last && Date.now() - last < TIER_CHECK_EVERY_MS) return null;
+  const tabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/*' });
+  const tab = tabs.find((t) => t.status === 'complete') || tabs[0];
+  if (!tab) return null; // needs an open LinkedIn tab (logged in)
+  let res;
+  try { res = await lcExec(tab.id, lcDetectLinkedInTier, [], 30000); } catch (e) {
+    console.warn('[LC:Tier] detection failed:', e.message);
+    return null;
+  }
+  await setLocalData('tier_checked_at', Date.now());
+  if (!res || !res.tier) { console.log('[LC:Tier] inconclusive', res && res.signals); return null; }
+
+  try {
+    const cur = await fetch(`${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}&select=linkedin_account_tier`, {
+      headers: supabase.getHeaders(),
+    }).then((r) => (r.ok ? r.json() : []));
+    const current = cur && cur[0] ? cur[0].linkedin_account_tier : null;
+    // Never downgrade Sales Navigator on a weak signal: only when the license check really answered.
+    if (current === 'sales_navigator' && res.tier !== 'sales_navigator' && !res.signals.licenses_checked) {
+      console.log('[LC:Tier] keeping sales_navigator, license check inconclusive');
+      return current;
+    }
+    const body = { linkedin_tier_detected_at: new Date().toISOString() };
+    if (current !== res.tier) body.linkedin_account_tier = res.tier;
+    await fetch(`${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}`, {
+      method: 'PATCH',
+      headers: supabase.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    console.log('[LC:Tier] plan:', res.tier, current !== res.tier ? `(was ${current})` : '', res.signals);
+    return res.tier;
+  } catch (e) {
+    console.warn('[LC:Tier] save failed:', e.message);
+    return null;
+  }
+}
 async function lcNavigate(processor, tabId, url) {
   try {
     await chrome.scripting.executeScript({ target: { tabId }, func: () => { window.onbeforeunload = null; } });
@@ -314,6 +539,11 @@ async function runNetworkAction(processor, tab, action) {
   switch (action.action_type) {
     case 'network_search_people': {
       await lcNavigate(processor, tab.id, data.search_url || action.linkedin_url);
+      if (data.reader === 'sales_navigator') {
+        // Sales Navigator is a heavier app: give it a few more seconds before reading.
+        await processor.sleep(3000 + Math.random() * 2000);
+        return await lcExec(tab.id, lcReadSalesNavSearch, [], 180000);
+      }
       return await lcExec(tab.id, lcReadPeopleSearch);
     }
     case 'network_search_posts': {

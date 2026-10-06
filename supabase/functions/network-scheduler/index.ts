@@ -10,7 +10,9 @@
 // Nothing is ever commented without explicit approval in the dashboard.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
-import { buildPeopleSearchUrl, buildPostSearchUrl, fireAndForget, type Icp } from "../_shared/network.ts";
+import {
+  buildPeopleSearchUrl, buildPostSearchUrl, buildSalesNavPeopleSearchUrl, fireAndForget, salesNavEnabled, type Icp,
+} from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -185,7 +187,9 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
       const icp = eligible[0];
       if (icp) {
         const page = (icp.people_search_page || 0) + 1;
-        const url = buildPeopleSearchUrl(icp, page);
+        // Sales Navigator: real filters (title, seniority, region, company size, posted recently).
+        const sn = salesNavEnabled(ext, now);
+        const url = sn ? buildSalesNavPeopleSearchUrl(icp, page) : buildPeopleSearchUrl(icp, page);
         const { data: run, error: runErr } = await supabase.from("network_search_runs").insert({
           user_id: userId, icp_id: icp.id, kind: "people", page, search_url: url, status: "queued",
         }).select("id").single();
@@ -196,9 +200,12 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
           linkedin_url: url,
           priority: 4,
           scheduled_for: new Date(now + rand(1, 5) * 60 * 1000).toISOString(),
-          action_data: { module: "network", icp_id: icp.id, search_run_id: run.id, search_url: url, page },
+          action_data: {
+            module: "network", icp_id: icp.id, search_run_id: run.id, search_url: url, page,
+            ...(sn ? { reader: "sales_navigator" } : {}),
+          },
         });
-        out.people_search_queued = { icp: icp.name, page };
+        out.people_search_queued = { icp: icp.name, page, sales_navigator: sn };
       }
     }
 
@@ -322,7 +329,7 @@ Deno.serve(async (req) => {
     if (byUser.size === 0) return json({ ok: true, users: 0 });
 
     const { data: exts, error: extErr } = await supabase.from("extension_status")
-      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, timezone, weekly_invite_limit, daily_comment_limit, monthly_people_search_budget, invites_paused_until, searches_paused_until, last_connections_sync_at, linkedin_account_tier")
+      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, timezone, weekly_invite_limit, daily_comment_limit, monthly_people_search_budget, invites_paused_until, searches_paused_until, last_connections_sync_at, linkedin_account_tier, sales_nav_failed_at")
       .in("user_id", Array.from(byUser.keys()));
     if (extErr) throw extErr;
 

@@ -8,9 +8,19 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Target, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Target, Loader2, Radar } from 'lucide-react';
 import { toast } from 'sonner';
-import { useIcps, type Icp } from '@/hooks/useNetwork';
+import { useIcps, useNetworkSettings, type Icp } from '@/hooks/useNetwork';
+
+const SENIORITIES: { key: string; label: string }[] = [
+  { key: 'entry', label: 'Entry level' },
+  { key: 'senior', label: 'Senior' },
+  { key: 'manager', label: 'Manager' },
+  { key: 'director', label: 'Director' },
+  { key: 'vp', label: 'VP' },
+  { key: 'cxo', label: 'C-level' },
+  { key: 'owner', label: 'Owner / Partner' },
+];
 
 const toList = (s: string) => s.split(/[,;\n]/).map(x => x.trim()).filter(Boolean);
 const fromList = (l?: string[] | null) => (l || []).join(', ');
@@ -27,6 +37,11 @@ type Form = {
   industries: string;
   post_topics: string;
   min_fit_score: number;
+  seniorities: string[];
+  company_size_min: string;
+  company_size_max: string;
+  recently_posted: boolean;
+  changed_jobs: boolean;
   prospecting_enabled: boolean;
   engagement_enabled: boolean;
   is_active: boolean;
@@ -34,7 +49,8 @@ type Form = {
 
 const empty: Form = {
   name: '', description: '', titles: '', keywords: '', exclude_keywords: '', locations: '', location_geo_ids: '',
-  industries: '', post_topics: '', min_fit_score: 70, prospecting_enabled: true, engagement_enabled: true, is_active: true,
+  industries: '', post_topics: '', min_fit_score: 70, seniorities: [], company_size_min: '', company_size_max: '',
+  recently_posted: false, changed_jobs: false, prospecting_enabled: true, engagement_enabled: true, is_active: true,
 };
 
 function toForm(i: Icp): Form {
@@ -42,12 +58,18 @@ function toForm(i: Icp): Form {
     id: i.id, name: i.name, description: i.description || '', titles: fromList(i.titles), keywords: fromList(i.keywords),
     exclude_keywords: fromList(i.exclude_keywords), locations: fromList(i.locations), location_geo_ids: fromList(i.location_geo_ids),
     industries: fromList(i.industries), post_topics: fromList(i.post_topics), min_fit_score: i.min_fit_score,
+    seniorities: i.seniorities || [], company_size_min: i.company_size_min ? String(i.company_size_min) : '',
+    company_size_max: i.company_size_max ? String(i.company_size_max) : '',
+    recently_posted: !!i.recently_posted, changed_jobs: !!i.changed_jobs,
     prospecting_enabled: i.prospecting_enabled, engagement_enabled: i.engagement_enabled, is_active: i.is_active,
   };
 }
 
 export default function IcpManager() {
   const { icps, isLoading, save, remove } = useIcps();
+  const { settings } = useNetworkSettings();
+  const salesNav = settings?.linkedin_account_tier === 'sales_navigator';
+  const toSize = (v: string) => { const n = parseInt(v.replace(/\D/g, ''), 10); return Number.isFinite(n) && n > 0 ? n : null; };
   const [form, setForm] = useState<Form | null>(null);
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => (f ? { ...f, [k]: v } : f));
@@ -72,6 +94,11 @@ export default function IcpManager() {
         industries: toList(form.industries),
         post_topics: toList(form.post_topics),
         min_fit_score: form.min_fit_score,
+        seniorities: form.seniorities,
+        company_size_min: toSize(form.company_size_min),
+        company_size_max: toSize(form.company_size_max),
+        recently_posted: form.recently_posted,
+        changed_jobs: form.changed_jobs,
         prospecting_enabled: form.prospecting_enabled,
         engagement_enabled: form.engagement_enabled,
         is_active: form.is_active,
@@ -135,6 +162,9 @@ export default function IcpManager() {
                   {!i.is_active && <Badge variant="outline">Paused</Badge>}
                   {i.prospecting_enabled && <Badge variant="secondary">Grows network</Badge>}
                   {i.engagement_enabled && <Badge variant="secondary">Monitors posts</Badge>}
+                  {salesNav && (i.seniorities.length > 0 || i.recently_posted || i.changed_jobs || i.company_size_min || i.company_size_max) && (
+                    <Badge variant="outline" className="border-primary/40 text-primary">Sales Navigator filters</Badge>
+                  )}
                   <Badge variant="outline">Fit ≥ {i.min_fit_score}</Badge>
                 </div>
               </CardContent>
@@ -185,6 +215,54 @@ export default function IcpManager() {
                   <Label>LinkedIn location IDs (optional)</Label>
                   <Input value={form.location_geo_ids} onChange={e => set('location_geo_ids', e.target.value)} placeholder="101318387" />
                   <p className="text-xs text-muted-foreground">The number after geoUrn in a LinkedIn search URL. Makes the search stricter.</p>
+                </div>
+              </div>
+              <div className={`space-y-3 rounded-lg border p-3 ${salesNav ? 'border-primary/30 bg-primary/5' : 'border-dashed'}`}>
+                <div className="flex items-start gap-2">
+                  <Radar className={`w-4 h-4 mt-0.5 shrink-0 ${salesNav ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <div>
+                    <p className="text-sm font-medium">Sales Navigator filters</p>
+                    <p className="text-xs text-muted-foreground">
+                      {salesNav
+                        ? 'Your account has Sales Navigator, so these filters go straight into the search.'
+                        : 'Used only when your LinkedIn account has Sales Navigator. Without it, the AI still uses them to score people.'}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Seniority</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SENIORITIES.map(sn => {
+                      const on = form.seniorities.includes(sn.key);
+                      return (
+                        <button key={sn.key} type="button" aria-pressed={on}
+                          onClick={() => set('seniorities', on ? form.seniorities.filter(x => x !== sn.key) : [...form.seniorities, sn.key])}
+                          className={`rounded-full border px-3 py-1 text-xs transition-colors ${on ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
+                          {sn.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="grid gap-3 grid-cols-2">
+                  <div className="space-y-1">
+                    <Label>Company size, from</Label>
+                    <Input inputMode="numeric" value={form.company_size_min} onChange={e => set('company_size_min', e.target.value)} placeholder="50" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>to (employees)</Label>
+                    <Input inputMode="numeric" value={form.company_size_max} onChange={e => set('company_size_max', e.target.value)} placeholder="5000" />
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm">
+                    <span>Posted on LinkedIn in the last 30 days<span className="block text-xs text-muted-foreground">Active people accept more and have posts to comment on.</span></span>
+                    <Switch checked={form.recently_posted} onCheckedChange={v => set('recently_posted', v)} />
+                  </label>
+                  <label className="flex items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm">
+                    <span>Changed jobs in the last 90 days<span className="block text-xs text-muted-foreground">New in the role, more open to new suppliers.</span></span>
+                    <Switch checked={form.changed_jobs} onCheckedChange={v => set('changed_jobs', v)} />
+                  </label>
                 </div>
               </div>
               <div className="space-y-1">

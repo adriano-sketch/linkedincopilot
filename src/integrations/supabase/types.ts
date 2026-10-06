@@ -516,6 +516,8 @@ export type Database = {
           last_heartbeat_at: string | null
           last_limit_reset_at: string | null
           linkedin_account_tier: string | null
+          linkedin_tier_detected_at: string | null
+          sales_nav_failed_at: string | null
           linkedin_logged_in: boolean | null
           linkedin_profile_url: string | null
           messages_today: number | null
@@ -554,6 +556,8 @@ export type Database = {
           last_heartbeat_at?: string | null
           last_limit_reset_at?: string | null
           linkedin_account_tier?: string | null
+          linkedin_tier_detected_at?: string | null
+          sales_nav_failed_at?: string | null
           linkedin_logged_in?: boolean | null
           linkedin_profile_url?: string | null
           messages_today?: number | null
@@ -592,6 +596,8 @@ export type Database = {
           last_heartbeat_at?: string | null
           last_limit_reset_at?: string | null
           linkedin_account_tier?: string | null
+          linkedin_tier_detected_at?: string | null
+          sales_nav_failed_at?: string | null
           linkedin_logged_in?: boolean | null
           linkedin_profile_url?: string | null
           messages_today?: number | null
@@ -733,6 +739,8 @@ export type Database = {
           people_search_exhausted_at: string | null
           people_search_page: number
           post_topics: string[]
+          recently_posted: boolean
+          changed_jobs: boolean
           prospecting_enabled: boolean
           seniorities: string[]
           titles: string[]
@@ -759,6 +767,8 @@ export type Database = {
           people_search_exhausted_at?: string | null
           people_search_page?: number
           post_topics?: string[]
+          recently_posted?: boolean
+          changed_jobs?: boolean
           prospecting_enabled?: boolean
           seniorities?: string[]
           titles?: string[]
@@ -785,6 +795,8 @@ export type Database = {
           people_search_exhausted_at?: string | null
           people_search_page?: number
           post_topics?: string[]
+          recently_posted?: boolean
+          changed_jobs?: boolean
           prospecting_enabled?: boolean
           seniorities?: string[]
           titles?: string[]

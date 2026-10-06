@@ -7,9 +7,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Download, ExternalLink, FileUp, Loader2, Search, Sparkles, Users, X } from 'lucide-react';
+import { Download, ExternalLink, FileUp, Loader2, Radar, Search, Sparkles, Users, X } from 'lucide-react';
 import { readConnectionsFile } from '@/lib/linkedinExport';
 import { supabase } from '@/integrations/supabase/client';
+import { useNetworkSettings } from '@/hooks/useNetwork';
 import {
   useConnectionsCount, useContactActions, useContactMatches, useContactSearchStatus, type ContactMatch,
 } from '@/hooks/useContacts';
@@ -52,6 +53,9 @@ export default function ContactPicker({
   const [scoring, setScoring] = useState(false);
   const [picked, setPicked] = useState<Map<string, ContactMatch>>(new Map());
   const fileRef = useRef<HTMLInputElement>(null);
+  const { settings: netSettings } = useNetworkSettings();
+  const salesNav = netSettings?.linkedin_account_tier === 'sales_navigator';
+  const [postedRecently, setPostedRecently] = useState(true);
 
   const { data: contactCount = 0 } = useConnectionsCount();
   const { data: runs = [] } = useContactSearchStatus(campaignId);
@@ -157,7 +161,7 @@ export default function ContactPicker({
     try {
       // Saved first: people found by the extension are scored against it automatically.
       if (campaignId) await supabase.from('campaign_profiles').update({ icp_description: description.trim() }).eq('id', campaignId);
-      const r = await searchLinkedIn.mutateAsync({ keywords: terms, pages: 2 });
+      const r = await searchLinkedIn.mutateAsync({ keywords: terms, pages: 2, postedRecently: salesNav && postedRecently });
       if (r.already_running) toast.info('A search is already running for this campaign.');
       else if (r.extension_online === false) toast.warning('Search queued. It starts when the Chrome extension is online, during your active hours.');
       else toast.success('Search started. Matches appear here in a few minutes.');
@@ -209,8 +213,21 @@ export default function ContactPicker({
           </div>
 
           <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-2.5">
-            <div className="font-semibold text-sm flex items-center gap-2"><Search className="w-4 h-4" />Let the extension search LinkedIn</div>
-            <p className="text-xs text-muted-foreground m-0">Searches only your 1st-degree connections, one keyword at a time (up to 20 people each). Each page uses 1 search from your monthly budget. For all your contacts, the export file is better.</p>
+            <div className="font-semibold text-sm flex items-center gap-2">
+              {salesNav ? <Radar className="w-4 h-4 text-gold-dark" /> : <Search className="w-4 h-4" />}
+              {salesNav ? 'Search with Sales Navigator' : 'Let the extension search LinkedIn'}
+            </div>
+            <p className="text-xs text-muted-foreground m-0">
+              {salesNav
+                ? 'Searches your 1st-degree connections in Sales Navigator, one keyword at a time (up to 25 people per page). Faster than waiting for the export.'
+                : 'Searches only your 1st-degree connections, one keyword at a time (up to 20 people each). Each page uses 1 search from your monthly budget. For all your contacts, the export file is better.'}
+            </p>
+            {salesNav && (
+              <label className="flex items-start gap-2 text-xs cursor-pointer rounded-md bg-secondary/60 p-2">
+                <Checkbox checked={postedRecently} onCheckedChange={v => setPostedRecently(v === true)} className="mt-0.5" />
+                <span><strong>Only people who posted in the last 30 days.</strong> They have recent posts for you to comment on, which is what Growth needs.</span>
+              </label>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {keywords.map(k => (
                 <span key={k} className="inline-flex items-center gap-1 text-xs bg-secondary rounded-full pl-2.5 pr-1 py-0.5">
@@ -227,7 +244,7 @@ export default function ContactPicker({
             </Button>
             <Button variant="outline" className="mt-auto h-10" onClick={startSearch} disabled={searchLinkedIn.isPending || suggestKeywords.isPending || searching}>
               {searching || searchLinkedIn.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Search className="w-4 h-4 mr-1.5" />}
-              {searching ? `Searching "${(lastRun?.query || '').slice(0, 24)}"…` : 'Search my connections'}
+              {searching ? `Searching "${(lastRun?.query || '').slice(0, 24)}"…` : salesNav ? 'Search in Sales Navigator' : 'Search my connections'}
             </Button>
           </div>
         </div>

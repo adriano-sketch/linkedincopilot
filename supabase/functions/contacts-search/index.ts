@@ -4,13 +4,15 @@
 // Found people land in linkedin_connections and are scored by contacts-match.
 // Auth: the user's JWT. Deployed with verify_jwt=false; auth is enforced here.
 //
-// Body: { campaign_id, keywords: string[], pages?: number (per keyword, 1-5, default 2) }
+// Body: { campaign_id, keywords: string[], pages?: number (per keyword, 1-5, default 2), posted_recently?: boolean }
+// With Sales Navigator, the search runs in Sales Navigator (1st degree + keyword) and can keep only
+// people who posted on LinkedIn in the last 30 days (posted_recently), ideal for Growth comments.
 // Keywords are searched one at a time (LinkedIn returns nothing for long OR chains).
 // Each results page is one people search on the user's account, so it counts toward the
 // monthly search budget shown in Network > Limits.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
-import { buildConnectionsSearchUrl } from "../_shared/network.ts";
+import { buildConnectionsSearchUrl, buildSalesNavConnectionsSearchUrl, salesNavEnabled } from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -28,6 +30,7 @@ Deno.serve(async (req) => {
       ? body.keywords.map((k: unknown) => String(k).replace(/["()]/g, "").trim()).filter((k: string) => k.length >= 2).slice(0, 8)
       : [];
     const maxPages = Math.max(1, Math.min(5, Math.round(Number(body.pages) || 2)));
+    const postedRecently = body.posted_recently === true;
     if (!campaignId) return json({ error: "campaign_id required" }, 400);
     if (keywords.length === 0) return json({ error: "add at least one keyword" }, 400);
 
@@ -37,7 +40,7 @@ Deno.serve(async (req) => {
     if (!campaign) return json({ error: "campaign not found" }, 404);
 
     const { data: ext } = await supabase.from("extension_status")
-      .select("monthly_people_search_budget, searches_paused_until, last_heartbeat_at")
+      .select("monthly_people_search_budget, searches_paused_until, last_heartbeat_at, linkedin_account_tier, sales_nav_failed_at")
       .eq("user_id", userId).maybeSingle();
     if (!ext) return json({ error: "Install and log in to the Chrome extension first." }, 409);
     if (ext.searches_paused_until && new Date(ext.searches_paused_until).getTime() > Date.now()) {
@@ -58,7 +61,10 @@ Deno.serve(async (req) => {
     if (running && running.length) return json({ ok: true, already_running: true });
 
     const totalSearches = Math.min(maxPages * keywords.length, left);
-    const url = buildConnectionsSearchUrl(keywords[0], 1);
+    const sn = salesNavEnabled(ext);
+    const url = sn
+      ? buildSalesNavConnectionsSearchUrl(keywords[0], 1, { postedRecently })
+      : buildConnectionsSearchUrl(keywords[0], 1);
     const { data: run, error: runErr } = await supabase.from("network_search_runs").insert({
       user_id: userId, campaign_profile_id: campaignId, kind: "connections", page: 1, search_url: url,
       query: keywords[0].slice(0, 400), status: "queued",
@@ -75,12 +81,13 @@ Deno.serve(async (req) => {
       action_data: {
         module: "network", purpose: "connections", campaign_id: campaignId, search_run_id: run.id,
         search_url: url, page: 1, max_pages: maxPages, keywords, kw_index: 0, searches_left: totalSearches - 1,
+        ...(sn ? { reader: "sales_navigator", posted_recently: postedRecently } : {}),
       },
     });
     if (qErr) throw qErr;
 
     const online = ext.last_heartbeat_at && Date.now() - new Date(ext.last_heartbeat_at).getTime() < 10 * 60 * 1000;
-    return json({ ok: true, pages: totalSearches, extension_online: !!online });
+    return json({ ok: true, pages: totalSearches, extension_online: !!online, sales_navigator: sn });
   } catch (e) {
     console.error("contacts-search error:", e);
     return json({ error: "internal_error" }, 500);

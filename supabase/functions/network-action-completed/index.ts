@@ -12,7 +12,9 @@
 //   post_comment               (module network) result: { posted: boolean }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
-import { buildConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, startOfNextMonthUtc } from "../_shared/network.ts";
+import {
+  buildConnectionsSearchUrl, buildSalesNavConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, startOfNextMonthUtc,
+} from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -26,12 +28,34 @@ function toInt(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A Sales Navigator page could not be used (no license, layout change, nothing readable).
+ *  Fall back to the regular LinkedIn search for 24h so prospecting never stops. */
+function salesNavUnusable(action: any, success: boolean, result: any): boolean {
+  if (action?.action_data?.reader !== "sales_navigator") return false;
+  if (result?.sales_nav_unavailable === true) return true;
+  return !success && result?.limit_reached !== true;
+}
+
+async function markSalesNavFailed(supabase: Supa, userId: string, action: any, result: any, errorMessage: string | null) {
+  console.warn("sales navigator search unusable, falling back to regular search", {
+    user: userId.slice(0, 8), reason: result?.reason || errorMessage || null, debug: result?.debug || null,
+  });
+  await supabase.from("extension_status").update({ sales_nav_failed_at: new Date().toISOString() }).eq("user_id", userId);
+}
+
 async function handleSearchPeople(supabase: Supa, userId: string, action: any, success: boolean, result: any, errorMessage: string | null) {
   const data = action.action_data || {};
   const runId = data.search_run_id || null;
   const icpId = data.icp_id || null;
   const now = new Date().toISOString();
   const limitHit = result?.limit_reached === true || SEARCH_LIMIT_RE.test(errorMessage || "");
+
+  if (salesNavUnusable(action, success, result)) {
+    await markSalesNavFailed(supabase, userId, action, result, errorMessage);
+    // Not counted against the monthly budget: the next scheduler run uses the regular search.
+    if (runId) await supabase.from("network_search_runs").delete().eq("id", runId).eq("user_id", userId);
+    return { ok: true, sales_nav_fallback: true };
+  }
 
   if (!success || limitHit) {
     if (limitHit) {
@@ -44,6 +68,7 @@ async function handleSearchPeople(supabase: Supa, userId: string, action: any, s
     }
     return { ok: true, limit_reached: limitHit };
   }
+  const fromSalesNav = data.reader === "sales_navigator";
 
   const profiles: any[] = Array.isArray(result?.profiles) ? result.profiles.slice(0, 50) : [];
   let inserted = 0;
@@ -66,9 +91,12 @@ async function handleSearchPeople(supabase: Supa, userId: string, action: any, s
       mutual_connections: toInt(p.mutual_connections),
       status: alreadyConnected || pending ? "skipped" : "discovered",
       last_error: alreadyConnected ? "already connected" : pending ? "invite already pending" : null,
-      source: "linkedin_search",
+      source: fromSalesNav ? "sales_navigator" : "linkedin_search",
       search_run_id: runId,
-      raw: { snippet: p.snippet ? String(p.snippet).slice(0, 600) : null },
+      raw: {
+        snippet: p.snippet ? String(p.snippet).slice(0, 600) : null,
+        ...(fromSalesNav ? { recently_posted: p.recently_posted === true, changed_jobs: p.changed_jobs === true } : {}),
+      },
     });
   }
   if (rows.length) {
@@ -105,6 +133,30 @@ async function handleConnectionsSearch(supabase: Supa, userId: string, action: a
   const campaignId = data.campaign_id || null;
   const now = new Date().toISOString();
   const limitHit = result?.limit_reached === true || SEARCH_LIMIT_RE.test(errorMessage || "");
+
+  if (salesNavUnusable(action, success, result)) {
+    await markSalesNavFailed(supabase, userId, action, result, errorMessage);
+    // Retry the same keyword and page right away with the regular LinkedIn search.
+    const kw = Array.isArray(data.keywords) ? String(data.keywords[Number(data.kw_index) || 0] || "") : "";
+    const page = Number(data.page) || 1;
+    if (kw && runId) {
+      const url = buildConnectionsSearchUrl(kw, page);
+      await supabase.from("network_search_runs").update({ search_url: url }).eq("id", runId).eq("user_id", userId);
+      const { reader: _r, posted_recently: _p, ...rest } = data;
+      await supabase.from("action_queue").insert({
+        user_id: userId,
+        action_type: "network_search_people",
+        linkedin_url: url,
+        priority: 3,
+        status: "pending",
+        scheduled_for: new Date(Date.now() + (30 + Math.random() * 30) * 1000).toISOString(),
+        action_data: { ...rest, search_url: url },
+      });
+    } else if (runId) {
+      await supabase.from("network_search_runs").update({ status: "failed", completed_at: now }).eq("id", runId).eq("user_id", userId);
+    }
+    return { ok: true, sales_nav_fallback: true };
+  }
 
   if (!success || limitHit) {
     if (limitHit) {
@@ -164,7 +216,9 @@ async function handleConnectionsSearch(supabase: Supa, userId: string, action: a
     else if (kwIndex + 1 < keywords.length) next = { kw: kwIndex + 1, page: 1 };
   }
   if (next) {
-    const url = buildConnectionsSearchUrl(keywords[next.kw], next.page);
+    const url = data.reader === "sales_navigator"
+      ? buildSalesNavConnectionsSearchUrl(keywords[next.kw], next.page, { postedRecently: data.posted_recently === true })
+      : buildConnectionsSearchUrl(keywords[next.kw], next.page);
     const { data: run } = await supabase.from("network_search_runs").insert({
       user_id: userId, campaign_profile_id: campaignId, kind: "connections", page: next.page, search_url: url,
       query: keywords[next.kw].slice(0, 400), status: "queued",

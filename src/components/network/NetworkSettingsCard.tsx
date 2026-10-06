@@ -5,14 +5,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Radar } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNetworkSettings, type NetworkSettings } from '@/hooks/useNetwork';
 
 const BUDGET_BY_TIER: Record<NetworkSettings['linkedin_account_tier'], number> = {
   free: 250,
-  premium: 250,
-  sales_navigator: 2000,
+  premium: 300,
+  sales_navigator: 600,
 };
 
 export default function NetworkSettingsCard() {
@@ -41,6 +41,9 @@ export default function NetworkSettingsCard() {
 
   const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(n || 0)));
   const pausedUntil = (iso?: string | null) => (iso && new Date(iso) > new Date() ? new Date(iso).toLocaleString() : null);
+  const detectedAt = settings.linkedin_tier_detected_at ? new Date(settings.linkedin_tier_detected_at) : null;
+  const snFallback = settings.linkedin_account_tier === 'sales_navigator' && settings.sales_nav_failed_at
+    && Date.now() - new Date(settings.sales_nav_failed_at).getTime() < 24 * 3600 * 1000;
   const invitesPaused = pausedUntil(settings.invites_paused_until);
   const searchesPaused = pausedUntil(settings.searches_paused_until);
 
@@ -75,6 +78,23 @@ export default function NetworkSettingsCard() {
             </AlertDescription>
           </Alert>
         )}
+        {settings.linkedin_account_tier === 'sales_navigator' && (
+          <div className="flex gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+            <Radar className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+            <div>
+              <p className="font-medium">Sales Navigator mode is on</p>
+              <p className="text-muted-foreground">
+                Searches use Sales Navigator filters: job title, seniority, region, company size, and people who posted recently or changed jobs.
+                Invite limits stay the same, because LinkedIn applies them to every plan.
+              </p>
+              {snFallback && (
+                <p className="mt-1 text-amber-600 dark:text-amber-400">
+                  The last Sales Navigator search could not be read, so the regular LinkedIn search is being used for up to 24 hours.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1">
             <Label>LinkedIn account</Label>
@@ -92,6 +112,11 @@ export default function NetworkSettingsCard() {
                 <SelectItem value="sales_navigator">Sales Navigator</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {detectedAt
+                ? <>Detected automatically by the extension on {detectedAt.toLocaleDateString()}. Checked again every 12 hours.</>
+                : <>The extension detects your plan automatically while LinkedIn is open. You can also set it here.</>}
+            </p>
           </div>
           <div className="space-y-1">
             <Label>Invites per week (max 200)</Label>
@@ -108,7 +133,11 @@ export default function NetworkSettingsCard() {
             <Label>People searches per month</Label>
             <Input type="number" min={0} max={3000} value={form.monthly_people_search_budget}
               onChange={e => setForm({ ...form, monthly_people_search_budget: Number(e.target.value) })} />
-            <p className="text-xs text-muted-foreground">Free accounts get roughly 300 per month. We keep a margin.</p>
+            <p className="text-xs text-muted-foreground">
+              {form.linkedin_account_tier === 'sales_navigator'
+                ? 'Sales Navigator has no monthly cap, but 600 (about 20 a day) keeps the activity human.'
+                : 'Free accounts get roughly 300 per month. We keep a margin.'}
+            </p>
           </div>
         </div>
         <Button onClick={submit} disabled={save.isPending}>

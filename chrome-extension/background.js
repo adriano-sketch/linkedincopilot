@@ -1934,6 +1934,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (authenticated) {
     console.log('[LC:Auth] Session restored for user:', supabase.userId);
     await sendHeartbeat();
+    try { await lcMaybeDetectTier(true); } catch (_) { /* retried by the heartbeat alarm */ }
   }
 });
 
@@ -1951,7 +1952,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const hasAuth = await ensureAuth();
 
   if (alarm.name === 'heartbeat') {
-    if (hasAuth) await sendHeartbeat();
+    if (hasAuth) {
+      await sendHeartbeat();
+      // LinkedIn plan (free / premium / Sales Navigator), checked every 12h
+      try { await lcMaybeDetectTier(false); } catch (e) { console.warn('[LC:Tier]', e.message); }
+    }
   }
   if (alarm.name === 'pollQueue') {
     if (hasAuth) await queueProcessor.poll();

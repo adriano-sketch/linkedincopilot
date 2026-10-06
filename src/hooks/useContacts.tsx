@@ -133,8 +133,10 @@ export function useContactActions(campaignId: string | null) {
   };
 
   const searchLinkedIn = useMutation({
-    mutationFn: async ({ keywords, pages }: { keywords: string[]; pages: number }) => {
-      const { data, error } = await supabase.functions.invoke('contacts-search', { body: { campaign_id: campaignId, keywords, pages } });
+    mutationFn: async ({ keywords, pages, postedRecently }: { keywords: string[]; pages: number; postedRecently?: boolean }) => {
+      const { data, error } = await supabase.functions.invoke('contacts-search', {
+        body: { campaign_id: campaignId, keywords, pages, posted_recently: !!postedRecently },
+      });
       if (error) {
         // supabase-js wraps non-2xx answers; surface the function's own message.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,7 +144,7 @@ export function useContactActions(campaignId: string | null) {
         const msg = ctx && typeof ctx.json === 'function' ? (await ctx.json().catch(() => null))?.error : null;
         throw new Error(msg || error.message);
       }
-      return data as { ok: boolean; pages?: number; extension_online?: boolean; already_running?: boolean };
+      return data as { ok: boolean; pages?: number; extension_online?: boolean; already_running?: boolean; sales_navigator?: boolean };
     },
     onSuccess: refresh,
   });

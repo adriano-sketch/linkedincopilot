@@ -24,6 +24,8 @@ export type Icp = {
   people_search_exhausted_at: string | null;
   last_people_search_at: string | null;
   last_post_search_at: string | null;
+  recently_posted?: boolean;
+  changed_jobs?: boolean;
 };
 
 /** Normalize any LinkedIn profile URL to https://www.linkedin.com/in/<slug> (lowercase, decoded). */
@@ -82,6 +84,151 @@ export function buildConnectionsSearchUrl(keyword: string, page: number): string
   params.set("origin", "FACETED_SEARCH");
   if (page > 1) params.set("page", String(page));
   return `https://www.linkedin.com/search/results/people/?${params.toString()}`;
+}
+
+// ── Sales Navigator ──────────────────────────────────────────────────────────
+// Lead search URLs use LinkedIn's Rest.li query syntax:
+//   /sales/search/people?query=(keywords:...,filters:List((type:X,values:List((id:..,text:..,selectionType:INCLUDED)))))
+// Text values are encoded once for Rest.li, then the whole query is URL-encoded again
+// (the same double encoding Sales Navigator itself produces).
+
+export type LinkedInTier = "free" | "premium" | "sales_navigator";
+
+/** ICP seniority keys -> Sales Navigator SENIORITY_LEVEL ids. */
+export const SN_SENIORITY: Record<string, { ids: number[]; text: string }> = {
+  entry: { ids: [110], text: "Entry Level" },
+  senior: { ids: [120], text: "Senior" },
+  manager: { ids: [200, 210], text: "Manager" },
+  director: { ids: [220], text: "Director" },
+  vp: { ids: [300], text: "Vice President" },
+  cxo: { ids: [310], text: "CXO" },
+  owner: { ids: [320], text: "Owner / Partner" },
+};
+const SN_SENIORITY_TEXT: Record<number, string> = {
+  110: "Entry Level", 120: "Senior", 200: "Entry Level Manager", 210: "Experienced Manager",
+  220: "Director", 300: "Vice President", 310: "CXO", 320: "Owner / Partner",
+};
+
+/** Company headcount buckets (Sales Navigator COMPANY_HEADCOUNT ids). */
+const SN_HEADCOUNT: { id: string; text: string; min: number; max: number }[] = [
+  { id: "B", text: "1-10", min: 1, max: 10 },
+  { id: "C", text: "11-50", min: 11, max: 50 },
+  { id: "D", text: "51-200", min: 51, max: 200 },
+  { id: "E", text: "201-500", min: 201, max: 500 },
+  { id: "F", text: "501-1000", min: 501, max: 1000 },
+  { id: "G", text: "1001-5000", min: 1001, max: 5000 },
+  { id: "H", text: "5001-10,000", min: 5001, max: 10000 },
+  { id: "I", text: "10,001+", min: 10001, max: Number.MAX_SAFE_INTEGER },
+];
+
+/** Encode a text value for Rest.li (reserved chars must be escaped inside values). */
+function restliText(s: string): string {
+  return encodeURIComponent(s).replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/'/g, "%27");
+}
+
+type SnValue = { id?: string | number; text?: string };
+function snFilter(type: string, values: SnValue[]): string {
+  const vals = values.map((v) => {
+    const parts: string[] = [];
+    if (v.id != null) parts.push(`id:${restliText(String(v.id))}`);
+    if (v.text) parts.push(`text:${restliText(v.text)}`);
+    parts.push("selectionType:INCLUDED");
+    return `(${parts.join(",")})`;
+  });
+  return `(type:${type},values:List(${vals.join(",")}))`;
+}
+
+export type SalesNavSearch = {
+  keywords?: string;
+  titles?: string[];
+  seniorities?: string[];
+  geoIds?: string[];
+  companySizeMin?: number | null;
+  companySizeMax?: number | null;
+  /** F = 1st degree (my connections), S = 2nd, O = 3rd+ */
+  relationship?: ("F" | "S" | "O")[];
+  postedRecently?: boolean;
+  changedJobs?: boolean;
+  page?: number;
+};
+
+export function buildSalesNavSearchUrl(s: SalesNavSearch): string {
+  const filters: string[] = [];
+  const titles = (s.titles || []).map((t) => t.replace(/["()]/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 10);
+  if (titles.length) filters.push(snFilter("CURRENT_TITLE", titles.map((text) => ({ text }))));
+
+  const senIds = Array.from(new Set((s.seniorities || []).flatMap((k) => SN_SENIORITY[k]?.ids || [])));
+  if (senIds.length) filters.push(snFilter("SENIORITY_LEVEL", senIds.map((id) => ({ id, text: SN_SENIORITY_TEXT[id] }))));
+
+  const geo = (s.geoIds || []).filter((g) => /^\d+$/.test(String(g))).slice(0, 10);
+  if (geo.length) filters.push(snFilter("REGION", geo.map((id) => ({ id }))));
+
+  if (s.companySizeMin || s.companySizeMax) {
+    const lo = s.companySizeMin || 1;
+    const hi = s.companySizeMax || Number.MAX_SAFE_INTEGER;
+    const buckets = SN_HEADCOUNT.filter((b) => b.max >= lo && b.min <= hi);
+    if (buckets.length && buckets.length < SN_HEADCOUNT.length) {
+      filters.push(snFilter("COMPANY_HEADCOUNT", buckets.map((b) => ({ id: b.id, text: b.text }))));
+    }
+  }
+
+  const rel = (s.relationship || []).filter((r) => ["F", "S", "O"].includes(r));
+  const relText: Record<string, string> = { F: "1st degree connections", S: "2nd degree connections", O: "3rd degree connections" };
+  if (rel.length) filters.push(snFilter("RELATIONSHIP", rel.map((id) => ({ id, text: relText[id] }))));
+
+  if (s.postedRecently) filters.push(snFilter("POSTED_ON_LINKEDIN", [{ id: "RPOL", text: "Posted on LinkedIn" }]));
+  if (s.changedJobs) filters.push(snFilter("RECENTLY_CHANGED_JOBS", [{ id: "RPC", text: "Changed jobs" }]));
+
+  const parts = ["recentSearchParam:(doLogHistory:true)"];
+  if (filters.length) parts.push(`filters:List(${filters.join(",")})`);
+  const kw = String(s.keywords || "").replace(/\s+/g, " ").trim().slice(0, 300);
+  if (kw) parts.push(`keywords:${restliText(kw)}`);
+  const query = `(${parts.join(",")})`;
+
+  let url = `https://www.linkedin.com/sales/search/people?query=${encodeURIComponent(query)}`;
+  if (s.page && s.page > 1) url += `&page=${s.page}`;
+  return url;
+}
+
+/** Keywords for a Sales Navigator ICP search: titles go in their own filter, so only the extra keywords and exclusions. */
+function salesNavKeywords(icp: Icp): string {
+  const extra = (icp.keywords || []).map(quoteTerm).filter(Boolean).slice(0, 4);
+  const parts: string[] = [];
+  if (extra.length > 1) parts.push(`(${extra.join(" OR ")})`);
+  else if (extra.length) parts.push(extra[0]);
+  for (const e of (icp.exclude_keywords || []).map(quoteTerm).filter(Boolean).slice(0, 4)) parts.push(`NOT ${e}`);
+  return parts.join(" ");
+}
+
+export type IcpSearchExtras = { recently_posted?: boolean; changed_jobs?: boolean };
+
+/** Sales Navigator prospecting search for an ICP: 2nd-degree leads (mutual connections), all filters applied. */
+export function buildSalesNavPeopleSearchUrl(icp: Icp & IcpSearchExtras, page: number): string {
+  return buildSalesNavSearchUrl({
+    keywords: salesNavKeywords(icp),
+    titles: icp.titles || [],
+    seniorities: icp.seniorities || [],
+    geoIds: icp.location_geo_ids || [],
+    companySizeMin: icp.company_size_min,
+    companySizeMax: icp.company_size_max,
+    relationship: ["S"],
+    postedRecently: !!icp.recently_posted,
+    changedJobs: !!icp.changed_jobs,
+    page,
+  });
+}
+
+/** Sales Navigator search over the user's own connections (Growth "my contacts"). */
+export function buildSalesNavConnectionsSearchUrl(keyword: string, page: number, opts: { postedRecently?: boolean } = {}): string {
+  const kw = String(keyword || "").replace(/["()]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+  return buildSalesNavSearchUrl({ keywords: kw, relationship: ["F"], postedRecently: !!opts.postedRecently, page });
+}
+
+/** Sales Navigator search is used when the plan is Sales Navigator and it has not failed in the last 24h. */
+export function salesNavEnabled(ext: { linkedin_account_tier?: string | null; sales_nav_failed_at?: string | null } | null, now = Date.now()): boolean {
+  if (!ext || ext.linkedin_account_tier !== "sales_navigator") return false;
+  if (ext.sales_nav_failed_at && now - new Date(ext.sales_nav_failed_at).getTime() < 24 * 3600 * 1000) return false;
+  return true;
 }
 
 /** LinkedIn post (content) search URL: last 24h, newest first. */
