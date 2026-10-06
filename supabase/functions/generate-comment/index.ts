@@ -5,32 +5,31 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
+import { commentRules, detectLang, isSkip, LANG_NAME, reviewComments, type SenderFacts } from "../_shared/comment-quality.ts";
+import { callClaude, cleanComment, modelWriter, parseJsonArray } from "../_shared/network.ts";
 
 // Deployed with verify_jwt=false: authentication is enforced here.
 //  - service callers (schedule-actions, pg_cron) may target any lead.
 //  - users may only target leads where lead.user_id === auth.userId.
 
-// Comment style variants — rotated per lead for natural variety
+// Comment angles, rotated per lead for natural variety. None of them asks the model to invent
+// experience or data: that is what makes AI comments sound fake (see _shared/comment-quality.ts).
 const COMMENT_VARIANTS = [
   {
     key: "observation_question",
-    hint: "Make a specific observation about one point in the post, then ask a follow-up question. Sound like a curious peer, not a marketer. Max 160 chars.",
+    hint: "Pick one specific point of the post and ask the follow-up question a curious peer in this field would ask.",
   },
   {
-    key: "personal_experience",
-    hint: "Briefly share a relevant personal experience related to the post topic. Be genuine and specific — not generic. End with an insight or micro-question. Max 180 chars.",
+    key: "behind_the_number",
+    hint: "If the post has a number or result, ask what is behind it (method, conditions, what changed). Otherwise pick its most concrete claim.",
   },
   {
-    key: "expand_on_point",
-    hint: "Pick one specific claim or idea from the post and expand on it with a fresh angle or nuance the author didn't mention. Max 160 chars.",
+    key: "practical_consideration",
+    hint: "Add one precise practical consideration someone who works in this field would raise about what the post describes. Do not claim personal experience.",
   },
   {
     key: "respectful_challenge",
-    hint: "Respectfully offer a different perspective or ask a thought-provoking 'what about...' question. Be constructive, never confrontational. Max 160 chars.",
-  },
-  {
-    key: "data_or_example",
-    hint: "Reference a relevant data point, case study, or example that supports or enriches the post. Keep it brief and specific. Max 180 chars.",
+    hint: "Respectfully raise a 'what about...' angle the author did not cover. Constructive, never confrontational.",
   },
 ];
 
@@ -77,80 +76,78 @@ serve(async (req) => {
     if (!lead || (auth.kind === "user" && lead.user_id !== auth.userId)) return fail("Lead not found", 404);
     if (!lead.post_content) return fail("No post_content to generate comment for", 400);
 
-    // Fetch campaign profile for context (scoped to the lead owner)
-    const { data: campaign } = await supabase
-      .from("campaign_profiles")
-      .select("campaign_objective, value_proposition, icp_description, dm_tone, message_language")
-      .eq("id", lead.campaign_profile_id)
-      .eq("user_id", lead.user_id)
-      .maybeSingle();
-
-    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!anthropicKey) {
+    // Fetch campaign profile and the sender's own facts (scoped to the lead owner)
+    const [{ data: campaign }, { data: me }] = await Promise.all([
+      supabase.from("campaign_profiles")
+        .select("icp_description, dm_tone, proof_points")
+        .eq("id", lead.campaign_profile_id).eq("user_id", lead.user_id).maybeSingle(),
+      supabase.from("profiles")
+        .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone")
+        .eq("user_id", lead.user_id).maybeSingle(),
+    ]);
+    if (!Deno.env.get("ANTHROPIC_API_KEY")) {
       console.error("generate-comment: ANTHROPIC_API_KEY not configured");
       return fail("Comment generation is not configured", 500);
     }
 
     const variant = pickVariant(campaign_lead_id);
-    const language = campaign?.message_language || "English";
-    const tone = campaign?.dm_tone || "professional but conversational";
+    const postText = String(lead.post_content).substring(0, 2000);
+    const facts: SenderFacts = {
+      name: me?.sender_name, title: me?.sender_title, company: me?.company_name,
+      about: [me?.company_description, campaign?.proof_points || me?.proof_points].filter(Boolean).join(" "),
+      tone: campaign?.dm_tone || me?.dm_tone,
+    };
+    const author = lead.full_name || null;
 
-    const systemPrompt = `You are a LinkedIn professional genuinely engaging with content in your feed.
-You write brief, authentic comments that add value to the conversation.
+    // The comment follows the POST's language, never the campaign's.
+    const write = async (feedback: { previous: string; why: string } | null): Promise<{ comment: string; skip: string | null }> => {
+      const user = [
+        `POST AUTHOR: ${author || "Unknown"} (${lead.title || lead.profile_current_title || "role unknown"}${(lead.company || lead.profile_current_company) ? `, ${lead.company || lead.profile_current_company}` : ""})`,
+        `POST LANGUAGE: ${LANG_NAME[detectLang(postText)]}`,
+        `POST:\n"""\n${postText}\n"""`,
+        `ANGLE: ${variant.hint}`,
+        feedback ? `Your previous draft was REJECTED: "${feedback.previous}"\nWhy: ${feedback.why}\nWrite a better one or skip.` : "",
+      ].filter(Boolean).join("\n\n");
+      const system = `${commentRules(facts)}
 
-RULES:
-- Write in ${language}
-- Tone: ${tone}
-- NEVER be promotional or mention any product/service
-- NEVER use generic phrases like "Great post!", "Love this!", "So true!", "Couldn't agree more!"
-- Reference a SPECIFIC detail from the post content
-- Sound like a real human thinking out loud, not a marketing bot
-- Keep it concise — LinkedIn comments that perform best are 1-3 sentences
-- Do NOT use hashtags in comments
-- Do NOT tag anyone
-- Do NOT use emojis excessively (0-1 max)`;
+Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
+      const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6 });
+      const r = parseJsonArray<{ skip?: boolean; skip_reason?: string; comment?: string }>(text)[0] || {};
+      if (r.skip === true || isSkip(r.comment)) return { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
+      return { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
+    };
 
-    const userPrompt = `Generate a LinkedIn comment on this post.
-
-POST CONTENT:
-"""
-${String(lead.post_content).substring(0, 1500)}
-"""
-
-POST AUTHOR: ${lead.full_name || "Unknown"}
-THEIR ROLE: ${lead.title || lead.profile_current_title || "Unknown"}
-THEIR COMPANY: ${lead.company || lead.profile_current_company || "Unknown"}
-
-COMMENT STYLE: ${variant.hint}
-
-Write ONLY the comment text. No quotes, no explanation, no preamble.`;
-
-    // Call Claude API (Haiku for speed + cost)
-    const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 300,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-    });
-
-    if (!anthropicResp.ok) {
-      const errText = await anthropicResp.text();
-      console.error(`generate-comment: Anthropic API error ${anthropicResp.status}`, errText.substring(0, 300));
+    let draft: { comment: string; skip: string | null };
+    try {
+      draft = await write(null);
+      if (!draft.skip) {
+        let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment }], facts);
+        if (!rev.ok) {
+          const second = await write({ previous: draft.comment, why: rev.reason });
+          if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment }], facts);
+          draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
+        }
+      }
+    } catch (e) {
+      console.error("generate-comment: drafting failed", e instanceof Error ? e.message : e);
       return fail("Comment generation failed", 502);
     }
 
-    const anthropicJson = await anthropicResp.json();
-    const commentText = anthropicJson?.content?.[0]?.text?.trim();
-
-    if (!commentText) return fail("Empty comment generated", 502);
+    // Nothing worth saying on this post: no comment this cycle, the lead tries again with a newer post in 7 days.
+    if (draft.skip || !draft.comment) {
+      const now = new Date().toISOString();
+      await supabase.from("campaign_leads").update({
+        status: "engagement_done", comment_text: null, post_url: null, post_content: null,
+        last_engagement_at: now, next_action_at: new Date(Date.now() + 7 * 864e5).toISOString(), updated_at: now,
+      }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "post_liked");
+      await supabase.from("activity_log").insert({
+        user_id: lead.user_id, campaign_lead_id, action: "comment_skipped_quality",
+        details: { reason: draft.skip || "empty", variant: variant.key },
+      });
+      console.log(`generate-comment: skipped lead ${campaign_lead_id} for quality (${draft.skip})`);
+      return json({ success: true, skipped: "quality", reason: draft.skip, lead_id: campaign_lead_id });
+    }
+    const commentText = draft.comment;
 
     // The comment is NOT auto-approved: it waits in the dashboard approval queue
     // (Network > Comments), next to the original post. Approving or skipping there moves

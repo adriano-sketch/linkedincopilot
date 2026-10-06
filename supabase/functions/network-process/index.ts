@@ -6,6 +6,7 @@
 // Nothing is published here: drafted comments wait for human approval in the dashboard.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
+import { commentRules, detectLang, isSkip, LANG_NAME, reviewComments, type SenderFacts } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray,
 } from "../_shared/network.ts";
@@ -103,6 +104,35 @@ Reply ONLY with a JSON array: [{"index": <number>, "score": <0-100>, "reason": "
   return { scored, qualified };
 }
 
+/** Writes one comment (or a skip) per post. `retry` carries the reviewer's feedback for a second attempt. */
+async function writeComments(
+  batch: { post: any; signal: string; reason: string }[],
+  facts: SenderFacts,
+  retry: { previous: string; feedback: string }[] | null,
+): Promise<{ comment: string; skip: string | null }[]> {
+  const items = batch.map((d, idx) => [
+    `[${idx}] Author: ${d.post.author_name || "Unknown"}`,
+    d.post.author_headline ? `Headline: ${d.post.author_headline}` : "",
+    `Post language: ${LANG_NAME[detectLang(String(d.post.post_text))]}`,
+    `Signal: ${d.signal}${d.reason ? ` (${d.reason})` : ""}`,
+    `Post:\n${String(d.post.post_text).slice(0, 2000)}`,
+    retry ? `Your previous draft was REJECTED: "${retry[idx].previous}"\nWhy: ${retry[idx].feedback}\nWrite a better one or skip.` : "",
+  ].filter(Boolean).join("\n")).join("\n=====\n");
+  const system = `${commentRules(facts)}
+
+Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "comment": "..."}] or
+[{"index": n, "skip": true, "skip_reason": "<max 12 words>"}]`;
+  const text = await callClaude({ model: modelWriter(), system, user: items, maxTokens: 1800, temperature: 0.6 });
+  const res = parseJsonArray<{ index: number; skip?: boolean; skip_reason?: string; comment?: string }>(text);
+  const out = batch.map(() => ({ comment: "", skip: "no draft returned" as string | null }));
+  for (const r of res) {
+    if (!out[r.index]) continue;
+    if (r.skip === true || isSkip(r.comment)) out[r.index] = { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
+    else out[r.index] = { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
+  }
+  return out;
+}
+
 async function processPosts(supabase: Supa, userId: string, icps: Map<string, Icp>) {
   const { data: posts, error } = await supabase
     .from("monitored_posts")
@@ -116,7 +146,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
 
   const { data: me } = await supabase
     .from("profiles")
-    .select("sender_name, sender_title, company_name, company_description, dm_tone")
+    .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -205,53 +235,58 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
     }
   }
 
+  // Drafting goes through the quality guard (_shared/comment-quality.ts): writer → local checks →
+  // strict reviewer → one rewrite with feedback → otherwise the post is skipped (status 'ignored').
+  const facts: SenderFacts = {
+    name: me?.sender_name, title: me?.sender_title, company: me?.company_name,
+    about: [me?.company_description, me?.proof_points].filter(Boolean).join(" "), tone: me?.dm_tone,
+  };
   let drafted = 0;
+  let skipped = 0;
   for (let i = 0; i < toDraft.length; i += DRAFT_BATCH) {
     const batch = toDraft.slice(i, i + DRAFT_BATCH);
-    const items = batch.map((d, idx) => [
-      `[${idx}] Author: ${d.post.author_name || "Unknown"}`,
-      d.post.author_headline ? `Headline: ${d.post.author_headline}` : "",
-      `Signal: ${d.signal}${d.reason ? ` (${d.reason})` : ""}`,
-      `Post:\n${String(d.post.post_text).slice(0, 2000)}`,
-    ].filter(Boolean).join("\n")).join("\n=====\n");
-
-    const system = `You write LinkedIn comments on behalf of ${me?.sender_name || "the sender"} (${me?.sender_title || ""}${me?.company_name ? ` at ${me.company_name}` : ""}).
-Goal: build a genuine relationship with the author. The comment must make the author want to reply or look at the sender's profile.
-
-Rules:
-- Write in the SAME language as the post.
-- 1 to 3 sentences, ideally under 280 characters.
-- Refer to something SPECIFIC in the post (a number, an example, an argument). If it could fit any post, rewrite it.
-- Add value: a concrete perspective from experience, a sharp follow-up question, or a respectful counterpoint.
-- Never sell, never mention the sender's company or services, no links, no hashtags, no @mentions.
-- Do not open with praise clichés ("Great post", "Thanks for sharing", "Insightful", "Love this", "Ótimo post", "Excelente reflexão").
-- Never use em dashes or en dashes. Use commas or periods.
-- No emojis unless the post itself is very casual, and then at most one.
-- For milestones, congratulate briefly and specifically, then one genuine line.
-- Tone: ${me?.dm_tone || "professional and warm"}, sounds like a busy expert typing on a phone, not like AI.
-
-Reply ONLY with a JSON array: [{"index": n, "comment": "..."}]`;
-
+    let drafts: { comment: string; skip: string | null }[];
     try {
-      const text = await callClaude({ model: modelWriter(), system, user: items, maxTokens: 1500, temperature: 0.7 });
-      const results = parseJsonArray<{ index: number; comment: string }>(text);
-      for (const r of results) {
-        const d = batch[r.index];
-        if (!d || !r.comment) continue;
-        const comment = cleanComment(String(r.comment)).slice(0, 1200);
-        const { error: upErr } = await supabase.from("monitored_posts").update({
-          suggested_comment: comment,
-          status: "pending",
-        }).eq("id", d.post.id).eq("status", "new");
-        if (upErr) console.error("draft save failed:", upErr);
-        else drafted++;
-      }
+      drafts = await writeComments(batch, facts, null);
     } catch (e) {
       console.error("comment drafting failed:", e instanceof Error ? e.message : e);
-      // Posts stay 'new' with their classification; next run retries the draft.
+      continue; // Posts stay 'new' with their classification; next run retries the draft.
+    }
+
+    const review = await reviewComments(batch.map((d, k) => ({
+      post: String(d.post.post_text), author: d.post.author_name, comment: drafts[k].comment,
+    })), facts);
+    const retryIdx = batch.map((_, k) => k).filter((k) => !drafts[k].skip && !review[k].ok);
+    if (retryIdx.length) {
+      try {
+        const again = await writeComments(retryIdx.map((k) => batch[k]), facts, retryIdx.map((k) => ({
+          previous: drafts[k].comment, feedback: review[k].reason,
+        })));
+        const review2 = await reviewComments(retryIdx.map((k, j) => ({
+          post: String(batch[k].post.post_text), author: batch[k].post.author_name, comment: again[j].comment,
+        })), facts);
+        retryIdx.forEach((k, j) => {
+          drafts[k] = again[j];
+          review[k] = again[j].skip ? { ok: false, reason: again[j].skip } : review2[j];
+        });
+      } catch (e) {
+        console.error("comment rewrite failed:", e instanceof Error ? e.message : e);
+      }
+    }
+
+    for (let k = 0; k < batch.length; k++) {
+      const d = batch[k];
+      const good = !drafts[k].skip && review[k].ok && !isSkip(drafts[k].comment);
+      const update = good
+        ? { suggested_comment: drafts[k].comment, status: "pending", last_error: null }
+        : { status: "ignored", last_error: `quality skip: ${(drafts[k].skip || review[k].reason || "nothing specific to add").slice(0, 200)}` };
+      const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", d.post.id).eq("status", "new");
+      if (upErr) console.error("draft save failed:", upErr);
+      else if (good) drafted++;
+      else skipped++;
     }
   }
-  return { classified, drafted };
+  return { classified, drafted, skipped_for_quality: skipped };
 }
 
 Deno.serve(async (req) => {

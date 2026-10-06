@@ -490,8 +490,13 @@ async function lcMaybeDetectTier(force) {
     console.warn('[LC:Tier] detection failed:', e.message);
     return null;
   }
+  if (!res || !res.tier) {
+    // Inconclusive (LinkedIn still loading, logged out...): try again in 30 minutes, not 12 hours.
+    await setLocalData('tier_checked_at', Date.now() - TIER_CHECK_EVERY_MS + 30 * 60 * 1000);
+    console.log('[LC:Tier] inconclusive', res && res.signals);
+    return null;
+  }
   await setLocalData('tier_checked_at', Date.now());
-  if (!res || !res.tier) { console.log('[LC:Tier] inconclusive', res && res.signals); return null; }
 
   try {
     const cur = await fetch(`${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}&select=linkedin_account_tier`, {
