@@ -50,6 +50,18 @@ plus the existing `send_connection_request` (no note) and `post_comment`. Result
   in contacts-search) and RECENTLY_CHANGED_JOBS (`icps.changed_jobs`). `action_data.reader = 'sales_navigator'`.
 - `lcReadSalesNavSearch` reads the lead cards and resolves each lead to its public `linkedin.com/in/` URL with the same
   profile call Sales Navigator makes (`flagshipProfileUrl`). Leads that cannot be resolved are dropped.
+- Sales Navigator paints lead cards lazily and only while the tab is visible; the automation tab runs in the
+  background, so the cards are often never painted ("29 results" and the checkboxes are there, names and links are
+  not). Since v0.4.2 the reader, when it finds fewer cards than "N results" implies, re-reads the page through the
+  page's own lead-search call (`/sales-api/salesApiLeadSearch`, URL taken from the page's resource timing or built
+  from `location.search` with the query passed through untouched) and then resolves public URLs as usual.
+  `result.source` says which path was used (`cards`, `cards+search_call`, `search_call`); `result.results_total` is
+  the total of the search; `has_next` comes from that total. `sales_nav_unavailable` is now only returned for a
+  redirect away from the search, a 401/403 on the search call (no seat) or when both paths find nothing on a page
+  that is not an empty state.
+- Changing an ICP's search filters (titles, keywords, location, industries, seniority, company size, posted/changed
+  jobs) resets `people_search_page` to 0 (trigger `icp_reset_people_search_on_change`,
+  migration `20261107210000`), so the new result set is read from page 1.
 - Fallback: when a Sales Navigator page cannot be used (`sales_nav_unavailable`, or the action fails), the backend stamps
   `extension_status.sales_nav_failed_at` and uses the regular search for 24h. ICP runs are deleted (not counted); a
   contacts run is re-queued at once with the regular search. Changing the plan clears the stamp.

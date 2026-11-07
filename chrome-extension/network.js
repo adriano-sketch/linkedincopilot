@@ -153,22 +153,43 @@ async function lcReadPeopleSearch() {
 // linkedin.com/in/ URL (the rest of the system, invites and acceptance sync, works on those).
 // Leads whose public URL cannot be found are left out. If nothing can be used, it returns
 // sales_nav_unavailable so the backend falls back to the regular search for 24h.
+//
+// Sales Navigator paints the lead cards lazily (only the cards scrolled into view, and only while
+// the tab is visible). The automation tab usually runs in the background, so the cards are often
+// never painted even though the page has loaded the results ("29 results" and the "Add X to
+// selection" checkboxes are there, the names and links are not). When the cards are missing or
+// incomplete, the reader re-reads the search through the same lead-search call the page itself
+// made (visible in the page's resource timing), which does not depend on painting.
 async function lcReadSalesNavSearch() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
   const lower = (t) => norm(t).toLowerCase();
+  const PAGE_SIZE = 25;
   const leadLinks = () => Array.from(document.querySelectorAll('a[href*="/sales/lead/"]'));
+  const resultsPanel = () => document.querySelector('#search-results-container');
+  const emptyState = () => /no leads matched|no results|nenhum lead|nenhum resultado/.test(lower(document.body && document.body.innerText));
+  // The page's own lead-search request (the most recent one), from resource timing.
+  const pageSearchCall = () => {
+    const urls = performance.getEntriesByType('resource').map((r) => r.name).filter((u) => u.includes('/sales-api/salesApiLeadSearch?'));
+    return urls.length ? urls[urls.length - 1] : null;
+  };
   const unavailable = (reason, extra) => ({
     success: true, sales_nav_unavailable: true, reason, profiles: [], has_next: false,
     debug: { url: location.href, sample: ((document.querySelector('main') || document.body || {}).innerText || '').slice(0, 400), ...(extra || {}) },
   });
+  const csrf = ((document.cookie.match(/JSESSIONID=["']?([^;"']+)/) || [])[1] || '').replace(/"/g, '');
+  const apiHeaders = { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0', accept: 'application/json' };
 
-  // Wait for results, an empty state, or a redirect away from the search (no license / contract chooser)
-  for (let i = 0; i < 30; i++) {
+  // Wait for cards, for the page's search call to have happened, for an empty state, or for a
+  // redirect away from the search (no license / contract chooser). Nudge the results panel while
+  // waiting: scrolling is what makes the cards paint when the tab is visible.
+  for (let i = 0; i < 40; i++) {
     if (leadLinks().length > 0) break;
-    const body = lower(document.body && document.body.innerText);
-    if (/no leads matched|no results|nenhum lead|nenhum resultado/.test(body)) break;
+    if (emptyState()) break;
     if (!location.pathname.startsWith('/sales/search')) break;
+    if (i >= 12 && pageSearchCall()) break; // results are loaded; the cards just are not painted
+    const panel = resultsPanel();
+    if (panel && i % 3 === 2) panel.scrollBy(0, 250);
     await sleep(500);
   }
   if (!location.pathname.startsWith('/sales/search')) {
@@ -182,7 +203,7 @@ async function lcReadSalesNavSearch() {
 
   // Results live in their own scrolling panel: scroll it like a person so all 25 cards render.
   const first = leadLinks()[0];
-  let scroller = document.querySelector('#search-results-container');
+  let scroller = resultsPanel();
   if (!scroller && first) {
     let el = first.parentElement;
     while (el && el !== document.body) {
@@ -197,6 +218,7 @@ async function lcReadSalesNavSearch() {
   }
   await sleep(1000);
 
+  // 1) Lead cards that were painted
   const leads = [];
   const seen = new Set();
   for (const a of leadLinks()) {
@@ -225,14 +247,67 @@ async function lcReadSalesNavSearch() {
     });
   }
 
+  // 2) Cards missing or incomplete: re-read the search through the page's own lead-search call.
+  //    "N results" in the page tells how many to expect on this page.
+  const totalM = bodyText.match(/(\d[\d,.]*)\s+(?:results?|resultados?)\b/);
+  const totalOnPage = totalM ? parseInt(totalM[1].replace(/\D/g, ''), 10) : null;
+  const params = new URLSearchParams(location.search);
+  const pageNo = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+  const expected = totalOnPage == null ? PAGE_SIZE : Math.max(0, Math.min(PAGE_SIZE, totalOnPage - (pageNo - 1) * PAGE_SIZE));
+  let api = null; // { start, count, total, status, error }
+  if (leads.length < expected && !emptyState()) {
+    let url = pageSearchCall();
+    if (!url && params.get('query')) {
+      // The Rest.li query goes in as the page shows it after one URL decode (inner text keeps its %20);
+      // encoding it again returns 400. Verified against the page's own call on 2026-11-07.
+      url = '/sales-api/salesApiLeadSearch?q=searchQuery&query=' + params.get('query') +
+        `&start=${(pageNo - 1) * PAGE_SIZE}&count=${PAGE_SIZE}&decorationId=com.linkedin.sales.deco.desktop.searchv2.LeadSearchResult-17`;
+    }
+    if (url) {
+      try {
+        const r = await fetch(url, { credentials: 'include', headers: apiHeaders });
+        api = { status: r.status, url: url.replace(/trackingParam=[^&]*/, 'trackingParam=…') };
+        if (r.status === 401 || r.status === 403) return unavailable('no_license', { status: r.status });
+        if (r.ok) {
+          const j = await r.json();
+          const u = new URL(url, location.origin);
+          api.start = parseInt(u.searchParams.get('start') || '0', 10) || 0;
+          api.count = 0;
+          api.total = j && j.paging && typeof j.paging.total === 'number' ? j.paging.total : null;
+          for (const el of (j && Array.isArray(j.elements) ? j.elements : [])) {
+            api.count++;
+            const um = String(el.entityUrn || '').match(/\(([^,)]+),([^,)]+),([^)]+)\)/);
+            if (!um || seen.has(um[1])) continue;
+            const name = norm(el.fullName || `${el.firstName || ''} ${el.lastName || ''}`);
+            if (!name || /linkedin member|membro do linkedin/i.test(name)) continue;
+            seen.add(um[1]);
+            const pos = Array.isArray(el.currentPositions) && el.currentPositions[0] ? el.currentPositions[0] : {};
+            const deg = Number(el.degree);
+            leads.push({
+              id: um[1], authType: um[2], authToken: decodeURIComponent(um[3]),
+              name,
+              title: norm(pos.title) || null,
+              company: norm(pos.companyName) || null,
+              location: norm(el.geoRegion) || null,
+              degree: deg === 1 ? '1st' : deg === 2 ? '2nd' : deg === 3 ? '3rd' : null,
+              is_pending: el.pendingInvitation === true,
+              recently_posted: false,
+              changed_jobs: false,
+            });
+          }
+        }
+      } catch (e) {
+        api = { ...(api || {}), error: String(e && e.message || e) };
+      }
+    }
+  }
+
   if (leads.length === 0) {
-    const empty = /no leads matched|no results|nenhum lead|nenhum resultado/.test(lower(document.body.innerText));
-    if (empty) return { success: true, profiles: [], has_next: false, page_url: location.href };
-    return unavailable('no_lead_cards', { links: leadLinks().length });
+    if (emptyState() || (api && api.total === 0)) return { success: true, profiles: [], has_next: false, page_url: location.href };
+    return unavailable('no_lead_cards', { links: leadLinks().length, results_total: totalOnPage, api });
   }
 
   // Public profile URL for each lead (the same call Sales Navigator makes when a lead is opened)
-  const csrf = ((document.cookie.match(/JSESSIONID=["']?([^;"']+)/) || [])[1] || '').replace(/"/g, '');
   const resolve = async (l) => {
     const path = `/sales-api/salesApiProfiles/(profileId:${l.id},authType:${l.authType},authToken:${encodeURIComponent(l.authToken)})` +
       '?decoration=%28entityUrn%2CflagshipProfileUrl%29';
@@ -273,14 +348,25 @@ async function lcReadSalesNavSearch() {
   }
   if (profiles.length === 0) return unavailable('profile_lookup_failed', { leads: leads.length, error: lastError });
 
-  const nextBtn = Array.from(document.querySelectorAll('button')).find((b) => {
-    const l = lower(`${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`);
-    return /\bnext\b|avançar|próxim/.test(l) && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
-  });
+  // Next page: from the search call's paging when we have it, otherwise from the Next button.
+  let hasNext;
+  if (api && typeof api.total === 'number' && typeof api.start === 'number') {
+    hasNext = api.start + Math.max(api.count || 0, leads.length) < api.total;
+  } else if (totalOnPage != null) {
+    hasNext = pageNo * PAGE_SIZE < totalOnPage;
+  } else {
+    const nextBtn = Array.from(document.querySelectorAll('button')).find((b) => {
+      const l = lower(`${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`);
+      return /\bnext\b|avançar|próxim/.test(l) && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+    });
+    hasNext = !!nextBtn;
+  }
 
   return {
-    success: true, reader: 'sales_navigator', profiles, has_next: !!nextBtn, page_url: location.href,
+    success: true, reader: 'sales_navigator', profiles, has_next: hasNext, page_url: location.href,
     leads_on_page: leads.length, unresolved: leads.length - profiles.length,
+    results_total: api && typeof api.total === 'number' ? api.total : totalOnPage,
+    source: api && api.count ? (leadLinks().length ? 'cards+search_call' : 'search_call') : 'cards',
   };
 }
 
