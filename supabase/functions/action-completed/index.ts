@@ -799,10 +799,16 @@ serve(async (req) => {
           leadUpdate.post_content = result.post_content ? String(result.post_content).slice(0, 2000) : null;
           leadUpdate.next_action_at = rbt(0); // Like immediately
         } else {
-          // No posts found — skip this engagement cycle, try again in 7 days
+          // No usable post (none at all, none of their own, or none in the last 30 days):
+          // skip this engagement cycle, try again in 7 days
           leadUpdate.status = "engagement_done";
           leadUpdate.next_action_at = rbt(7);
-          leadUpdate.error_message = "No posts found on profile activity page";
+          const why = result?.note === "no_recent_posts"
+            ? `No post in the last 30 days (newest is ${result?.newest_post_age_days ?? "?"} days old)`
+            : result?.note === "no_own_posts"
+              ? "Only reposts or other people's posts on the activity page"
+              : "No posts found on profile activity page";
+          leadUpdate.error_message = why;
         }
         break;
       }
