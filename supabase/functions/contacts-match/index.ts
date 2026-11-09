@@ -18,8 +18,29 @@ import { callClaude, modelFast, parseJsonArray } from "../_shared/network.ts";
 type Supa = any;
 
 const BATCH = 40;
-const PARALLEL = 4;
+const PARALLEL = 3;
 const MAX_PER_CALL = BATCH * PARALLEL;
+// The dashboard calls this in a tight loop (3,500 contacts = ~30 calls, 3 model calls each), which
+// is exactly how a rate limit or a transient "overloaded" from the model API shows up. Retry those.
+const RETRIES = 3;
+const RETRYABLE = /Anthropic (429|500|502|503|504|529)|overloaded|rate.?limit|ECONNRESET|timed? ?out|fetch failed/i;
+
+async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e as Error)?.message || e);
+      if (attempt === RETRIES || !RETRYABLE.test(msg)) throw e;
+      const wait = 800 * Math.pow(2, attempt) + Math.random() * 400; // 0.8s, 1.6s, 3.2s
+      console.warn(`contacts-match ${label}: retry ${attempt + 1}/${RETRIES} in ${Math.round(wait)}ms after: ${msg.slice(0, 160)}`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
 
 const SYSTEM_SCORE = `You screen a LinkedIn user's existing connections for a relationship-building campaign.
 For each person, rate from 0 to 100 how well they match the TARGET description, using only their job title, headline and company.
@@ -42,14 +63,25 @@ async function scoreBatch(people: any[], description: string): Promise<{ i: numb
     const bits = [p.job_title || p.position, p.headline, p.company && `at ${p.company}`].filter(Boolean).join(" | ");
     return `${i}. ${p.full_name || "Unknown"}: ${bits || "no title available"}`;
   }).join("\n");
-  const text = await callClaude({
+  const text = await withRetry(() => callClaude({
     model: modelFast(),
     system: SYSTEM_SCORE,
     user: `TARGET:\n${description}\n\nPEOPLE:\n${lines}`,
-    maxTokens: 2200,
+    maxTokens: 2600,
     temperature: 0,
-  });
-  return parseJsonArray(text);
+  }), `batch of ${people.length}`);
+  try {
+    return parseJsonArray(text);
+  } catch (e) {
+    // A truncated or malformed reply: salvage the complete objects instead of failing the batch.
+    const salvaged: { i: number; score: number; reason: string }[] = [];
+    for (const m of text.matchAll(/\{\s*"i"\s*:\s*(\d+)\s*,\s*"score"\s*:\s*(\d+)\s*(?:,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)")?\s*\}/g)) {
+      salvaged.push({ i: Number(m[1]), score: Number(m[2]), reason: m[3] || "" });
+    }
+    if (!salvaged.length) throw e;
+    console.warn(`contacts-match: salvaged ${salvaged.length}/${people.length} scores from a malformed reply`);
+    return salvaged;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -140,15 +172,26 @@ Deno.serve(async (req) => {
     }));
     const failures = results.filter((r) => r.status === "rejected");
     for (const r of results) if (r.status === "fulfilled") scored += r.value;
-    if (failures.length) console.error("contacts-match batch failures:", failures.map((f: any) => String(f.reason).slice(0, 200)));
+    const failureMessages = failures.map((f: any) => String(f.reason?.message || f.reason).slice(0, 200));
+    if (failures.length) console.error("contacts-match batch failures:", failureMessages);
 
     const { count: doneCount } = await supabase.from("connection_matches")
       .select("id", { count: "exact", head: true }).eq("campaign_profile_id", campaignId).eq("user_id", userId);
     const remaining = Math.max(0, (total || 0) - (doneCount || 0));
-    if (scored === 0 && failures.length) return json({ error: "scoring failed, try again", remaining, total }, 502);
-    return json({ scored, remaining, total: total || 0 });
+    if (scored === 0 && failures.length) {
+      // Say what happened; the dashboard shows it and lets the user resume where it stopped.
+      const detail = failureMessages[0] || "unknown error";
+      const transient = RETRYABLE.test(detail);
+      return json({
+        error: transient
+          ? `The AI service is busy (${detail.slice(0, 80)}). Click "Find matches" again to continue from where it stopped.`
+          : `Scoring failed: ${detail.slice(0, 120)}`,
+        remaining, total: total || 0, scored: 0,
+      }, transient ? 503 : 502);
+    }
+    return json({ scored, remaining, total: total || 0, ...(failures.length ? { warning: `${failures.length} batch(es) failed and will be retried on the next call` } : {}) });
   } catch (e) {
     console.error("contacts-match error:", e);
-    return json({ error: "internal_error" }, 500);
+    return json({ error: `internal_error: ${String((e as Error)?.message || e).slice(0, 160)}` }, 500);
   }
 });
