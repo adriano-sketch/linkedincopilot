@@ -31,7 +31,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; bg: 
   ready:                  { label: 'Ready',             icon: <Zap className="w-3 h-3" />,            bg: 'bg-slate-100',    text: 'text-slate-600',   dot: 'bg-slate-400' },
   post_found:             { label: 'Post Found',        icon: <Eye className="w-3 h-3" />,            bg: 'bg-amber-50',     text: 'text-amber-700',   dot: 'bg-amber-400' },
   post_liked:             { label: 'Post Liked',        icon: <CheckCircle2 className="w-3 h-3" />,   bg: 'bg-amber-50',     text: 'text-amber-700',   dot: 'bg-amber-400' },
-  comment_review:         { label: 'Comment to Approve', icon: <MessageSquare className="w-3 h-3" />, bg: 'bg-orange-50',    text: 'text-orange-700',  dot: 'bg-orange-400' },
+  comment_review:         { label: 'To approve', icon: <MessageSquare className="w-3 h-3" />, bg: 'bg-orange-50',    text: 'text-orange-700',  dot: 'bg-orange-400' },
   engagement_done:        { label: 'Engaged',           icon: <CheckCircle2 className="w-3 h-3" />,   bg: 'bg-emerald-50',   text: 'text-emerald-700', dot: 'bg-emerald-500' },
   error:                  { label: 'Error',             icon: <AlertTriangle className="w-3 h-3" />,  bg: 'bg-red-50',       text: 'text-red-700',     dot: 'bg-red-500' },
 };
@@ -43,6 +43,9 @@ interface LeadRowProps {
   isSelected?: boolean;
   onToggleSelect?: () => void;
   showVerification?: boolean;
+  /** Growth campaigns show the contact's post and the drafted comment instead of location and invite note. */
+  mode?: 'outreach' | 'growth';
+  onReview?: () => void;
 }
 
 function displayName(lead: CampaignLead): string {
@@ -77,7 +80,25 @@ function getInitialsColor(name: string): string {
   return INITIALS_COLORS[Math.abs(hash) % INITIALS_COLORS.length];
 }
 
-export default function LeadRow({ lead, onUpdateStatus, isUpdating, isSelected, onToggleSelect, showVerification }: LeadRowProps) {
+// Why a contact finished a cycle without a comment, in plain words.
+const GROWTH_NOTES: Record<string, string> = {
+  no_recent_posts: 'No post in the last 30 days',
+  no_own_posts: 'Only reposts lately',
+  no_posts_found: 'No posts yet',
+  cards_not_recognized: 'Could not read their activity page',
+};
+
+export default function LeadRow({ lead, onUpdateStatus, isUpdating, isSelected, onToggleSelect, showVerification, mode = 'outreach', onReview }: LeadRowProps) {
+  const isGrowth = mode === 'growth';
+  // The same statuses read differently for a contact you already know.
+  const growthLabel = isGrowth ? ({ ready: 'Waiting', new: 'Waiting', imported: 'Waiting', visiting_profile: 'Profile visited', post_liked: 'Liked, drafting', engagement_done: 'Resting' } as Record<string, string>)[lead.status] : undefined;
+  // Growth fields are not on the CampaignLead type.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g = lead as any;
+  const growthNote = isGrowth && lead.status === 'engagement_done'
+    ? (g.comment_posted_at ? `Commented ${format(new Date(g.comment_posted_at), 'MMM d')}`
+      : Object.entries(GROWTH_NOTES).find(([k]) => String(g.error_message || '').includes(k))?.[1] || null)
+    : null;
   const config = STATUS_CONFIG[lead.status] || STATUS_CONFIG.new;
   const name = displayName(lead);
 
@@ -139,27 +160,58 @@ export default function LeadRow({ lead, onUpdateStatus, isUpdating, isSelected, 
           <span className="text-sm text-foreground/80">{lead.company || <span className="text-muted-foreground/50">—</span>}</span>
         </td>
 
-        {/* Location */}
-        <td className="px-4 py-3.5">
-          <span className="text-sm text-foreground/80">{lead.location || <span className="text-muted-foreground/50">—</span>}</span>
-        </td>
+        {isGrowth ? (
+          <>
+            {/* Their post */}
+            <td className="px-4 py-3.5 min-w-[240px] max-w-[320px]">
+              {g.post_content ? (
+                <div className="space-y-1">
+                  <p className="text-xs leading-relaxed text-foreground/80 whitespace-normal break-words line-clamp-3">{String(g.post_content)}</p>
+                  {g.post_url && (
+                    <a href={String(g.post_url).split('#')[0]} target="_blank" rel="noopener noreferrer"
+                      className="text-primary hover:text-primary/80 text-[11px] font-medium inline-flex items-center gap-0.5">
+                      Open on LinkedIn <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                </div>
+              ) : <span className="text-muted-foreground/50 text-sm">—</span>}
+            </td>
 
-        {/* Invite Note */}
-        <td className="px-4 py-3.5 min-w-[260px] max-w-[340px]">
-          {lead.connection_note ? (
-            <p className="text-xs leading-relaxed text-muted-foreground whitespace-normal break-words italic">
-              "{lead.connection_note}"
-            </p>
-          ) : <span className="text-muted-foreground/50 text-sm">—</span>}
-        </td>
+            {/* Your comment */}
+            <td className="px-4 py-3.5 min-w-[240px] max-w-[320px]">
+              {g.comment_text ? (
+                <p className="text-xs leading-relaxed text-muted-foreground whitespace-normal break-words italic line-clamp-3">
+                  "{String(g.comment_text)}"
+                </p>
+              ) : <span className="text-muted-foreground/50 text-sm">—</span>}
+            </td>
+          </>
+        ) : (
+          <>
+            {/* Location */}
+            <td className="px-4 py-3.5">
+              <span className="text-sm text-foreground/80">{lead.location || <span className="text-muted-foreground/50">—</span>}</span>
+            </td>
+
+            {/* Invite Note */}
+            <td className="px-4 py-3.5 min-w-[260px] max-w-[340px]">
+              {lead.connection_note ? (
+                <p className="text-xs leading-relaxed text-muted-foreground whitespace-normal break-words italic">
+                  "{lead.connection_note}"
+                </p>
+              ) : <span className="text-muted-foreground/50 text-sm">—</span>}
+            </td>
+          </>
+        )}
 
         {/* Status */}
         <td className="px-4 py-3.5">
           <div className="space-y-1">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${config.bg} ${config.text}`}>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap ${config.bg} ${config.text}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
-              {config.label}
+              {growthLabel || config.label}
             </span>
+            {growthNote && <p className="text-[10px] text-muted-foreground">{growthNote}</p>}
 
             {isAutoCapturing && (
               <p className="text-[10px] text-primary flex items-center gap-1">
@@ -243,6 +295,11 @@ export default function LeadRow({ lead, onUpdateStatus, isUpdating, isSelected, 
             )}
             {lead.status === 'dm_ready' && (
               <span className="text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded-full">Review in Approval tab</span>
+            )}
+            {lead.status === 'comment_review' && onReview && (
+              <Button size="sm" className="h-7 text-xs rounded-full" onClick={onReview}>
+                <MessageSquare className="w-3 h-3 mr-1" /> Review comment
+              </Button>
             )}
             {lead.status === 'ready_for_dm' && (
               <Button size="sm" className="h-7 text-xs rounded-full" onClick={() => onUpdateStatus(lead.id, 'dm_sent', { dm_sent_at: new Date().toISOString(), followup_due_at: addDays(new Date(), FOLLOWUP_DELAY_DAYS).toISOString() })} disabled={isUpdating}>
