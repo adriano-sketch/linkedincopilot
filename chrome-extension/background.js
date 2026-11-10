@@ -617,6 +617,8 @@ async function sendHeartbeat() {
       if (ext.daily_limit_messages) LIMITS.messages = ext.daily_limit_messages;
       if (ext.daily_limit_visits) LIMITS.profile_visits = ext.daily_limit_visits;
       if (ext.is_paused !== undefined) queueProcessor.isPaused = ext.is_paused;
+      // The server's answer is in: the queue may run (or stay paused) from here on.
+      queueProcessor.pauseSynced = true;
       if (CONFIG.DEBUG) console.log('[Heartbeat] Schedule synced:', {
         days: LIMITS.active_days, hours: `${LIMITS.active_hours_start}-${LIMITS.active_hours_end}`, tz: LIMITS.timezone
       });
@@ -630,9 +632,15 @@ async function sendHeartbeat() {
 const queueProcessor = {
   isProcessing: false,
   isPaused: false,
+  // False until the first heartbeat of this service-worker life has read is_paused from the
+  // server. Chrome restarts the worker often and isPaused starts as false every time: on
+  // 2026-11-10 two actions ran (13:27 and 14:40) while the account was paused on the server,
+  // in the gap between a restart and the next heartbeat.
+  pauseSynced: false,
 
   async poll() {
     if (!supabase.accessToken || !supabase.userId) return;
+    if (!this.pauseSynced) return;
     if (this.isPaused) return;
     if (this.isProcessing) return;
     try {
