@@ -94,28 +94,31 @@ export default function Landing() {
   ];
 
   const trustCards = [
-    { emoji: '\uD83D\uDEE1\uFE0F', title: 'Daily Limits', desc: 'Max 80 profile visits and 40 connection requests per day. These limits are enforced automatically, you can\'t accidentally exceed them.' },
-    { emoji: '\u23F1\uFE0F', title: 'Human Delays', desc: 'Random pauses between every action, just like a real person browsing LinkedIn. No robotic patterns that trigger alerts.' },
-    { emoji: '\uD83D\uDD25', title: 'Warm-Up Built In', desc: 'New accounts start with lower daily limits and gradually ramp up over weeks, exactly how a real person would naturally grow their activity.' },
-    { emoji: '\uD83E\uDDD1\u200D\uD83D\uDCBB', title: 'Runs In Your Browser', desc: 'Our Chrome Extension acts as you, from your own browser and IP address. No cloud servers, no proxy farms. LinkedIn sees you, not a bot.' },
+    { emoji: '\uD83D\uDEE1\uFE0F', title: 'One Daily Budget', desc: 'Every profile page the extension opens counts toward one daily budget: visits, activity pages, likes, comments, invites. It starts at 15 a day and grows slowly to 40.' },
+    { emoji: '\uD83D\uDCC5', title: 'Weekly Invite Cap', desc: '100 connection requests a week across all your campaigns, about 20 a day. 20 comments and 50 messages a day.' },
+    { emoji: '\u270B', title: 'You Approve', desc: 'No comment or message goes out without your approval. You can edit or reject every one.' },
+    { emoji: '\u23F8\uFE0F', title: 'Stops On A Warning', desc: 'If LinkedIn shows a security check or a warning, everything pauses. Only you resume, and activity restarts at the lowest level.' },
   ];
+
 
 
   const faqs = [
     { q: 'What is LinkedIn automation?', a: 'LinkedIn automation is the practice of using software to automate repetitive LinkedIn tasks such as sending connection requests, follow-ups, and direct messages. LinkedIn Copilot is an AI-powered LinkedIn automation tool that goes beyond simple templates \u2014 it reads each prospect\'s full profile and generates personalized messages using Claude Sonnet, while validating leads against your Ideal Customer Profile using Claude Haiku.' },
-    { q: 'Is LinkedIn automation safe? Will I get banned?', a: 'LinkedIn Copilot is designed with safety as the top priority. It runs as a Chrome Extension in your own browser (no cloud servers or proxy farms), enforces strict daily limits (80 profile visits, 40 connection requests), uses random human-like delays between actions, and includes automatic warm-up for new accounts. These measures keep your activity well within LinkedIn\'s safe thresholds.' },
+    { q: 'Is LinkedIn automation safe? Will I get banned?', a: 'No tool can promise that. LinkedIn does not allow automation, and any tool that acts on your account carries some risk, whatever its marketing says. What we do is keep your activity close to what a careful person would do, and stop when LinkedIn objects. LinkedIn Copilot runs in your own browser, during the hours you set. Every profile page it opens counts toward one daily budget that starts at 15 and grows slowly to 40. Connection requests are capped at 100 a week across all campaigns, comments at 20 a day, messages at 50 a day. No comment or message goes out without your approval. If LinkedIn shows a security check or a warning, everything pauses until you decide to resume.' },
+    { q: 'What happens if LinkedIn shows me a warning?', a: 'Everything stops. When LinkedIn redirects to a security check, shows a warning or logs you out, the extension pauses all activity and marks the pause in your dashboard. Nothing restarts by itself. When you resume, the daily budget goes back to its lowest level and grows again over several weeks.' },
+    { q: 'Why are your limits lower than other tools?', a: 'Because LinkedIn does not publish its limits, and the numbers other tools advertise are their own guesses. We would rather do less and keep your account in good standing. The goal is 20 good conversations, not 500 invitations. We run every limit on our own accounts first, and when LinkedIn pushed back on one of them we lowered the numbers for everyone.' },
     { q: 'How does LinkedIn Copilot validate leads against my ICP?', a: 'LinkedIn Copilot uses Claude Haiku to automatically enrich every lead with full LinkedIn profile data, then validates them against your Ideal Customer Profile using real headlines, titles, career history, and company data. Leads that don\'t match your ICP are filtered out before any outreach begins.' },
     { q: 'How are the messages personalized?', a: 'Our AI agents capture full public LinkedIn profile data \u2014 experience, education, skills, about section \u2014 without using your account. Claude Sonnet then writes a unique message for each prospect, referencing their actual background. No templates, no {firstName} placeholders.' },
-    { q: 'How many connection requests can I send per day?', a: 'LinkedIn Copilot enforces a maximum of 40 connection requests and 80 profile visits per day. These limits are well within LinkedIn\'s safe thresholds and cannot be overridden. New accounts start with lower limits that gradually ramp up over weeks.' },
+    { q: 'How many connection requests can I send per day?', a: 'About 20 a day, with a ceiling of 100 a week across all your campaigns. The weekly number is what matters to LinkedIn, so we count every request against it, whichever campaign sent it. You can lower the limit, and you can raise it to 200 a week at most.' },
     { q: 'Where do I get leads?', a: 'LinkedIn Copilot works with leads from any source. Export from Sales Navigator, Instantly SuperSearch, Apollo, Lusha, or build your own list. Just upload a CSV with LinkedIn profile URLs and we handle the rest \u2014 enrichment, ICP validation, and personalized messaging.' },
     { q: 'What\'s the difference between LinkedIn Copilot and other automation tools?', a: 'Most LinkedIn automation tools use simple templates with {firstName} and {companyName} placeholders. LinkedIn Copilot reads the full LinkedIn profile \u2014 about section, career history, education, skills \u2014 and generates truly personalized messages using Claude Sonnet. It also includes AI-powered ICP validation, which filters out bad-fit leads before any outreach begins.' },
     { q: 'How long does it take to set up a campaign?', a: 'You can go from zero to personalized LinkedIn conversations in under 10 minutes. Upload a CSV with LinkedIn URLs, define your ICP criteria, set your message tone, and launch. The Chrome Extension handles everything automatically.' },
     { q: 'What happens after the free 50 outreach credits?', a: 'Your existing leads continue processing through the full outreach sequence. You just can\'t add new leads until you upgrade to Pro ($147/month for 1,000 outreach credits). No data is lost.' },
     { q: 'Can I run campaigns in other languages?', a: 'Yes. Claude Sonnet detects your prospect\'s language from their LinkedIn profile and writes in that language automatically. Over 30 languages are supported, including Portuguese, French, German, Spanish, and Japanese.' },
     { q: 'Can I edit the AI messages before sending?', a: 'Always. You maintain full control \u2014 you can approve, edit, regenerate, or reject any message. Nothing is ever sent without your explicit approval. You can review messages one by one or use batch approval.' },
-    { q: 'How does LinkedIn Copilot compare to manual outreach?', a: 'Manual LinkedIn outreach typically allows 15-20 personalized messages per day and takes 2-3 hours. LinkedIn Copilot automates the entire sequence \u2014 profile visits, follows, connection requests, and personalized DMs \u2014 processing up to 40 leads per day with AI-written messages that reference each prospect\'s actual background.' },
+    { q: 'How does LinkedIn Copilot compare to manual outreach?', a: 'Manual LinkedIn outreach typically allows 15-20 personalized messages per day and takes 2-3 hours. LinkedIn Copilot automates the entire sequence \u2014 profile visits, follows, connection requests, and personalized DMs \u2014 processing about 20 leads per day with AI-written messages that reference each prospect\'s actual background.' },
     { q: 'What are Ghost Profiles and why does LinkedIn Copilot skip them?', a: 'Ghost profiles are LinkedIn accounts with minimal activity \u2014 no about section, few skills, no education, barely any connections. These users rarely check LinkedIn and will never see your connection request or message. LinkedIn Copilot automatically detects and skips ghost profiles so you don\'t waste credits or daily limits on people who aren\'t actually active on the platform.' },
-    { q: 'What is Growth Mode?', a: 'Growth Mode is a separate campaign type designed to build your LinkedIn authority over time. Instead of sending connection requests and DMs, Growth Mode engages with content posted by thought leaders in your niche. It visits their profiles, finds their latest posts, likes them, and posts AI-generated contextual comments. This makes your profile visible to their audience and helps grow your follower count, connection quality, and overall LinkedIn presence organically.' },
+    { q: 'What is Growth Mode?', a: 'Growth Mode is a separate campaign type designed to build your LinkedIn authority over time. Instead of sending connection requests and DMs, Growth Mode engages with content posted by thought leaders in your niche. It finds their recent posts, likes them, and drafts a contextual comment for each one, which is posted only after you approve it. This makes your profile visible to their audience and helps grow your follower count, connection quality, and overall LinkedIn presence organically.' },
     { q: 'How does AI comment generation work?', a: 'When Growth Mode finds a post from one of your target profiles, Claude Haiku reads the full post content and generates a contextual comment. The AI rotates between five distinct comment styles \u2014 observation with a question, personal experience, expanding on a point, respectful challenge, and data-backed insight \u2014 so your engagement always looks natural and varied. Comments reference specific details from the post and never use generic phrases like "Great post!" or "Love this!".' },
     { q: 'What is the Network module?', a: 'Network grows your LinkedIn network with people who match your Ideal Customer Profiles, without importing any list. You describe one or more ICPs, and the Chrome extension runs LinkedIn people searches from your own account (no Sales Navigator needed), favoring 2nd-degree contacts you share connections with. Claude Haiku scores each person for fit, and qualified people receive a connection request without a note, inside your weekly limit. Network also watches posts from people in your ICPs and drafts a comment for each, shown next to the original post so you can spot business opportunities, edit, and approve one by one or in bulk.' },
     { q: 'Can I use Outreach and Growth modes together?', a: 'Yes. You can run Outreach campaigns and Growth campaigns simultaneously from the same LinkedIn account. They operate independently \u2014 Growth Mode engages with content from thought leaders in your niche, while Outreach Mode handles connection requests and personalized DMs to your leads. Using both together is a powerful strategy: Growth Mode warms up your profile and builds credibility, while Outreach Mode converts that credibility into conversations.' },
@@ -699,7 +702,7 @@ export default function Landing() {
           </motion.div>
 
           <motion.p {...fadeUp} className="text-center text-base text-gray-600 mt-10 max-w-lg mx-auto">
-            Every action is spaced with random delays, simulating natural human behavior. Max 80 profile visits and 40 connection requests per day, well within LinkedIn's safe thresholds.
+            Every action is spaced with random delays and runs only during the hours you set. About 20 connection requests a day, 100 a week at most.
           </motion.p>
         </div>
       </section>
@@ -710,10 +713,10 @@ export default function Landing() {
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-white mb-2">
-              Your Account Is Safe. <span className="text-gradient-gold text-glow">Period.</span>
+              Built To Protect <span className="text-gradient-gold text-glow">Your Account.</span>
             </h2>
             <p className="text-base text-slate-300 mt-3 max-w-2xl mx-auto">
-              LinkedIn Copilot uses browser-based automation with human-like behavior patterns, strict daily limits, and automatic warm-up. Your account stays safe because we follow the same rules a careful human would.
+              LinkedIn does not allow automation, and no tool can promise zero risk. What we can do is act the way a careful person would, from your own browser and during your own hours, and stop the moment LinkedIn objects.
             </p>
           </motion.div>
 
@@ -732,7 +735,7 @@ export default function Landing() {
           </div>
 
           <motion.p {...fadeUp} className="text-center text-sm text-slate-400 mt-10 max-w-xl mx-auto italic">
-            "We built LinkedIn Copilot for our own outreach first. If it wasn't safe, we wouldn't use it ourselves."
+            "We run every limit on our own accounts before it reaches yours."
           </motion.p>
         </div>
       </section>
@@ -797,7 +800,7 @@ export default function Landing() {
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> AI message generation (notes, DMs, follow-ups)</li>
                   <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> Smart lead filtering: ICP validation + ghost detection</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> Extension-based, safe automation</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> Runs in your own browser, with hard limits</li>
                   <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> You only spend credits on qualified leads</li>
                 </ul>
               </CardContent>
@@ -805,10 +808,11 @@ export default function Landing() {
             <Card className="bg-white/90 rounded-2xl shadow-sm border border-gray-100">
               <CardContent className="p-6 md:p-8">
                 <h3 className="font-bold text-sm mb-2">Safety limits</h3>
-                <p className="text-sm text-muted-foreground">Hard caps are enforced to keep accounts safe. New accounts ramp up automatically.</p>
+                <p className="text-sm text-muted-foreground">Hard caps you cannot exceed by accident. Activity starts low and grows over several weeks.</p>
                 <div className="mt-3 text-sm text-muted-foreground space-y-1">
-                  <p><span className="font-semibold text-foreground">40</span> connection requests/day</p>
-                  <p><span className="font-semibold text-foreground">80</span> profile visits/day</p>
+                  <p><span className="font-semibold text-foreground">100</span> connection requests/week</p>
+                  <p><span className="font-semibold text-foreground">15 to 40</span> profile pages/day</p>
+                  <p><span className="font-semibold text-foreground">20</span> comments/day, all approved by you</p>
                 </div>
               </CardContent>
             </Card>
