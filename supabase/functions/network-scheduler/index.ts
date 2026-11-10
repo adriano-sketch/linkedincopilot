@@ -121,12 +121,20 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     const invitesPaused = ext.invites_paused_until && new Date(ext.invites_paused_until).getTime() > now;
     const weekAgo = new Date(now - 7 * 24 * HOUR).toISOString();
     const dayAgo = new Date(now - 24 * HOUR).toISOString();
-    const [{ count: invitedWeek }, { count: invitedDay }] = await Promise.all([
+    // The weekly limit is one budget for the account: invites sent by campaigns (Outreach) count too.
+    const campaignInvites = (since: string) => supabase.from("action_queue").select("id", { count: "exact", head: true })
+      .eq("user_id", userId).eq("action_type", "send_connection_request").eq("status", "completed")
+      .not("campaign_lead_id", "is", null).gte("completed_at", since);
+    const [{ count: networkWeek }, { count: networkDay }, { count: campaignWeek }, { count: campaignDay }] = await Promise.all([
       supabase.from("network_prospects").select("id", { count: "exact", head: true })
         .eq("user_id", userId).gte("invited_at", weekAgo),
       supabase.from("network_prospects").select("id", { count: "exact", head: true })
         .eq("user_id", userId).gte("invited_at", dayAgo),
+      campaignInvites(weekAgo),
+      campaignInvites(dayAgo),
     ]);
+    const invitedWeek = (networkWeek || 0) + (campaignWeek || 0);
+    const invitedDay = (networkDay || 0) + (campaignDay || 0);
     const queuedInvites = pendingOf("send_connection_request").length;
     const dailyTarget = Math.ceil(weeklyLimit / 7);
     const weeklyRemaining = weeklyLimit - (invitedWeek || 0) - queuedInvites;

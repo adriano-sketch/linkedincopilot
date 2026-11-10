@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
     // Get all extension_status to know user schedules
     const { data: allExtensions } = await supabase
       .from("extension_status")
-      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests, daily_comment_limit, timezone");
+      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests, daily_limit_messages, weekly_invite_limit, invites_paused_until, daily_comment_limit, timezone");
 
     // Daily counter reset is handled by watchdog (last_limit_reset_at).
 
@@ -293,16 +293,17 @@ Deno.serve(async (req) => {
     const { data: recentBudgetActions } = await supabase
       .from("action_queue")
       .select("user_id, action_type, scheduled_for")
-      .in("action_type", ["visit_profile", "follow_profile", "find_latest_post", "post_comment"])
+      .in("action_type", ["visit_profile", "follow_profile", "find_latest_post", "post_comment", "send_dm", "send_followup"])
       .in("status", ["pending", "in_progress", "completed"])
       .gte("scheduled_for", new Date(nowMs - 30 * 3600 * 1000).toISOString())
       .order("scheduled_for", { ascending: false })
-      .limit(1000);
+      .limit(2000);
     const localWarmToday = new Map<string, number>();  // userId -> visit+follow scheduled in their day
     const localFindsToday = new Map<string, number>(); // userId -> find_latest_post scheduled in their day
     // Comments of BOTH engines (Network and Growth go through this queue as post_comment), so the
     // daily comment limit set in Network → Limits is one budget for the account.
     const localCommentsToday = new Map<string, number>();
+    const localMessagesToday = new Map<string, number>(); // send_dm + send_followup in their day
     const dayStartByUser = new Map<string, number>();
     for (const a of recentBudgetActions || []) {
       let dayStart = dayStartByUser.get(a.user_id);
@@ -312,9 +313,52 @@ Deno.serve(async (req) => {
       }
       if (!a.scheduled_for || new Date(a.scheduled_for).getTime() < dayStart) continue;
       const m = a.action_type === "post_comment" ? localCommentsToday
+        : (a.action_type === "send_dm" || a.action_type === "send_followup") ? localMessagesToday
         : a.action_type === "find_latest_post" ? localFindsToday : localWarmToday;
       m.set(a.user_id, (m.get(a.user_id) || 0) + 1);
     }
+
+    // ── Invites: ONE weekly budget for the account (extension_status.weekly_invite_limit) ──
+    // Campaign invites only had a per-day limit (40), which allowed 280 a week, and neither engine
+    // counted the other's invites. Both queue send_connection_request here, so count them all:
+    // rolling 7 days for the week, the user's local day for today.
+    const { data: recentInvites } = await supabase
+      .from("action_queue")
+      .select("user_id, scheduled_for")
+      .eq("action_type", "send_connection_request")
+      .in("status", ["pending", "in_progress", "completed"])
+      .gte("scheduled_for", new Date(nowMs - 7 * 24 * 3600 * 1000).toISOString())
+      .limit(5000);
+    const invitesWeek = new Map<string, number>();
+    const invitesToday = new Map<string, number>();
+    for (const a of recentInvites || []) {
+      invitesWeek.set(a.user_id, (invitesWeek.get(a.user_id) || 0) + 1);
+      let dayStart = dayStartByUser.get(a.user_id);
+      if (dayStart === undefined) {
+        dayStart = localClock((extensionMap.get(a.user_id) as any)?.timezone, nowMs).dayStartMs;
+        dayStartByUser.set(a.user_id, dayStart);
+      }
+      if (a.scheduled_for && new Date(a.scheduled_for).getTime() >= dayStart) {
+        invitesToday.set(a.user_id, (invitesToday.get(a.user_id) || 0) + 1);
+      }
+    }
+
+    // ── One daily budget for every profile page (/in/...) the extension opens ──
+    // The queue guard (action_queue_human_hours_guard) refuses campaign actions over this budget;
+    // reading it here lets the scheduler skip cleanly instead of collecting refusals.
+    const profilePageBudget = new Map<string, { limit: number; used: number }>();
+    const getProfilePageBudget = async (userId: string) => {
+      let b = profilePageBudget.get(userId);
+      if (!b) {
+        const { data, error: budgetErr } = await supabase.rpc("profile_page_budget", { p_user_id: userId });
+        const row = Array.isArray(data) ? data[0] : data;
+        // If the budget cannot be read, do not queue profile pages: the guard is the backstop anyway.
+        b = budgetErr || !row ? { limit: 0, used: 0 } : { limit: Number(row.day_limit) || 0, used: Number(row.used) || 0 };
+        if (budgetErr) console.error("profile_page_budget failed:", budgetErr.message);
+        profilePageBudget.set(userId, b);
+      }
+      return b;
+    };
 
     // ── Per-campaign balancing maps ──
     const connReqsPerUserCampaign = new Map<string, number>(); // "userId:campaignId" -> count
@@ -589,6 +633,10 @@ Deno.serve(async (req) => {
           if (actionType === "find_latest_post" && (localFindsToday.get(lead.user_id) || 0) >= dayLimit) {
             addSkip("daily_find_post_limit"); continue;
           }
+          {
+            const pageBudget = await getProfilePageBudget(lead.user_id);
+            if (pageBudget.used >= pageBudget.limit) { addSkip("daily_profile_page_budget"); continue; }
+          }
           // An approved comment that does not fit today's budget stays approved and goes out tomorrow.
           if (actionType === "post_comment" &&
               (localCommentsToday.get(lead.user_id) || 0) >= ((ext as any)?.daily_comment_limit ?? 20)) {
@@ -629,6 +677,23 @@ Deno.serve(async (req) => {
           const visitCampaignKey = `${lead.user_id}:${lead.campaign_profile_id}`;
           const campaignVisitCount = visitActionsPerUserCampaign.get(visitCampaignKey) || 0;
           if (campaignVisitCount >= perCampaignVisitLimit) { addSkip("campaign_visit_limit"); continue; }
+        }
+
+        // ── Account-wide invite and message budgets ──
+        if (actionType === "send_connection_request") {
+          const e = ext as any;
+          if (e?.invites_paused_until && new Date(e.invites_paused_until).getTime() > Date.now()) {
+            addSkip("invites_paused"); continue;
+          }
+          const weeklyLimit = e?.weekly_invite_limit ?? 100;
+          if ((invitesWeek.get(lead.user_id) || 0) >= weeklyLimit) { addSkip("weekly_invite_limit"); continue; }
+          // Spread the week over 5 days unless the user set a lower daily number.
+          const dailyInvites = Math.min(e?.daily_limit_connection_requests ?? 40, Math.ceil(weeklyLimit / 5));
+          if ((invitesToday.get(lead.user_id) || 0) >= dailyInvites) { addSkip("daily_invite_limit"); continue; }
+        }
+        if (actionType === "send_dm" || actionType === "send_followup") {
+          const dailyMessages = (ext as any)?.daily_limit_messages ?? 50;
+          if ((localMessagesToday.get(lead.user_id) || 0) >= dailyMessages) { addSkip("daily_message_limit"); continue; }
         }
 
         // ── Per-campaign connection request balancing ──
@@ -808,8 +873,19 @@ Deno.serve(async (req) => {
           if (actionType === "find_latest_post") {
             localFindsToday.set(lead.user_id, (localFindsToday.get(lead.user_id) || 0) + 1);
           }
+          {
+            const pageBudget = profilePageBudget.get(lead.user_id);
+            if (pageBudget) pageBudget.used++;
+          }
           if (actionType === "post_comment") {
             localCommentsToday.set(lead.user_id, (localCommentsToday.get(lead.user_id) || 0) + 1);
+          }
+          if (actionType === "send_connection_request") {
+            invitesWeek.set(lead.user_id, (invitesWeek.get(lead.user_id) || 0) + 1);
+            invitesToday.set(lead.user_id, (invitesToday.get(lead.user_id) || 0) + 1);
+          }
+          if (actionType === "send_dm" || actionType === "send_followup") {
+            localMessagesToday.set(lead.user_id, (localMessagesToday.get(lead.user_id) || 0) + 1);
           }
           // Track warming counters (visit/follow) for fair per-campaign distribution
           if (actionType === "visit_profile" || actionType === "follow_profile") {
