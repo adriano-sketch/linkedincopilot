@@ -343,6 +343,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── One daily budget for every profile page (/in/...) the extension opens ──
+    // The queue guard (action_queue_human_hours_guard) refuses campaign actions over this budget;
+    // reading it here lets the scheduler skip cleanly instead of collecting refusals.
+    const profilePageBudget = new Map<string, { limit: number; used: number }>();
+    const getProfilePageBudget = async (userId: string) => {
+      let b = profilePageBudget.get(userId);
+      if (!b) {
+        const { data, error: budgetErr } = await supabase.rpc("profile_page_budget", { p_user_id: userId });
+        const row = Array.isArray(data) ? data[0] : data;
+        // If the budget cannot be read, do not queue profile pages: the guard is the backstop anyway.
+        b = budgetErr || !row ? { limit: 0, used: 0 } : { limit: Number(row.day_limit) || 0, used: Number(row.used) || 0 };
+        if (budgetErr) console.error("profile_page_budget failed:", budgetErr.message);
+        profilePageBudget.set(userId, b);
+      }
+      return b;
+    };
+
     // ── Per-campaign balancing maps ──
     const connReqsPerUserCampaign = new Map<string, number>(); // "userId:campaignId" -> count
     const visitActionsPerUser = new Map<string, number>(); // "userId" -> count (visit+follow)
@@ -616,6 +633,10 @@ Deno.serve(async (req) => {
           if (actionType === "find_latest_post" && (localFindsToday.get(lead.user_id) || 0) >= dayLimit) {
             addSkip("daily_find_post_limit"); continue;
           }
+          {
+            const pageBudget = await getProfilePageBudget(lead.user_id);
+            if (pageBudget.used >= pageBudget.limit) { addSkip("daily_profile_page_budget"); continue; }
+          }
           // An approved comment that does not fit today's budget stays approved and goes out tomorrow.
           if (actionType === "post_comment" &&
               (localCommentsToday.get(lead.user_id) || 0) >= ((ext as any)?.daily_comment_limit ?? 20)) {
@@ -851,6 +872,10 @@ Deno.serve(async (req) => {
 
           if (actionType === "find_latest_post") {
             localFindsToday.set(lead.user_id, (localFindsToday.get(lead.user_id) || 0) + 1);
+          }
+          {
+            const pageBudget = profilePageBudget.get(lead.user_id);
+            if (pageBudget) pageBudget.used++;
           }
           if (actionType === "post_comment") {
             localCommentsToday.set(lead.user_id, (localCommentsToday.get(lead.user_id) || 0) + 1);
