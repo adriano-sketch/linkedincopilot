@@ -115,6 +115,38 @@ function computeThrottledTime(
   return scheduledTime.toISOString();
 }
 
+const DAY_KEYS_TZ = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** The user's clock right now: minutes since local midnight, weekday key, and the instant of local midnight. */
+function localClock(tz: string | null | undefined, nowMs: number): { minutes: number; day: string; dayStartMs: number } {
+  let parts: Record<string, string> = {};
+  try {
+    parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone: tz || "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date(nowMs)).map((p) => [p.type, p.value]));
+  } catch (_) {
+    const d = new Date(nowMs);
+    parts = { weekday: DAY_KEYS_TZ[d.getUTCDay()], hour: String(d.getUTCHours()), minute: String(d.getUTCMinutes()) };
+  }
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  return { minutes, day: String(parts.weekday || "").slice(0, 3).toLowerCase(), dayStartMs: nowMs - minutes * 60 * 1000 };
+}
+
+/** Minutes left in the user's active window (their timezone, their active days). 0 = outside the window. */
+function minutesLeftInActiveWindow(ext: any, nowMs: number): number {
+  const c = localClock(ext?.timezone, nowMs);
+  const days: string[] = Array.isArray(ext?.active_days) && ext.active_days.length ? ext.active_days : DAY_KEYS_TZ;
+  if (!days.includes(c.day)) return 0;
+  const toMin = (t: string, d: number) => {
+    const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : d;
+  };
+  const start = toMin(ext?.active_hours_start, 8 * 60);
+  const end = toMin(ext?.active_hours_end, 18 * 60);
+  if (c.minutes < start || c.minutes >= end) return 0;
+  return end - c.minutes;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -138,7 +170,7 @@ Deno.serve(async (req) => {
     // Get all extension_status to know user schedules
     const { data: allExtensions } = await supabase
       .from("extension_status")
-      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests");
+      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests, timezone");
 
     // Daily counter reset is handled by watchdog (last_limit_reset_at).
 
@@ -251,6 +283,34 @@ Deno.serve(async (req) => {
       .select("user_id, action_type, status, campaign_lead_id")
       .gte("created_at", todayStart.toISOString())
       .in("status", ["pending", "completed", "in_progress"]);
+
+    // ── Daily budget in the USER'S day (their timezone), counted straight from the queue ──
+    // The counters below (UTC day, resolved through a campaign_leads lookup) let 183 visits through on
+    // 2026-11-09 against a limit of 80: the UTC day rolls over at 19:00/20:00 New York time and the
+    // lookup-based count came back empty. This count needs no lookup: it reads user_id and
+    // scheduled_for from the queue rows themselves.
+    const nowMs = Date.now();
+    const { data: recentBudgetActions } = await supabase
+      .from("action_queue")
+      .select("user_id, action_type, scheduled_for")
+      .in("action_type", ["visit_profile", "follow_profile", "find_latest_post"])
+      .in("status", ["pending", "in_progress", "completed"])
+      .gte("scheduled_for", new Date(nowMs - 30 * 3600 * 1000).toISOString())
+      .order("scheduled_for", { ascending: false })
+      .limit(1000);
+    const localWarmToday = new Map<string, number>();  // userId -> visit+follow scheduled in their day
+    const localFindsToday = new Map<string, number>(); // userId -> find_latest_post scheduled in their day
+    const dayStartByUser = new Map<string, number>();
+    for (const a of recentBudgetActions || []) {
+      let dayStart = dayStartByUser.get(a.user_id);
+      if (dayStart === undefined) {
+        dayStart = localClock((extensionMap.get(a.user_id) as any)?.timezone, nowMs).dayStartMs;
+        dayStartByUser.set(a.user_id, dayStart);
+      }
+      if (!a.scheduled_for || new Date(a.scheduled_for).getTime() < dayStart) continue;
+      const m = a.action_type === "find_latest_post" ? localFindsToday : localWarmToday;
+      m.set(a.user_id, (m.get(a.user_id) || 0) + 1);
+    }
 
     // ── Per-campaign balancing maps ──
     const connReqsPerUserCampaign = new Map<string, number>(); // "userId:campaignId" -> count
@@ -404,6 +464,7 @@ Deno.serve(async (req) => {
       // ── Throttling: track how many actions we schedule per user per type
       // so we can spread scheduled_for across remaining business hours
       const userScheduleSlots = new Map<string, number>();
+      const windowFullKeys = new Set<string>(); // "userId:actionType" whose slots already run past today's window
 
       // ── Per-user caps: separate caps for checks vs warm-up vs other actions
       const LIGHTWEIGHT_ACTIONS = new Set(["check_connection_status", "check_reply_status"]);
@@ -507,6 +568,22 @@ Deno.serve(async (req) => {
           if (actionType === "send_followup" &&
               !campaignStageFollowup.get(lead.campaign_profile_id)) {
             addSkip("stage_followup_not_approved"); continue;
+          }
+        }
+
+        // Warm-up and engagement actions open LinkedIn pages as the user: only inside the user's
+        // active days/hours (their timezone) and within the daily budget of their own day.
+        let windowMinutesLeft = Infinity;
+        if (WARMUP_ACTIONS.has(actionType) || GROWTH_ACTIONS.has(actionType)) {
+          windowMinutesLeft = minutesLeftInActiveWindow(ext, Date.now());
+          if (windowMinutesLeft < 10) { addSkip("outside_active_hours"); continue; }
+          if (windowFullKeys.has(`${lead.user_id}:${actionType}`)) { addSkip("window_full_today"); continue; }
+          const dayLimit = ext?.daily_limit_visits ?? 80;
+          if (WARMUP_ACTIONS.has(actionType) && (localWarmToday.get(lead.user_id) || 0) >= dayLimit) {
+            addSkip("daily_visit_limit_local"); continue;
+          }
+          if (actionType === "find_latest_post" && (localFindsToday.get(lead.user_id) || 0) >= dayLimit) {
+            addSkip("daily_find_post_limit"); continue;
           }
         }
 
@@ -660,6 +737,13 @@ Deno.serve(async (req) => {
           const perSlotGapMs = slotIndex * (gapMin + Math.floor(Math.random() * gapRange)) * 60 * 1000;
           const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);
           const scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
+          // Past the end of today's active window: leave it for a later run (tomorrow's window).
+          if ((WARMUP_ACTIONS.has(actionType) || GROWTH_ACTIONS.has(actionType)) &&
+              scheduled.getTime() > now.getTime() + (windowMinutesLeft - 5) * 60 * 1000) {
+            windowFullKeys.add(slotKey);
+            addSkip("window_full_today");
+            continue;
+          }
           scheduledFor = scheduled.toISOString();
         } else {
           scheduledFor = computeThrottledTime(slotIndex, userStart, userEnd);
@@ -712,8 +796,12 @@ Deno.serve(async (req) => {
             connReqsPerUserCampaign.set(campaignKey, (connReqsPerUserCampaign.get(campaignKey) || 0) + 1);
           }
 
+          if (actionType === "find_latest_post") {
+            localFindsToday.set(lead.user_id, (localFindsToday.get(lead.user_id) || 0) + 1);
+          }
           // Track warming counters (visit/follow) for fair per-campaign distribution
           if (actionType === "visit_profile" || actionType === "follow_profile") {
+            localWarmToday.set(lead.user_id, (localWarmToday.get(lead.user_id) || 0) + 1);
             visitActionsPerUser.set(lead.user_id, (visitActionsPerUser.get(lead.user_id) || 0) + 1);
             const visitCampaignKey = `${lead.user_id}:${lead.campaign_profile_id}`;
             visitActionsPerUserCampaign.set(visitCampaignKey, (visitActionsPerUserCampaign.get(visitCampaignKey) || 0) + 1);
