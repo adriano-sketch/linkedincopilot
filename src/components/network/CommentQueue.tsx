@@ -63,6 +63,9 @@ function PostCard({
               </a>
             )}
           </div>
+          {post.fit_reason && (post as { campaign_lead_id?: string | null }).campaign_lead_id && (
+            <p className="m-0 text-[13px] text-muted-foreground">Why this post: {post.fit_reason}</p>
+          )}
           {(signal || (isSignal && post.signal_reason)) && (
             <div className="flex flex-wrap items-center gap-2">
               {signal && <Badge variant="outline" className={`rounded-full font-semibold ${signal.className}`}>{signal.label}</Badge>}

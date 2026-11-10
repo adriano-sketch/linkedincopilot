@@ -2,10 +2,19 @@
 // Generates contextual comments for Growth mode using Claude API.
 // Called by schedule-actions when a lead is in "post_liked" status. The draft goes to the
 // approval queue (monitored_posts) and the lead waits in "comment_review" until the user decides.
+//
+// Not every post gets a comment. Before anything is written the post is sorted against the user's
+// comment knowledge base (profiles.comment_topics / comment_avoid / comment_examples):
+//   on_topic  -> a comment written from what the user works on
+//   milestone -> a short, specific congratulation (new role, anniversary, award)
+//   off_topic -> no comment; the like already given is the whole interaction
+// Without a knowledge base there is nothing to judge relevance against: no comment is drafted.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
-import { commentRules, detectLang, isSkip, LANG_NAME, reviewComments, type SenderFacts } from "../_shared/comment-quality.ts";
+import {
+  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, reviewComments, triagePost, type SenderFacts,
+} from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, parseJsonArray } from "../_shared/network.ts";
 
 // Deployed with verify_jwt=false: authentication is enforced here.
@@ -33,12 +42,16 @@ const COMMENT_VARIANTS = [
   },
 ];
 
-function pickVariant(leadId: string): typeof COMMENT_VARIANTS[0] {
+// A "what about..." from a supplier under a CEO's post reads as a challenge, not as curiosity.
+const SENIOR_TITLE = /\b(ceo|coo|cfo|cto|cio|chief|president[ea]?|diretor[a]?(-presidente)?|director|vp|vice|superintendente|founder|fundador[a]?|owner|s[oó]ci[oa]|partner|head)\b/i;
+
+function pickVariant(leadId: string, authorTitle: string): typeof COMMENT_VARIANTS[0] {
+  const pool = SENIOR_TITLE.test(authorTitle) ? COMMENT_VARIANTS.filter((v) => v.key !== "respectful_challenge") : COMMENT_VARIANTS;
   let hash = 0;
   for (let i = 0; i < leadId.length; i++) {
     hash = ((hash << 5) - hash + leadId.charCodeAt(i)) | 0;
   }
-  return COMMENT_VARIANTS[Math.abs(hash) % COMMENT_VARIANTS.length];
+  return pool[Math.abs(hash) % pool.length];
 }
 
 function fail(error: string, status: number): Response {
@@ -82,7 +95,7 @@ serve(async (req) => {
         .select("icp_description, dm_tone, proof_points")
         .eq("id", lead.campaign_profile_id).eq("user_id", lead.user_id).maybeSingle(),
       supabase.from("profiles")
-        .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone")
+        .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone, comment_topics, comment_avoid, comment_examples")
         .eq("user_id", lead.user_id).maybeSingle(),
     ]);
     if (!Deno.env.get("ANTHROPIC_API_KEY")) {
@@ -90,25 +103,55 @@ serve(async (req) => {
       return fail("Comment generation is not configured", 500);
     }
 
-    const variant = pickVariant(campaign_lead_id);
     const postText = String(lead.post_content).substring(0, 2000);
+    // deno-lint-ignore no-explicit-any
+    const kb = (me || {}) as any;
     const facts: SenderFacts = {
       name: me?.sender_name, title: me?.sender_title, company: me?.company_name,
       about: [me?.company_description, campaign?.proof_points || me?.proof_points].filter(Boolean).join(" "),
       tone: campaign?.dm_tone || me?.dm_tone,
+      topics: kb.comment_topics, avoid: kb.comment_avoid, examples: kb.comment_examples,
     };
     const author = lead.full_name || null;
+    const authorTitle = String(lead.title || lead.profile_current_title || "");
+    const authorCompany = String(lead.company || lead.profile_current_company || "");
+
+    // No comment this cycle: the lead rests and tries again with a newer post in 7 days.
+    const restLead = async (action: string, details: Record<string, unknown>) => {
+      const ts = new Date().toISOString();
+      await supabase.from("campaign_leads").update({
+        status: "engagement_done", comment_text: null, post_url: null, post_content: null,
+        last_engagement_at: ts, next_action_at: new Date(Date.now() + 7 * 864e5).toISOString(), updated_at: ts,
+      }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "post_liked");
+      await supabase.from("activity_log").insert({ user_id: lead.user_id, campaign_lead_id, action, details });
+    };
+
+    if (!hasKnowledgeBase(facts)) {
+      await restLead("comment_skipped_no_context", { reason: "comment knowledge base is empty" });
+      console.log(`generate-comment: lead ${campaign_lead_id} liked only (no comment knowledge base)`);
+      return json({ success: true, skipped: "no_context", lead_id: campaign_lead_id });
+    }
+
+    const triage = await triagePost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
+    if (triage.kind === "off_topic") {
+      await restLead("comment_skipped_off_topic", { reason: triage.reason });
+      console.log(`generate-comment: lead ${campaign_lead_id} liked only (off topic: ${triage.reason})`);
+      return json({ success: true, skipped: "off_topic", reason: triage.reason, lead_id: campaign_lead_id });
+    }
+    const variant = triage.kind === "milestone"
+      ? { key: "milestone", hint: "" }
+      : pickVariant(campaign_lead_id, authorTitle);
 
     // The comment follows the POST's language, never the campaign's.
     const write = async (feedback: { previous: string; why: string } | null): Promise<{ comment: string; skip: string | null }> => {
       const user = [
-        `POST AUTHOR: ${author || "Unknown"} (${lead.title || lead.profile_current_title || "role unknown"}${(lead.company || lead.profile_current_company) ? `, ${lead.company || lead.profile_current_company}` : ""})`,
+        `POST AUTHOR: ${author || "Unknown"} (${authorTitle || "role unknown"}${authorCompany ? `, ${authorCompany}` : ""})`,
         `POST LANGUAGE: ${LANG_NAME[detectLang(postText)]}`,
         `POST:\n"""\n${postText}\n"""`,
-        `ANGLE: ${variant.hint}`,
+        variant.hint ? `ANGLE: ${variant.hint}` : "",
         feedback ? `Your previous draft was REJECTED: "${feedback.previous}"\nWhy: ${feedback.why}\nWrite a better one or skip.` : "",
       ].filter(Boolean).join("\n\n");
-      const system = `${commentRules(facts)}
+      const system = `${commentRules(facts, triage.kind, triage.topic || "one of the subjects listed above")}
 
 Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
       const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6 });
@@ -121,10 +164,10 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
     try {
       draft = await write(null);
       if (!draft.skip) {
-        let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment }], facts);
+        let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment }], facts, triage.kind);
         if (!rev.ok) {
           const second = await write({ previous: draft.comment, why: rev.reason });
-          if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment }], facts);
+          if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment }], facts, triage.kind);
           draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
         }
       }
@@ -135,15 +178,7 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
 
     // Nothing worth saying on this post: no comment this cycle, the lead tries again with a newer post in 7 days.
     if (draft.skip || !draft.comment) {
-      const now = new Date().toISOString();
-      await supabase.from("campaign_leads").update({
-        status: "engagement_done", comment_text: null, post_url: null, post_content: null,
-        last_engagement_at: now, next_action_at: new Date(Date.now() + 7 * 864e5).toISOString(), updated_at: now,
-      }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "post_liked");
-      await supabase.from("activity_log").insert({
-        user_id: lead.user_id, campaign_lead_id, action: "comment_skipped_quality",
-        details: { reason: draft.skip || "empty", variant: variant.key },
-      });
+      await restLead("comment_skipped_quality", { reason: draft.skip || "empty", variant: variant.key, kind: triage.kind });
       console.log(`generate-comment: skipped lead ${campaign_lead_id} for quality (${draft.skip})`);
       return json({ success: true, skipped: "quality", reason: draft.skip, lead_id: campaign_lead_id });
     }
@@ -175,6 +210,10 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
     // Another run already handled this lead (status moved on): nothing to queue.
     if (!claimed || claimed.length === 0) return json({ success: true, skipped: "lead not in post_liked", lead_id: campaign_lead_id });
 
+    // Shown next to the draft, so the user sees why this post got a comment.
+    const whyCommented = triage.kind === "milestone"
+      ? "Milestone of a contact"
+      : `Your subject: ${triage.topic || "matches what you work on"}`;
     const postUrl: string = lead.post_url || "";
     const urnMatch = postUrl.match(/urn:li:(?:activity|share|ugcPost):\d+/i);
     const postUrn = urnMatch ? urnMatch[0] : `growth:${campaign_lead_id}:${Date.now()}`;
@@ -192,6 +231,7 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
     } else if (existing) {
       const { error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
+        fit_reason: whyCommented,
       }).eq("id", existing.id);
       queueErr = error;
     } else {
@@ -207,7 +247,8 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
         suggested_comment: commentText,
         status: "pending",
         priority: 2,
-        fit_reason: campaign?.icp_description ? `Growth: ${String(campaign.icp_description).slice(0, 150)}` : "Growth campaign target",
+        fit_reason: whyCommented,
+        ...(triage.kind === "milestone" ? { signal_type: "milestone" } : {}),
       });
       queueErr = error;
     }
@@ -225,6 +266,8 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
       success: true,
       comment_text: commentText,
       variant: variant.key,
+      kind: triage.kind,
+      topic: triage.topic,
       lead_id: campaign_lead_id,
     });
   } catch (err) {
