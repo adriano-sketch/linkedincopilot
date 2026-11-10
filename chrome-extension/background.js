@@ -1505,6 +1505,14 @@ const queueProcessor = {
           const postNavUrl = postNavTab.url || '';
           console.log('[QueueProcessor] Post-navigation URL:', postNavUrl);
 
+          // LinkedIn sent us to a security checkpoint, a restriction notice or the login page.
+          // Stop everything at once: on 2026-11-10 the queue kept opening pages into the
+          // "unusual activity" checkpoint six more times after the first redirect.
+          if (/linkedin\.com\/(checkpoint|uas\/|authwall|login|m\/login)/i.test(postNavUrl)) {
+            await this.pauseForLinkedInWarning(postNavUrl);
+            throw new Error(`LINKEDIN_CHECKPOINT: paused everything, LinkedIn redirected to ${postNavUrl.slice(0, 80)}`);
+          }
+
           // For profile-based actions, the URL must contain /in/
           const expectedSlug = targetUrl.match(/\/in\/([^/?]+)/)?.[1];
           const actualSlug = postNavUrl.match(/\/in\/([^/?]+)/)?.[1];
@@ -1870,6 +1878,25 @@ const queueProcessor = {
   pause() {
     this.isPaused = true;
     console.log('[QueueProcessor] Paused');
+  },
+
+  // Pause here and on the server, so the schedulers stop queueing too. Only the user resumes.
+  async pauseForLinkedInWarning(url) {
+    this.pause();
+    if (!supabase.accessToken || !supabase.userId) return;
+    try {
+      await fetch(`${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}`, {
+        method: 'PATCH',
+        headers: { ...supabase.getHeaders(), 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          is_paused: true,
+          auto_paused_at: new Date().toISOString(),
+          auto_paused_reason: `LinkedIn showed a security checkpoint or logged the account out (${String(url).slice(0, 120)}). Paused automatically.`,
+        }),
+      });
+    } catch (e) {
+      console.error('[LC] Failed to store the automatic pause:', e);
+    }
   },
 
   resume() {
