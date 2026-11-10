@@ -56,7 +56,7 @@ async function handleAction(action) {
 
     // ── Growth Mode Actions ──
     case 'find_latest_post':
-      return await findLatestPost();
+      return await findLatestPost(action.expected_name);
     case 'like_post':
       return await likePost(action.post_url);
     case 'post_comment':
@@ -1822,64 +1822,29 @@ async function lcFindTargetCard(postUrl) {
   return null;
 }
 
-async function findLatestPost() {
-  // Verify we're on a profile page
+async function findLatestPost(expectedName) {
+  // The background script opens /in/<slug>/recent-activity/all/ before calling this. This function
+  // must not navigate: a page load would kill this script before it can answer.
   const currentPath = window.location.pathname;
-  if (!currentPath.startsWith('/in/')) {
-    throw new Error(`WRONG_PAGE: findLatestPost requires /in/... but got ${currentPath}`);
-  }
-
-  // Remember whose profile this is, to tell their own posts from reposts on the activity page.
-  const profileNameEl = document.querySelector('main h1, h1');
-  const profileName = profileNameEl ? profileNameEl.textContent.replace(/\s+/g, ' ').trim() : null;
-
-  await sleep(1000 + Math.random() * 1500);
-
-  // Strategy 1: Look for "Activity" / "Recent Activity" section on the profile
-  // LinkedIn shows a "Show all activity" or "See all posts" link
-  const activitySelectors = [
-    'a[href*="/recent-activity/"]',
-    'a[href*="/recent-activity/all/"]',
-    'a[href*="/recent-activity/shares/"]',
-    'a[href*="/detail/recent-activity/"]',
-  ];
-
-  let activityLink = null;
-  for (const sel of activitySelectors) {
-    activityLink = document.querySelector(sel);
-    if (activityLink) break;
-  }
-
-  // If no activity link found, try scrolling down to find the activity section
-  if (!activityLink) {
-    for (let i = 0; i < 5; i++) {
-      window.scrollBy(0, 600);
-      await sleep(800);
-      for (const sel of activitySelectors) {
-        activityLink = document.querySelector(sel);
-        if (activityLink) break;
-      }
-      if (activityLink) break;
-    }
-  }
-
-  // Extract the vanity name for the activity URL
   const vanityMatch = currentPath.match(/^\/in\/([^/]+)/);
   const vanityName = vanityMatch ? vanityMatch[1] : null;
-
-  if (vanityName) {
-    // Go straight to the person's posts. The generic activity link on the profile can point at the
-    // "comments" or "reactions" tab, where the first item is not one of their posts.
-    const activityUrl = `https://www.linkedin.com/in/${vanityName}/recent-activity/all/`;
-    console.log('[LinkedIn Copilot] Opening posts activity page:', activityUrl);
-    window.location.href = activityUrl;
-    await sleep(3000 + Math.random() * 2000);
-    await waitForLinkedInReady();
-  } else if (activityLink) {
-    activityLink.click();
-    await sleep(3000 + Math.random() * 2000);
-    await waitForLinkedInReady();
+  if (!vanityName) {
+    throw new Error(`WRONG_PAGE: findLatestPost requires /in/... but got ${currentPath}`);
   }
+  if (!/\/recent-activity\//.test(currentPath)) {
+    throw new Error(`WRONG_PAGE: findLatestPost requires the activity page but got ${currentPath}`);
+  }
+
+  // Whose activity this is, to tell their own posts from reposts: the lead's stored name, or
+  // what the page says when that is missing.
+  let profileName = (expectedName || '').replace(/\s+/g, ' ').trim() || null;
+  if (!profileName) {
+    const h1 = document.querySelector('main h1, h1');
+    profileName = h1 ? h1.textContent.replace(/\s+/g, ' ').trim() : null;
+  }
+
+  await sleep(1000 + Math.random() * 1500);
+  await waitForLinkedInReady();
 
   // Now we should be on the activity page — read the cards (newest first)
   await sleep(1500);
@@ -1913,7 +1878,11 @@ async function findLatestPost() {
   for (const card of cards.slice(0, 8)) {
     const actorKey = normName(card.actor);
     // Names come with suffixes (", PE, PMP") and screen-reader copies: compare by prefix.
-    const byOther = profileKey && actorKey && !actorKey.startsWith(profileKey.slice(0, Math.min(profileKey.length, 12))) &&
+    // The stored name can be the full legal name while LinkedIn shows a shorter one: the same
+    // first name also counts as the same person.
+    const sameFirst = profileKey.split(' ')[0].length >= 2 && profileKey.split(' ')[0] === actorKey.split(' ')[0];
+    const byOther = profileKey && actorKey && !sameFirst &&
+      !actorKey.startsWith(profileKey.slice(0, Math.min(profileKey.length, 12))) &&
       !profileKey.startsWith(actorKey.slice(0, Math.min(actorKey.length, 12)));
     const ageDays = parsePostAgeDays(card.ageLabel, pageLang);
     if (ageDays != null && (newestAgeDays == null || ageDays < newestAgeDays)) newestAgeDays = ageDays;
