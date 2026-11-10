@@ -64,6 +64,10 @@ plus the existing `send_connection_request` (no note) and `post_comment`. Result
   migration `20261107210000`), so the new result set is read from page 1.
 
 ## Growth campaigns: which post gets engaged (extension 0.4.3)
+- Since 0.4.4 the background script does the navigation for `find_latest_post` (straight to the activity page; the page
+  script never navigates, a page load would kill it before it answers), passes the lead's stored name to tell own
+  posts from reposts, and keeps the `#lcpost=` fingerprint on `like_post` / `post_comment` URLs (it was being
+  stripped by `normalizeLinkedInUrl`, which made both act on the first card).
 - `find_latest_post` opens `/in/<slug>/recent-activity/all/` directly (the profile's generic activity link can
   point at the Comments or Reactions tab) and reads the cards with `lcCollectActivityCards()`. The 2026 layout has no
   stable class names and no `data-urn`; a card is found from its relative-time label ("19h", "5d • Edited", "2 sem")

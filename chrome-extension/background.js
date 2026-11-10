@@ -1432,15 +1432,32 @@ const queueProcessor = {
     }
 
     // post_comment must open the post page first (it was missing from this list)
-    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'post_comment', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
+    // find_latest_post was missing too: the tab stayed wherever the previous action left it
+    // (invitation manager, a search page) and the page script answered WRONG_PAGE.
+    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'find_latest_post', 'like_post', 'post_comment', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
     if (actionTypes.includes(action.action_type)) {
       let targetUrl = action.action_data?.linkedin_url || action.linkedin_url;
       if (targetUrl) {
+        const rawTargetUrl = String(targetUrl);
         const normalized = normalizeLinkedInUrl(targetUrl);
         if (!normalized) {
           throw new Error(`Invalid LinkedIn URL: ${targetUrl}`);
         }
         targetUrl = normalized;
+
+        if (action.action_type === 'find_latest_post') {
+          // Open the person's activity page directly. The page script must not navigate by itself:
+          // a page load kills it before it can answer.
+          const slug = normalized.match(/\/in\/([^/?#]+)/)?.[1];
+          if (!slug) throw new Error(`Invalid profile URL for find_latest_post: ${rawTargetUrl}`);
+          targetUrl = `https://www.linkedin.com/in/${slug}/recent-activity/all/`;
+          action._expectedName = await this.lookupLeadName(action);
+        } else if (action.action_type === 'like_post' || action.action_type === 'post_comment') {
+          // The target card is identified by "#lcpost=<fingerprint>"; normalizeLinkedInUrl drops it.
+          const fp = rawTargetUrl.match(/#lcpost=[^#\s]+/);
+          action._postUrl = fp ? `${normalized}/${fp[0]}` : normalized;
+          if (fp) targetUrl = action._postUrl;
+        }
 
         // ── CLEANUP: Dismiss any open composer/overlay to prevent "Leave site?" dialog ──
         try {
@@ -1482,7 +1499,7 @@ const queueProcessor = {
         // Cross-contamination root cause: LinkedIn SPA sometimes doesn't complete
         // the navigation, leaving the tab on a /messaging/thread/ page from a
         // previous action. We must verify before injecting the content script.
-        const messagingActions = ['send_dm', 'send_followup', 'send_connection_request', 'visit_profile', 'follow_profile', 'like_post'];
+        const messagingActions = ['send_dm', 'send_followup', 'send_connection_request', 'visit_profile', 'follow_profile', 'find_latest_post', 'like_post', 'post_comment'];
         if (messagingActions.includes(action.action_type)) {
           const postNavTab = await chrome.tabs.get(tab.id);
           const postNavUrl = postNavTab.url || '';
@@ -1764,6 +1781,18 @@ const queueProcessor = {
     }
   },
 
+  // The lead's name as stored, so the activity page can tell the person's own posts from reposts.
+  async lookupLeadName(action) {
+    if (!action.campaign_lead_id) return null;
+    try {
+      const { data } = await supabase.select('campaign_leads', `id=eq.${action.campaign_lead_id}&select=full_name`, { limit: 1 });
+      return (data && data[0] && data[0].full_name) || null;
+    } catch (err) {
+      console.warn('[QueueProcessor] Lead name lookup failed (non-fatal):', err.message);
+      return null;
+    }
+  },
+
   sendMessageToTab(tabId, action) {
     return new Promise((resolve, reject) => {
       // send_dm/compose needs longer: 25s compose input retry + typing/verification/sending
@@ -1775,7 +1804,8 @@ const queueProcessor = {
           action_type: action.action_type,
           linkedin_url: action.action_data?.linkedin_url || action.linkedin_url,
           message_text: action.action_data?.message_text || action.message_text,
-          expected_name: action.action_data?.expected_name || null,
+          expected_name: action.action_data?.expected_name || action._expectedName || null,
+          post_url: action._postUrl || action.action_data?.post_url || null,
         }
       }, (response) => {
         clearTimeout(timeout);
