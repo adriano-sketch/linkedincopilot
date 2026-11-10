@@ -240,6 +240,17 @@ export default function Dashboard() {
 
   const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);
   const effectiveStatus = selectedCampaign?.status;
+  // Growth campaigns (existing contacts) have no enrichment, ICP validation, invites or DMs.
+  const isGrowth = (selectedCampaign as any)?.campaign_mode === 'growth';
+  const growthCount = (st: string) => leads.filter(l => l.status === st).length;
+  const growthCounts = {
+    visited: growthCount('visiting_profile'),
+    postFound: growthCount('post_found'),
+    liked: growthCount('post_liked'),
+    toApprove: growthCount('comment_review'),
+    engaged: growthCount('engagement_done'),
+  };
+  const growthStatusCounts = leads.reduce((acc, l) => { acc[l.status] = (acc[l.status] || 0) + 1; return acc; }, {} as Record<string, number>);
   const campaignIsActive = effectiveStatus === 'active';
   const campaignIsPaused = effectiveStatus === 'paused';
 
@@ -320,6 +331,8 @@ export default function Dashboard() {
         {selectedCampaignId && (
           <CampaignStepper
             campaignStatus={selectedCampaign?.status || null}
+            mode={isGrowth ? 'growth' : 'outreach'}
+            growthCounts={growthCounts}
             leadsCount={leads.length}
               pipelineCounts={{
                 connection_sent: pipelineCounts.connection_sent,
@@ -332,8 +345,8 @@ export default function Dashboard() {
           />
         )}
 
-        {/* Processing Progress */}
-        {selectedCampaignId && (
+        {/* Processing Progress (outreach only: growth contacts are not enriched or ICP-validated) */}
+        {selectedCampaignId && !isGrowth && (
           <ProcessingProgressCard
             leads={leads}
             campaignProfileId={selectedCampaignId}
@@ -503,14 +516,15 @@ export default function Dashboard() {
         {/* Pipeline Stats */}
         {selectedCampaignId && (
           <PipelineStats
-            counts={{
+            mode={isGrowth ? 'growth' : 'outreach'}
+            counts={isGrowth ? growthStatusCounts : {
               ...pipelineCounts,
               connected: acceptedDisplayCount,
               connection_accepted: 0,
             }}
             onStageClick={s => { setPipelineStageFilter(s); setPipelineFilter(null); }}
             activeFilter={pipelineStageFilter}
-            qualifiedTotal={leads.filter(l => l.icp_match === true).length}
+            qualifiedTotal={isGrowth ? undefined : leads.filter(l => l.icp_match === true).length}
           />
         )}
 

@@ -50,6 +50,37 @@ plus the existing `send_connection_request` (no note) and `post_comment`. Result
   in contacts-search) and RECENTLY_CHANGED_JOBS (`icps.changed_jobs`). `action_data.reader = 'sales_navigator'`.
 - `lcReadSalesNavSearch` reads the lead cards and resolves each lead to its public `linkedin.com/in/` URL with the same
   profile call Sales Navigator makes (`flagshipProfileUrl`). Leads that cannot be resolved are dropped.
+- Sales Navigator paints lead cards lazily and only while the tab is visible; the automation tab runs in the
+  background, so the cards are often never painted ("29 results" and the checkboxes are there, names and links are
+  not). Since v0.4.2 the reader, when it finds fewer cards than "N results" implies, re-reads the page through the
+  page's own lead-search call (`/sales-api/salesApiLeadSearch`, URL taken from the page's resource timing or built
+  from `location.search` with the query passed through untouched) and then resolves public URLs as usual.
+  `result.source` says which path was used (`cards`, `cards+search_call`, `search_call`); `result.results_total` is
+  the total of the search; `has_next` comes from that total. `sales_nav_unavailable` is now only returned for a
+  redirect away from the search, a 401/403 on the search call (no seat) or when both paths find nothing on a page
+  that is not an empty state.
+- Changing an ICP's search filters (titles, keywords, location, industries, seniority, company size, posted/changed
+  jobs) resets `people_search_page` to 0 (trigger `icp_reset_people_search_on_change`,
+  migration `20261107210000`), so the new result set is read from page 1.
+
+## Growth campaigns: which post gets engaged (extension 0.4.3)
+- `find_latest_post` opens `/in/<slug>/recent-activity/all/` directly (the profile's generic activity link can
+  point at the Comments or Reactions tab) and reads the cards with `lcCollectActivityCards()`. The 2026 layout has no
+  stable class names and no `data-urn`; a card is found from its relative-time label ("19h", "5d • Edited", "2 sem")
+  and parsed from its text (header "Feed post", actor line, age, body up to the Like/Comment row). Old layouts still
+  use the previous selectors.
+- Only the person's OWN posts from the last 30 days count (`GROWTH_MAX_POST_AGE_DAYS`). Reposts (cards with another
+  actor, or no text of their own), posts older than 30 days and cards without text are skipped; when nothing
+  qualifies the lead goes to `engagement_done` for 7 days with `error_message` saying why (`no_recent_posts`,
+  `no_own_posts`, `no_posts_found`, `cards_not_recognized`).
+- The 2026 layout does not expose the post's own URN (the only `/feed/update/urn:li:ugcPost:` links inside a card
+  belong to embedded media). When no own permalink exists, `post_url` is the activity page plus
+  `#lcpost=<fingerprint>` (first 80 normalised characters of the text). `like_post` and `post_comment` then locate
+  that card again with `lcFindTargetCard()` and act inside it, never on "the first card".
+- 2026 controls: the reaction button is `button[aria-label^="Reaction button state"]` ("no reaction" = not liked
+  yet); the comment editor is ProseMirror (`[contenteditable][role=textbox]`), typed with `execCommand('insertText')`
+  word by word (textContent writes are ignored by it); the submit button appears after typing, has the visible text
+  "Comment"/"Post" and no aria-label (the card's action button has aria-label "Comment" and no text).
 - Fallback: when a Sales Navigator page cannot be used (`sales_nav_unavailable`, or the action fails), the backend stamps
   `extension_status.sales_nav_failed_at` and uses the regular search for 24h. ICP runs are deleted (not counted); a
   contacts run is re-queued at once with the regular search. Changing the plan clears the stamp.

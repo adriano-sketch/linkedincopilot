@@ -1680,12 +1680,158 @@ function extractLinkedinSlug(url) {
 // Navigates to the "recent activity" / posts section of a profile
 // and extracts the most recent post's URL and text content.
 // ══════════════════════════════════════════════
+// Only the person's OWN posts from the last GROWTH_MAX_POST_AGE_DAYS count: liking and commenting on
+// a months-old post, or on something they merely reposted, reads as automation, not as attention.
+const GROWTH_MAX_POST_AGE_DAYS = 30;
+
+// Age of a post in days from LinkedIn's relative label ("2w", "3mo", "1yr", "5d", "3h", "2 sem", "3 m",
+// "1 a", "2 weeks ago", "há 3 meses"...). Returns null when no label is recognised.
+function parsePostAgeDays(label, pageLang) {
+  const t = (label || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  // Long forms first (visually-hidden text, tooltips): "3 weeks ago", "há 2 meses"
+  let m = t.match(/(\d+)\s*(minutes?|minutos?|hours?|horas?|days?|dias?|weeks?|semanas?|months?|meses|mês|years?|anos?)\b/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const u = m[2];
+    if (/^minut/.test(u)) return n / 1440;
+    if (/^(hour|hora)/.test(u)) return n / 24;
+    if (/^(day|dia)/.test(u)) return n;
+    if (/^(week|semana)/.test(u)) return n * 7;
+    if (/^(month|mes|mês)/.test(u)) return n * 30;
+    return n * 365;
+  }
+  // Compact forms: "5m" (en: minutes) / "5 m" (pt: months), "3h", "2d", "1w", "2 sem", "3mo", "1yr", "1 a"
+  m = t.match(/(^|[\s•·|])(\d+)\s*(min|mo|yr|sem|h|d|w|m|a)(?![a-z])/);
+  if (!m) return null;
+  const n = parseInt(m[2], 10);
+  const u = m[3];
+  const pt = /^pt/i.test(pageLang || '');
+  switch (u) {
+    case 'min': return n / 1440;
+    case 'h': return n / 24;
+    case 'd': return n;
+    case 'w': case 'sem': return n * 7;
+    case 'mo': return n * 30;
+    case 'yr': return n * 365;
+    case 'a': return pt ? n * 365 : null;
+    case 'm': return pt ? n * 30 : n / 1440;
+  }
+  return null;
+}
+
+// ── Activity page cards (works on the 2026 layout, which has no stable class names or data-urn) ──
+// A card is found from its relative-time label ("19h", "5d • Edited", "2 sem"): the label's
+// ancestor that holds exactly one such label is the post card. Old layouts are read with the
+// previous selectors. Each card yields: element, actor name, repost flag, age label, body text,
+// permalink (only an own-post /feed/update/urn:li:activity: link counts; ugcPost links inside a
+// card belong to embedded/shared media) and a text fingerprint used to find the card again later.
+const LC_AGE_LABEL_RE = /^(\d+)\s?(min|h|d|w|mo|yr|m|sem|a)(\s*[•·]\s*(edited|editado|modifié|editado))?$/i;
+const LC_CARD_HEADER_RE = /^(feed post|publicação( do| no)? feed|post)$/i;
+const LC_REPOST_RE = /reposted|republicou|compartilhou (isso|esta|este)|shared this|ha compartido|a republié|a partagé/i;
+const LC_ACTION_LINE_RE = /^(like|comment|repost|send|share|gostei|comentar|compartilhar|enviar|reagir|…\s*more|…\s*ver mais|\d[\d,.]*\s*(reactions?|comments?|reposts?|reações|comentários|compartilhamentos)|.*\band \d+ others?$|.*\be mais \d+ (outras? )?pessoas?$|activate to view larger image|play video|video player is loading\.?)$/i;
+
+function lcFingerprint(text) {
+  return (text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().slice(0, 80);
+}
+
+function lcCollectActivityCards() {
+  const main = document.querySelector('main') || document.body;
+  const cards = [];
+  const leafSpans = (root) => Array.from(root.querySelectorAll('span')).filter((s) => s.children.length === 0);
+
+  // Old layout
+  const oldSel = '.feed-shared-update-v2, [data-urn*="activity"], .profile-creator-shared-feed-update__container, .occludable-update';
+  const oldEls = Array.from(main.querySelectorAll(oldSel));
+  if (oldEls.length) {
+    for (const el of oldEls) {
+      const header = el.querySelector('.update-components-header, .feed-shared-header');
+      const actor = el.querySelector('.update-components-actor__name, .feed-shared-actor__name, .update-components-actor__title');
+      const sub = el.querySelector('.update-components-actor__sub-description, .feed-shared-actor__sub-description, .update-components-actor__description');
+      const textEl = el.querySelector('.feed-shared-text, .break-words, .update-components-text');
+      const link = el.querySelector('a[href*="/feed/update/urn:li:activity:"], a[href*="/posts/"]');
+      const urnEl = el.closest('[data-urn]') || el.querySelector('[data-urn]');
+      const urn = urnEl ? urnEl.getAttribute('data-urn') : null;
+      const text = textEl ? textEl.textContent.trim() : '';
+      cards.push({
+        el,
+        actor: actor ? actor.textContent.replace(/\s+/g, ' ').trim() : '',
+        isRepost: LC_REPOST_RE.test(header ? header.textContent : ''),
+        ageLabel: sub ? (sub.textContent.match(/\d+\s?(min|h|d|w|mo|yr|m|sem|a)\b/i) || [''])[0] : '',
+        text,
+        permalink: link ? link.href.split('?')[0] : (urn && /urn:li:activity:/.test(urn) ? `https://www.linkedin.com/feed/update/${urn}` : null),
+        fingerprint: lcFingerprint(text),
+      });
+    }
+    return cards;
+  }
+
+  // 2026 layout
+  const ageSpans = leafSpans(main).filter((s) => LC_AGE_LABEL_RE.test(s.textContent.trim()));
+  const seenEls = new Set();
+  for (const span of ageSpans) {
+    let el = span;
+    let card = span;
+    while (el && el !== main) {
+      const n = leafSpans(el).filter((s) => LC_AGE_LABEL_RE.test(s.textContent.trim())).length;
+      if (n > 1) break;
+      card = el;
+      el = el.parentElement;
+    }
+    if (card === span || seenEls.has(card)) continue;
+    seenEls.add(card);
+    const lines = card.innerText.replace(/[ \t]+/g, ' ').split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    const hIdx = lines.findIndex((l) => LC_CARD_HEADER_RE.test(l));
+    const before = lines.slice(0, Math.max(hIdx, 0)).join(' ');
+    const isRepost = LC_REPOST_RE.test(before) || (hIdx < 0 && LC_REPOST_RE.test(lines[0] || ''));
+    const actorLine = hIdx >= 0 ? (lines[hIdx + 1] || '') : (lines[0] || '');
+    const actor = actorLine.split(/\s[•·]\s/)[0].trim();
+    const ageLabel = span.textContent.trim();
+    const ageIdx = lines.findIndex((l) => l === ageLabel);
+    let body = lines.slice(ageIdx + 1).filter((l) => !/^(follow|following|seguir|seguindo|\+ ?follow)$/i.test(l));
+    const cut = body.findIndex((l) => LC_ACTION_LINE_RE.test(l));
+    if (cut >= 0) body = body.slice(0, cut);
+    const text = body.join('\n').replace(/\s*(…\s*more|…\s*ver mais|\.\.\.\s*more)$/i, '').trim();
+    const link = card.querySelector('a[href*="/feed/update/urn:li:activity:"], a[href*="/posts/"]');
+    cards.push({
+      el: card, actor, isRepost, ageLabel, text,
+      permalink: link ? link.href.split('?')[0] : null,
+      fingerprint: lcFingerprint(text),
+    });
+  }
+  return cards;
+}
+
+// Find the card a growth action refers to. post_url either is a real permalink (then the page IS the
+// post and the first card is it) or an activity-page URL with #lcpost=<fingerprint> (then the card
+// with that fingerprint is searched, scrolling the page a few times if needed).
+async function lcFindTargetCard(postUrl) {
+  const hashMatch = String(postUrl || window.location.href).match(/#lcpost=([^&]+)/);
+  const wanted = hashMatch ? decodeURIComponent(hashMatch[1]) : null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const cards = lcCollectActivityCards();
+    if (!wanted) {
+      if (cards.length) return cards[0];
+    } else {
+      const hit = cards.find((c) => c.fingerprint && (c.fingerprint === wanted || c.fingerprint.startsWith(wanted.slice(0, 40)) || wanted.startsWith(c.fingerprint.slice(0, 40))));
+      if (hit) return hit;
+    }
+    window.scrollBy(0, 700);
+    await sleep(1200 + Math.random() * 600);
+  }
+  return null;
+}
+
 async function findLatestPost() {
   // Verify we're on a profile page
   const currentPath = window.location.pathname;
   if (!currentPath.startsWith('/in/')) {
     throw new Error(`WRONG_PAGE: findLatestPost requires /in/... but got ${currentPath}`);
   }
+
+  // Remember whose profile this is, to tell their own posts from reposts on the activity page.
+  const profileNameEl = document.querySelector('main h1, h1');
+  const profileName = profileNameEl ? profileNameEl.textContent.replace(/\s+/g, ' ').trim() : null;
 
   await sleep(1000 + Math.random() * 1500);
 
@@ -1721,10 +1867,11 @@ async function findLatestPost() {
   const vanityMatch = currentPath.match(/^\/in\/([^/]+)/);
   const vanityName = vanityMatch ? vanityMatch[1] : null;
 
-  if (!activityLink && vanityName) {
-    // Navigate directly to the activity page
+  if (vanityName) {
+    // Go straight to the person's posts. The generic activity link on the profile can point at the
+    // "comments" or "reactions" tab, where the first item is not one of their posts.
     const activityUrl = `https://www.linkedin.com/in/${vanityName}/recent-activity/all/`;
-    console.log('[LinkedIn Copilot] No activity link found, navigating directly to:', activityUrl);
+    console.log('[LinkedIn Copilot] Opening posts activity page:', activityUrl);
     window.location.href = activityUrl;
     await sleep(3000 + Math.random() * 2000);
     await waitForLinkedInReady();
@@ -1734,103 +1881,89 @@ async function findLatestPost() {
     await waitForLinkedInReady();
   }
 
-  // Now we should be on the activity page — find the latest post
+  // Now we should be on the activity page — read the cards (newest first)
   await sleep(1500);
-
-  // LinkedIn activity feed: each post is in a container with data-urn or
-  // inside .feed-shared-update-v2 or similar
-  const postSelectors = [
-    '.feed-shared-update-v2',
-    '[data-urn*="activity"]',
-    '.profile-creator-shared-feed-update__container',
-    '.occludable-update',
-  ];
-
-  let postEl = null;
-  for (const sel of postSelectors) {
-    const posts = document.querySelectorAll(sel);
-    if (posts.length > 0) {
-      postEl = posts[0]; // First = most recent
-      break;
-    }
-  }
-
-  if (!postEl) {
-    // Try scrolling once more
+  let cards = lcCollectActivityCards();
+  if (cards.length === 0) {
     window.scrollBy(0, 400);
     await sleep(1500);
-    for (const sel of postSelectors) {
-      const posts = document.querySelectorAll(sel);
-      if (posts.length > 0) {
-        postEl = posts[0];
-        break;
-      }
-    }
+    cards = lcCollectActivityCards();
   }
 
-  if (!postEl) {
+  if (cards.length === 0) {
+    const emptyPage = /nothing to see for now|no posts yet|nada para ver|ainda não publicou/i.test((document.querySelector('main') || document.body).innerText || '');
     return {
       success: true,
       action: 'find_latest_post',
       found: false,
-      note: 'no_posts_found',
+      note: emptyPage ? 'no_posts_found' : 'cards_not_recognized',
       url: window.location.href,
     };
   }
 
-  // Extract post text
-  const textEl = postEl.querySelector(
-    '.feed-shared-text, .break-words, .update-components-text, [dir="ltr"]'
-  );
-  const postText = textEl ? textEl.textContent.trim().substring(0, 1500) : '';
-
-  // Extract post URL (the activity/post permalink)
-  let postUrl = null;
-  const postLink = postEl.querySelector(
-    'a[href*="/feed/update/"], a[href*="/posts/"], a[href*="/pulse/"]'
-  );
-  if (postLink) {
-    postUrl = postLink.href.split('?')[0]; // Clean URL
+  // Keep the first card that is the person's OWN post and recent enough. Reposts and old posts
+  // are skipped: liking or commenting on them reads as automation, not as attention.
+  const pageLang = document.documentElement.lang || '';
+  const normName = (s) => (s || '').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const profileKey = normName(profileName);
+  let chosen = null;
+  let postAgeDays = null;
+  let newestAgeDays = null;
+  const skipped = [];
+  for (const card of cards.slice(0, 8)) {
+    const actorKey = normName(card.actor);
+    // Names come with suffixes (", PE, PMP") and screen-reader copies: compare by prefix.
+    const byOther = profileKey && actorKey && !actorKey.startsWith(profileKey.slice(0, Math.min(profileKey.length, 12))) &&
+      !profileKey.startsWith(actorKey.slice(0, Math.min(actorKey.length, 12)));
+    const ageDays = parsePostAgeDays(card.ageLabel, pageLang);
+    if (ageDays != null && (newestAgeDays == null || ageDays < newestAgeDays)) newestAgeDays = ageDays;
+    if (card.isRepost || byOther) { skipped.push(card.isRepost ? 'repost' : 'other_author'); continue; }
+    if (ageDays != null && ageDays > GROWTH_MAX_POST_AGE_DAYS) { skipped.push(`old:${Math.round(ageDays)}d`); continue; }
+    if (!card.text || card.text.length < 20) { skipped.push('no_text'); continue; }
+    chosen = card;
+    postAgeDays = ageDays;
+    break;
   }
 
-  // Fallback: try data-urn attribute
-  if (!postUrl) {
-    const urnEl = postEl.closest('[data-urn]') || postEl.querySelector('[data-urn]');
-    const urn = urnEl ? urnEl.getAttribute('data-urn') : null;
-    if (urn) {
-      // Convert urn:li:activity:12345 → /feed/update/urn:li:activity:12345
-      postUrl = `https://www.linkedin.com/feed/update/${urn}`;
-    }
+  if (!chosen) {
+    return {
+      success: true,
+      action: 'find_latest_post',
+      found: false,
+      note: newestAgeDays != null && newestAgeDays > GROWTH_MAX_POST_AGE_DAYS ? 'no_recent_posts' : 'no_own_posts',
+      newest_post_age_days: newestAgeDays != null ? Math.round(newestAgeDays) : null,
+      skipped,
+      url: window.location.href,
+    };
   }
 
-  // Extract post author (to verify it's actually their post, not a reshare)
-  const authorEl = postEl.querySelector(
-    '.update-components-actor__name, .feed-shared-actor__name, [data-anonymize="person-name"]'
-  );
-  const postAuthor = authorEl ? authorEl.textContent.trim() : null;
+  // Expand "…more" so the comment is written from the whole text (harmless if it is not there)
+  const moreBtn = Array.from(chosen.el.querySelectorAll('button')).find((b) => /^(…\s*more|…\s*ver mais|\.\.\.\s*more|see more|ver mais)$/i.test(b.textContent.trim()));
+  if (moreBtn) {
+    moreBtn.click();
+    await sleep(800 + Math.random() * 500);
+    const refreshed = lcCollectActivityCards().find((c) => c.el === chosen.el);
+    if (refreshed && refreshed.text.length > chosen.text.length) chosen = refreshed;
+  }
 
-  // Extract engagement metrics if visible
-  const likesEl = postEl.querySelector(
-    '.social-details-social-counts__reactions-count, [aria-label*="reaction"], [aria-label*="like"]'
-  );
-  const likesText = likesEl ? likesEl.textContent.trim() : null;
+  // Post URL: a real permalink when the card has one; otherwise the activity page plus the card's
+  // fingerprint, which like_post / post_comment use to find the same card again.
+  const postUrl = chosen.permalink ||
+    `https://www.linkedin.com/in/${vanityName}/recent-activity/all/#lcpost=${encodeURIComponent(chosen.fingerprint)}`;
 
-  const commentsEl = postEl.querySelector(
-    '.social-details-social-counts__comments, [aria-label*="comment"]'
-  );
-  const commentsText = commentsEl ? commentsEl.textContent.trim() : null;
-
-  console.log(`[LinkedIn Copilot] Found latest post: ${postUrl}, author: ${postAuthor}, text: ${postText.substring(0, 80)}...`);
+  console.log(`[LinkedIn Copilot] Found latest post: ${postUrl}, author: ${chosen.actor}, age: ${chosen.ageLabel}, text: ${chosen.text.substring(0, 80)}...`);
 
   return {
     success: true,
     action: 'find_latest_post',
     found: true,
     post_url: postUrl,
-    post_content: postText,
-    post_author: postAuthor,
-    engagement: { likes: likesText, comments: commentsText },
-    note: postUrl ? 'post_found' : 'post_found_no_url',
+    post_content: chosen.text.substring(0, 1500),
+    post_author: chosen.actor || null,
+    post_age_days: postAgeDays != null ? Math.round(postAgeDays * 10) / 10 : null,
+    post_age_label: chosen.ageLabel || null,
+    skipped_before: skipped,
+    note: chosen.permalink ? 'post_found' : 'post_found_by_fingerprint',
   };
 }
 
@@ -1843,18 +1976,34 @@ async function findLatestPost() {
 async function likePost(postUrl) {
   await sleep(1000 + Math.random() * 1500);
 
-  // If we're on the post URL directly, find the like button
-  // If we're on the activity page, like the first post
+  // On a post page the whole document is the post. On an activity page the target is the card
+  // find_latest_post chose (by fingerprint in the URL hash), never blindly the first card.
+  let targetPost = document;
+  if (!window.location.href.includes('/feed/update/') && !/\/posts\//.test(window.location.pathname)) {
+    const card = await lcFindTargetCard(postUrl);
+    if (!card) {
+      return { success: true, action: 'like_post', liked: false, note: 'post_not_found_on_activity_page', url: window.location.href };
+    }
+    targetPost = card.el;
+    card.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(800 + Math.random() * 600);
+  }
 
-  const postContainers = document.querySelectorAll(
-    '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update, .profile-creator-shared-feed-update__container'
-  );
-
-  let targetPost = postContainers.length > 0 ? postContainers[0] : document;
-
-  // If we have a specific post URL and we're on that page, the main content is the post
-  if (postUrl && window.location.href.includes('/feed/update/')) {
-    targetPost = document;
+  // 2026 layout: one reaction button per card, labelled "Reaction button state: <state>"
+  const stateBtn = Array.from(targetPost.querySelectorAll('button[aria-label*="Reaction button state" i], button[aria-label*="Estado do botão de reação" i]'))
+    .find((b) => b.offsetParent !== null);
+  if (stateBtn) {
+    const label = (stateBtn.getAttribute('aria-label') || '').toLowerCase();
+    const already = !/no reaction|sem reação|nenhuma reação/.test(label);
+    if (already) {
+      return { success: true, action: 'like_post', liked: false, note: 'already_reacted', url: window.location.href };
+    }
+    stateBtn.click();
+    await sleep(1500 + Math.random() * 1000);
+    const after = (stateBtn.getAttribute('aria-label') || '').toLowerCase();
+    const confirmed = !/no reaction|sem reação|nenhuma reação/.test(after);
+    console.log(`[LinkedIn Copilot] Like post result (reaction button): ${confirmed ? 'liked' : 'uncertain'}`);
+    return { success: true, action: 'like_post', liked: true, confirmed, url: window.location.href };
   }
 
   // Find the Like button — LinkedIn uses various structures
@@ -1945,15 +2094,24 @@ async function postComment(postUrl, commentText) {
 
   await sleep(1000 + Math.random() * 1500);
 
-  // Find the first post container
-  const postContainers = document.querySelectorAll(
-    '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update'
-  );
-  const targetPost = postContainers.length > 0 ? postContainers[0] : document;
+  // On a post page the whole document is the post. On an activity page the target is the card
+  // find_latest_post chose (by fingerprint in the URL hash), never blindly the first card.
+  let targetPost = document;
+  if (!window.location.href.includes('/feed/update/') && !/\/posts\//.test(window.location.pathname)) {
+    const card = await lcFindTargetCard(postUrl);
+    if (!card) throw new Error('POST_NOT_FOUND: the post is no longer on the activity page');
+    targetPost = card.el;
+    card.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(800 + Math.random() * 600);
+  }
 
   // Step 1: Click the "Comment" button to open the comment box
+  // (the action button has aria-label "Comment" and no visible text; the submit button, which
+  // appears only after typing, has the visible text "Comment"/"Post" and no aria-label)
   const commentBtnSelectors = [
-    'button[aria-label*="Comment" i]',
+    'button[aria-label="Comment" i]',
+    'button[aria-label="Comentar" i]',
+    'button[aria-label*="Comment" i]:not([aria-label*="comments" i])',
     'button[aria-label*="Comentar" i]',
     'button[aria-label*="Commenter" i]',
     'button[aria-label*="Comentario" i]',
@@ -1964,6 +2122,7 @@ async function postComment(postUrl, commentText) {
     const candidates = targetPost.querySelectorAll(sel);
     for (const btn of candidates) {
       if (btn.offsetParent === null) continue;
+      if (/open control menu|reaction|repost|send|share/i.test(btn.getAttribute('aria-label') || '')) continue;
       commentBtn = btn;
       break;
     }
@@ -2003,10 +2162,11 @@ async function postComment(postUrl, commentText) {
     '.editor-content [contenteditable="true"]',
   ];
 
+  // The editor belongs to the target card when we are on an activity page
   let commentInput = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     for (const sel of commentInputSelectors) {
-      const el = document.querySelector(sel);
+      const el = (targetPost === document ? document : targetPost).querySelector(sel) || (attempt >= 3 ? document.querySelector(sel) : null);
       if (el && el.offsetParent !== null) {
         commentInput = el;
         break;
@@ -2020,32 +2180,42 @@ async function postComment(postUrl, commentText) {
     throw new Error('Comment input not found after clicking comment button');
   }
 
-  // Step 3: Focus and type the comment with human-like delays
+  // Step 3: Focus and type the comment with human-like delays.
+  // The 2026 editor is ProseMirror (TipTap): it ignores textContent writes, so text goes in through
+  // execCommand('insertText'), word by word; the old textContent path stays as a fallback.
   commentInput.focus();
   await sleep(300);
-
-  // Clear any existing content
-  commentInput.innerHTML = '';
-  await sleep(200);
-
-  // Type character by character with random delays for human-like behavior
   const text = commentText.trim();
-  for (let i = 0; i < text.length; i++) {
-    // Insert text progressively
-    commentInput.textContent = text.substring(0, i + 1);
-    // Dispatch input event so LinkedIn's React picks it up
-    commentInput.dispatchEvent(new Event('input', { bubbles: true }));
-
-    // Random typing speed: fast for most chars, occasional pause
-    if (i % 20 === 0 && i > 0) {
-      await sleep(200 + Math.random() * 400); // Thinking pause
-    } else {
-      await sleep(30 + Math.random() * 70);
+  const useExec = typeof document.execCommand === 'function' && commentInput.getAttribute('contenteditable') === 'true';
+  let typed = false;
+  if (useExec) {
+    try {
+      document.execCommand('selectAll', false, null);
+      document.execCommand('delete', false, null);
+      const words = text.split(/(\s+)/);
+      for (const w of words) {
+        if (!w) continue;
+        if (!document.execCommand('insertText', false, w)) throw new Error('insertText refused');
+        if (/\S/.test(w)) await sleep(60 + Math.random() * 120); // roughly a word at a time
+        if (Math.random() < 0.08) await sleep(300 + Math.random() * 500); // thinking pause
+      }
+      typed = (commentInput.textContent || '').trim().length >= Math.min(text.length, 20);
+    } catch (e) {
+      console.warn('[LinkedIn Copilot] execCommand typing failed, falling back:', e && e.message);
+      typed = false;
     }
   }
-
-  // Final input event
-  commentInput.dispatchEvent(new Event('input', { bubbles: true }));
+  if (!typed) {
+    commentInput.innerHTML = '';
+    await sleep(200);
+    for (let i = 0; i < text.length; i++) {
+      commentInput.textContent = text.substring(0, i + 1);
+      commentInput.dispatchEvent(new Event('input', { bubbles: true }));
+      if (i % 20 === 0 && i > 0) await sleep(200 + Math.random() * 400);
+      else await sleep(30 + Math.random() * 70);
+    }
+    commentInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   await sleep(1000 + Math.random() * 500);
 
   // Step 4: Find and click the Submit/Post button for the comment
@@ -2058,31 +2228,32 @@ async function postComment(postUrl, commentText) {
     'button[type="submit"]',
   ];
 
-  let submitBtn = null;
-  for (const sel of submitSelectors) {
-    const candidates = document.querySelectorAll(sel);
-    for (const btn of candidates) {
-      if (btn.offsetParent === null) continue;
-      if (btn.disabled) continue;
-      submitBtn = btn;
-      break;
+  const SUBMIT_TEXT_RE = /^(comment|post|publicar|comentar|publier|enviar|submit)$/i;
+  const findSubmit = () => {
+    // Prefer a button close to the editor (2026 layout: visible text "Comment", no aria-label)
+    let el = commentInput;
+    for (let depth = 0; el && el !== document.body && depth < 12; depth++) {
+      const near = Array.from(el.querySelectorAll('button')).find((b) =>
+        b.offsetParent !== null && !b.disabled && b !== commentBtn &&
+        SUBMIT_TEXT_RE.test((b.textContent || '').trim()) && !/open control menu|reaction/i.test(b.getAttribute('aria-label') || ''));
+      if (near) return near;
+      el = el.parentElement;
     }
-    if (submitBtn) break;
-  }
-
-  // Fallback: find "Post" button near the comment input
-  if (!submitBtn) {
+    for (const sel of submitSelectors) {
+      const btn = Array.from(document.querySelectorAll(sel)).find((b) => b.offsetParent !== null && !b.disabled);
+      if (btn) return btn;
+    }
     const commentBox = commentInput.closest('.comments-comment-box, .comments-comment-texteditor, form');
     if (commentBox) {
-      const btns = commentBox.querySelectorAll('button');
-      for (const btn of btns) {
-        const text = (btn.textContent || '').toLowerCase().trim();
-        if ((text === 'post' || text === 'publicar' || text === 'publier' || text === 'submit') && !btn.disabled) {
-          submitBtn = btn;
-          break;
-        }
-      }
+      return Array.from(commentBox.querySelectorAll('button')).find((b) => SUBMIT_TEXT_RE.test((b.textContent || '').trim()) && !b.disabled) || null;
     }
+    return null;
+  };
+
+  let submitBtn = null;
+  for (let attempt = 0; attempt < 5 && !submitBtn; attempt++) {
+    submitBtn = findSubmit();
+    if (!submitBtn) await sleep(800);
   }
 
   if (!submitBtn) {

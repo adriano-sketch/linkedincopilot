@@ -116,13 +116,35 @@ export function useContactActions(campaignId: string | null) {
   /** Scores every connection not yet scored for this campaign, calling the function in a loop. */
   const score = async (description: string, onProgress: (done: number, total: number) => void) => {
     if (!campaignId) throw new Error('Campaign not created yet');
+    // The function's own error message (its JSON body) instead of supabase-js's generic
+    // "Edge Function returned a non-2xx status code"; also tells us whether to retry.
+    const readError = async (error: unknown): Promise<{ message: string; status: number }> => {
+      const ctx = (error as { context?: Response })?.context;
+      const status = ctx?.status ?? 0;
+      try {
+        const body = ctx ? await ctx.clone().json() : null;
+        if (body?.error) return { message: String(body.error), status };
+      } catch { /* not JSON */ }
+      return { message: error instanceof Error ? error.message : 'Matching failed, try again', status };
+    };
     let first = true;
+    let transientRetries = 0;
     for (let guard = 0; guard < 200; guard++) {
       const { data, error } = await supabase.functions.invoke('contacts-match', {
         body: { op: 'score', campaign_id: campaignId, ...(first ? { description } : {}) },
       });
       first = false;
-      if (error) throw error;
+      if (error) {
+        const { message, status } = await readError(error);
+        // A busy model API (503) or a gateway hiccup: wait and resume from where it stopped.
+        if ((status === 503 || status === 502 || status === 504 || status === 0) && transientRetries < 3) {
+          transientRetries++;
+          await new Promise((r) => setTimeout(r, 3000 * transientRetries));
+          continue;
+        }
+        throw new Error(message);
+      }
+      transientRetries = 0;
       const total = Number(data?.total) || 0;
       const remaining = Number(data?.remaining) || 0;
       onProgress(total - remaining, total);
