@@ -107,7 +107,7 @@ THE PERSON:
 ${factsBlock(f)}
 
 Classify the post as exactly one of:
-- "on_topic": the post is substantially about one of the subjects listed under "Subjects they have something to say about". A passing mention is not enough: the subject must be what the post is about, or a clear part of it.
+- "on_topic": the post is substantially about one of the subjects listed under "Subjects they have something to say about". A passing mention is not enough: the subject must be what the post is about, or a clear part of it. Belonging to the same department or sharing a word is not enough either: a post about training maintenance crews, a new procedure manual or a team event is NOT a post about "maintenance prioritization" or "predictive maintenance". Ask yourself: could this person add something specific from that subject without changing the topic of the post? If not, it is off_topic.
 - "milestone": the post announces a personal or professional milestone of the AUTHOR (new job or role, promotion, work anniversary, award, graduation, retirement). Company marketing and project announcements are NOT milestones.
 - "off_topic": anything else, including posts about a subject the person stays out of, job openings, sponsorships, institutional announcements, politics, motivational text, and posts from the right industry that are not about the person's subjects.
 When a post is both a milestone and on topic, answer "on_topic". When in doubt, answer "off_topic": no comment is better than a comment with nothing behind it.
@@ -175,7 +175,9 @@ export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic 
   const lens = hasKnowledgeBase(f) && topic
     ? `\nThis post was chosen because it touches a subject the sender works on${topic ? ` (${topic})` : ""}. Write from that
 knowledge: the question or consideration must be one that someone who works on that subject would raise. Do not drift
-to parts of the post that are outside the sender's subjects (contracts, finance, politics, institutional news).\n`
+to parts of the post that are outside the sender's subjects (contracts, finance, politics, institutional news).
+The comment must stay on what the post actually describes. If connecting the post to the sender's subject needs a
+stretch, or you are not sure what a technical term in the post means, SKIP: a forced link is worse than no comment.\n`
     : "";
   return `You write LinkedIn comments for this person. These are the ONLY facts you know about them:
 ${factsBlock(f)}
@@ -242,7 +244,8 @@ ${factsBlock(f)}
 6. opens with praise or flattery, or sounds like AI or marketing copy;
 7. is not in the same language as the post;
 8. questions the author's competence or decisions, or reads like an auditor or an interviewer rather than a peer;
-9. is about a part of the post unrelated to the subjects the sender works on, when those subjects are listed above.
+9. is about a part of the post unrelated to the subjects the sender works on, when those subjects are listed above;
+10. changes the topic: it asks about something the post does not describe, or uses a technical term from the post in a way that does not fit what the post says.
 Approve only comments a respected peer would be glad to have written.
 Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rejected: max 20 words, what to fix>"}]`;
 
