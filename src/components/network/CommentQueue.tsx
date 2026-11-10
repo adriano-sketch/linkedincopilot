@@ -18,7 +18,7 @@ const SIGNALS: Record<string, { label: string; className: string }> = {
   relationship: { label: 'Relationship', className: 'bg-secondary text-foreground border-transparent' },
 };
 
-function PostCard({
+export function PostCard({
   post, selected, onToggle, text, onText, onApprove, onDismiss, busy, mode, onUnschedule,
 }: {
   post: MonitoredPost;
@@ -118,9 +118,9 @@ function PostCard({
   );
 }
 
-export default function CommentQueue({ initialFilter = 'pending', hidePending = false }: { initialFilter?: PostFilter; hidePending?: boolean } = {}) {
+export default function CommentQueue({ initialFilter = 'pending', hidePending = false, campaignId }: { initialFilter?: PostFilter; hidePending?: boolean; campaignId?: string } = {}) {
   const [filter, setFilter] = useState<PostFilter>(initialFilter);
-  const { posts, isLoading, approve, dismiss, saveDraft, unschedule } = useMonitoredPosts(filter);
+  const { posts, isLoading, approve, dismiss, saveDraft, unschedule } = useMonitoredPosts(filter, campaignId);
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [onlyOpportunities, setOnlyOpportunities] = useState(false);
@@ -187,10 +187,12 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
             <TabsTrigger value="dismissed">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={onlyOpportunities} onCheckedChange={v => setOnlyOpportunities(v === true)} />
-          Only business signals
-        </label>
+        {!campaignId && (
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={onlyOpportunities} onCheckedChange={v => setOnlyOpportunities(v === true)} />
+            Only business signals
+          </label>
+        )}
       </div>
 
       {filter === 'pending' && visible.length > 0 && (
@@ -222,7 +224,9 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
             <MessageSquareText className="w-8 h-8 mx-auto text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
               {filter === 'pending'
-                ? 'Nothing to review right now. New posts from your ICPs are checked a few times a day.'
+                ? (campaignId
+                  ? 'Nothing to review right now. A draft appears here each time one of your contacts publishes a post worth commenting on.'
+                  : 'Nothing to review right now. New posts from your ICPs are checked a few times a day.')
                 : 'Nothing here yet.'}
             </p>
           </CardContent>
