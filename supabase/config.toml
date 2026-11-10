@@ -70,3 +70,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.contacts-search]
 verify_jwt = false
+[functions.extension-offline-alert]
+verify_jwt = false
