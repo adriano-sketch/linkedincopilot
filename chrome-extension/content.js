@@ -1783,13 +1783,17 @@ function lcCollectActivityCards() {
     const lines = card.innerText.replace(/[ \t]+/g, ' ').split(/\n+/).map((l) => l.trim()).filter(Boolean);
     const hIdx = lines.findIndex((l) => LC_CARD_HEADER_RE.test(l));
     const before = lines.slice(0, Math.max(hIdx, 0)).join(' ');
-    const isRepost = LC_REPOST_RE.test(before) || (hIdx < 0 && LC_REPOST_RE.test(lines[0] || ''));
-    const actorLine = hIdx >= 0 ? (lines[hIdx + 1] || '') : (lines[0] || '');
-    const actor = actorLine.split(/\s[•·]\s/)[0].trim();
     const ageLabel = span.textContent.trim();
     const ageIdx = lines.findIndex((l) => l === ageLabel);
+    // "<Name> reposted this" can sit above the header or right below it, as the first line of the
+    // actor block: look at everything before the age label, not only at what precedes the header.
+    const headEnd = ageIdx >= 0 ? ageIdx : Math.max(hIdx, 0) + 3;
+    const isRepost = LC_REPOST_RE.test(before) || LC_REPOST_RE.test(lines.slice(0, headEnd).join(' '));
+    const actorLine = hIdx >= 0 ? (lines[hIdx + 1] || '') : (lines[0] || '');
+    const actor = actorLine.split(/\s[•·]\s/)[0].trim();
     let body = lines.slice(ageIdx + 1).filter((l) => !/^(follow|following|seguir|seguindo|\+ ?follow)$/i.test(l));
-    const cut = body.findIndex((l) => LC_ACTION_LINE_RE.test(l));
+    // "Show translation" closes the text; what follows is the link preview and the counters.
+    const cut = body.findIndex((l) => LC_ACTION_LINE_RE.test(l) || /^(show translation|see translation|ver tradução|mostrar tradução)$/i.test(l));
     if (cut >= 0) body = body.slice(0, cut);
     const text = body.join('\n').replace(/\s*(…\s*more|…\s*ver mais|\.\.\.\s*more)$/i, '').trim();
     const link = card.querySelector('a[href*="/feed/update/urn:li:activity:"], a[href*="/posts/"]');
