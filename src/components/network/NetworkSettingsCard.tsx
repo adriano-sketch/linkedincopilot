@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Radar } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNetworkSettings, type NetworkSettings } from '@/hooks/useNetwork';
+import OfflineAlertSettings from './OfflineAlertSettings';
 
 const BUDGET_BY_TIER: Record<NetworkSettings['linkedin_account_tier'], number> = {
   free: 250,
@@ -143,6 +144,7 @@ export default function NetworkSettingsCard() {
         <Button onClick={submit} disabled={save.isPending}>
           {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save limits
         </Button>
+        <OfflineAlertSettings />
       </CardContent>
     </Card>
   );
