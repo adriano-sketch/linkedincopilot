@@ -700,7 +700,20 @@ export default function Dashboard() {
           {/* Approval Queue Tab */}
           <TabsContent value="approval">
             {isGrowth && selectedCampaignId ? (
-              <CommentQueue campaignId={selectedCampaignId} />
+              <div className="space-y-4">
+                {!String((profile as { comment_topics?: string | null } | null)?.comment_topics || '').trim() && (
+                  <Card className="border-orange-300 bg-orange-50">
+                    <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
+                      <p className="text-sm m-0">
+                        <span className="font-semibold">Tell the AI what you comment on.</span>{' '}
+                        Until you list your subjects, contacts' posts get a like and no comment is drafted.
+                      </p>
+                      <Link to="/settings#comment-knowledge-base"><Button size="sm">Add your subjects</Button></Link>
+                    </CardContent>
+                  </Card>
+                )}
+                <CommentQueue campaignId={selectedCampaignId} />
+              </div>
             ) : (
             <DmApprovalQueue
               leads={leads}
