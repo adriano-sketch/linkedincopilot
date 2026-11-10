@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
     // Get all extension_status to know user schedules
     const { data: allExtensions } = await supabase
       .from("extension_status")
-      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests, timezone");
+      .select("user_id, is_connected, is_paused, active_days, active_hours_start, active_hours_end, visits_today, actions_today, connection_requests_today, messages_today, daily_limit_visits, daily_limit_connection_requests, daily_comment_limit, timezone");
 
     // Daily counter reset is handled by watchdog (last_limit_reset_at).
 
@@ -293,13 +293,16 @@ Deno.serve(async (req) => {
     const { data: recentBudgetActions } = await supabase
       .from("action_queue")
       .select("user_id, action_type, scheduled_for")
-      .in("action_type", ["visit_profile", "follow_profile", "find_latest_post"])
+      .in("action_type", ["visit_profile", "follow_profile", "find_latest_post", "post_comment"])
       .in("status", ["pending", "in_progress", "completed"])
       .gte("scheduled_for", new Date(nowMs - 30 * 3600 * 1000).toISOString())
       .order("scheduled_for", { ascending: false })
       .limit(1000);
     const localWarmToday = new Map<string, number>();  // userId -> visit+follow scheduled in their day
     const localFindsToday = new Map<string, number>(); // userId -> find_latest_post scheduled in their day
+    // Comments of BOTH engines (Network and Growth go through this queue as post_comment), so the
+    // daily comment limit set in Network → Limits is one budget for the account.
+    const localCommentsToday = new Map<string, number>();
     const dayStartByUser = new Map<string, number>();
     for (const a of recentBudgetActions || []) {
       let dayStart = dayStartByUser.get(a.user_id);
@@ -308,7 +311,8 @@ Deno.serve(async (req) => {
         dayStartByUser.set(a.user_id, dayStart);
       }
       if (!a.scheduled_for || new Date(a.scheduled_for).getTime() < dayStart) continue;
-      const m = a.action_type === "find_latest_post" ? localFindsToday : localWarmToday;
+      const m = a.action_type === "post_comment" ? localCommentsToday
+        : a.action_type === "find_latest_post" ? localFindsToday : localWarmToday;
       m.set(a.user_id, (m.get(a.user_id) || 0) + 1);
     }
 
@@ -585,6 +589,11 @@ Deno.serve(async (req) => {
           if (actionType === "find_latest_post" && (localFindsToday.get(lead.user_id) || 0) >= dayLimit) {
             addSkip("daily_find_post_limit"); continue;
           }
+          // An approved comment that does not fit today's budget stays approved and goes out tomorrow.
+          if (actionType === "post_comment" &&
+              (localCommentsToday.get(lead.user_id) || 0) >= ((ext as any)?.daily_comment_limit ?? 20)) {
+            addSkip("daily_comment_limit"); continue;
+          }
         }
 
         // Enforce daily warming limit (visit_profile + follow_profile) with per-campaign balancing
@@ -798,6 +807,9 @@ Deno.serve(async (req) => {
 
           if (actionType === "find_latest_post") {
             localFindsToday.set(lead.user_id, (localFindsToday.get(lead.user_id) || 0) + 1);
+          }
+          if (actionType === "post_comment") {
+            localCommentsToday.set(lead.user_id, (localCommentsToday.get(lead.user_id) || 0) + 1);
           }
           // Track warming counters (visit/follow) for fair per-campaign distribution
           if (actionType === "visit_profile" || actionType === "follow_profile") {
