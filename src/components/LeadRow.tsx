@@ -91,7 +91,7 @@ const GROWTH_NOTES: Record<string, string> = {
 export default function LeadRow({ lead, onUpdateStatus, isUpdating, isSelected, onToggleSelect, showVerification, mode = 'outreach', onReview }: LeadRowProps) {
   const isGrowth = mode === 'growth';
   // The same statuses read differently for a contact you already know.
-  const growthLabel = isGrowth ? ({ ready: 'Waiting', new: 'Waiting', imported: 'Waiting', visiting_profile: 'Profile visited', post_liked: 'Liked, drafting', engagement_done: 'Resting' } as Record<string, string>)[lead.status] : undefined;
+  const growthLabel = isGrowth ? ({ ready: 'Waiting', new: 'Waiting', imported: 'Waiting', visiting_profile: 'Waiting', post_liked: 'Liked, drafting', engagement_done: 'Resting' } as Record<string, string>)[lead.status] : undefined;
   // Growth fields are not on the CampaignLead type.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const g = lead as any;

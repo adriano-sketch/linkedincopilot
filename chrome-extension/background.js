@@ -1045,6 +1045,10 @@ const queueProcessor = {
         `id=eq.${action.id}`
       );
       await safetyManager.incrementCounter(action.action_type);
+      // A like given inside find_latest_post counts toward the daily like limit too.
+      if (action.action_type === 'find_latest_post' && result && result.liked === true) {
+        await safetyManager.incrementCounter('like_post');
+      }
       await this.reportCompletion(action, true, result);
       console.log(`[QueueProcessor] ${action.action_type} completed`);
 
@@ -1460,6 +1464,9 @@ const queueProcessor = {
           if (!slug) throw new Error(`Invalid profile URL for find_latest_post: ${rawTargetUrl}`);
           targetUrl = `https://www.linkedin.com/in/${slug}/recent-activity/all/`;
           action._expectedName = await this.lookupLeadName(action);
+          // Like in the same visit only while the daily like limit allows it.
+          action._likeInVisit = action.action_data?.like === true &&
+            ((await safetyManager.getDailyCounters()).likes || 0) < LIMITS.post_likes;
         } else if (action.action_type === 'like_post' || action.action_type === 'post_comment') {
           // The target card is identified by "#lcpost=<fingerprint>"; normalizeLinkedInUrl drops it.
           const fp = rawTargetUrl.match(/#lcpost=[^#\s]+/);
@@ -1822,6 +1829,8 @@ const queueProcessor = {
           message_text: action.action_data?.message_text || action.message_text,
           expected_name: action.action_data?.expected_name || action._expectedName || null,
           post_url: action._postUrl || action.action_data?.post_url || null,
+          // Growth: like the chosen post in the same visit that finds it.
+          like: action.action_type === 'find_latest_post' && action._likeInVisit === true,
         }
       }, (response) => {
         clearTimeout(timeout);

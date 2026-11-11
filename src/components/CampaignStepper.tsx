@@ -106,10 +106,9 @@ function getStepStatus(step: typeof STEPS[0], props: CampaignStepperProps): 'com
 
 const GROWTH_STEPS = [
   { key: 'pick', label: 'Contacts chosen', description: 'People from your own network that match who you described.', icon: UserPlus },
-  { key: 'visit', label: 'Visit profile', description: 'Each contact\'s profile is visited, a few dozen a day.', icon: Eye },
-  { key: 'post', label: 'Find their post', description: 'Their own latest post, from the last 30 days. No reposts.', icon: Camera },
-  { key: 'like', label: 'Like', description: 'The post gets a like.', icon: CheckCircle },
-  { key: 'comment', label: 'You approve the comment', description: 'A comment is drafted. Nothing is posted until you approve it.', icon: MessageSquare },
+  { key: 'post', label: 'Find their post', description: 'Their own latest post, from the last 30 days. No reposts. A few contacts a day.', icon: Camera },
+  { key: 'like', label: 'Like', description: 'The post gets a like in the same visit.', icon: CheckCircle },
+  { key: 'comment', label: 'You approve the comment', description: 'A comment is drafted only when the post is about your subjects. Nothing is posted until you approve it.', icon: MessageSquare },
   { key: 'rest', label: 'Back in 7 days', description: 'The contact rests, then the cycle repeats with a new post.', icon: Clock },
 ];
 
@@ -118,7 +117,6 @@ function GrowthStepper({ leadsCount, growthCounts }: CampaignStepperProps) {
   const reached = (key: string) => {
     switch (key) {
       case 'pick': return leadsCount > 0;
-      case 'visit': return g.visited + g.postFound + g.liked + g.toApprove + g.engaged > 0;
       case 'post': return g.postFound + g.liked + g.toApprove + g.engaged > 0;
       case 'like': return g.liked + g.toApprove + g.engaged > 0;
       case 'comment': return g.toApprove + g.engaged > 0;

@@ -56,7 +56,7 @@ async function handleAction(action) {
 
     // ── Growth Mode Actions ──
     case 'find_latest_post':
-      return await findLatestPost(action.expected_name);
+      return await findLatestPost(action.expected_name, { like: action.like === true });
     case 'like_post':
       return await likePost(action.post_url);
     case 'post_comment':
@@ -1826,7 +1826,22 @@ async function lcFindTargetCard(postUrl) {
   return null;
 }
 
-async function findLatestPost(expectedName) {
+// The reaction button of one activity card (2026 layout). Used by find_latest_post (like in the same
+// visit) and by like_post. Returns { liked, confirmed, note }.
+async function lcReactOnCard(cardEl) {
+  const stateBtn = Array.from(cardEl.querySelectorAll('button[aria-label*="Reaction button state" i], button[aria-label*="Estado do botão de reação" i]'))
+    .find((b) => b.offsetParent !== null);
+  if (!stateBtn) return { liked: false, confirmed: false, note: 'reaction_button_not_found' };
+  const noReaction = (b) => /no reaction|sem reação|nenhuma reação/.test((b.getAttribute('aria-label') || '').toLowerCase());
+  if (!noReaction(stateBtn)) return { liked: false, confirmed: false, note: 'already_reacted' };
+  stateBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await sleep(600 + Math.random() * 600);
+  stateBtn.click();
+  await sleep(1500 + Math.random() * 1000);
+  return { liked: true, confirmed: !noReaction(stateBtn), note: null };
+}
+
+async function findLatestPost(expectedName, opts = {}) {
   // The background script opens /in/<slug>/recent-activity/all/ before calling this. This function
   // must not navigate: a page load would kill this script before it can answer.
   const currentPath = window.location.pathname;
@@ -1926,6 +1941,20 @@ async function findLatestPost(expectedName) {
 
   console.log(`[LinkedIn Copilot] Found latest post: ${postUrl}, author: ${chosen.actor}, age: ${chosen.ageLabel}, text: ${chosen.text.substring(0, 80)}...`);
 
+  // Like it in this same visit, after the time it takes to read it: one page per contact instead
+  // of coming back to the same page later just to click Like.
+  let like = null;
+  if (opts.like) {
+    chosen.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(2500 + Math.random() * 3500);
+    try {
+      like = await lcReactOnCard(chosen.el);
+    } catch (e) {
+      like = { liked: false, confirmed: false, note: 'like_failed: ' + (e && e.message ? e.message : e) };
+    }
+    console.log('[LinkedIn Copilot] Like in the same visit:', JSON.stringify(like));
+  }
+
   return {
     success: true,
     action: 'find_latest_post',
@@ -1937,6 +1966,7 @@ async function findLatestPost(expectedName) {
     post_age_label: chosen.ageLabel || null,
     skipped_before: skipped,
     note: chosen.permalink ? 'post_found' : 'post_found_by_fingerprint',
+    ...(like ? { liked: like.liked, like_confirmed: like.confirmed, like_note: like.note } : {}),
   };
 }
 
@@ -1963,20 +1993,10 @@ async function likePost(postUrl) {
   }
 
   // 2026 layout: one reaction button per card, labelled "Reaction button state: <state>"
-  const stateBtn = Array.from(targetPost.querySelectorAll('button[aria-label*="Reaction button state" i], button[aria-label*="Estado do botão de reação" i]'))
-    .find((b) => b.offsetParent !== null);
-  if (stateBtn) {
-    const label = (stateBtn.getAttribute('aria-label') || '').toLowerCase();
-    const already = !/no reaction|sem reação|nenhuma reação/.test(label);
-    if (already) {
-      return { success: true, action: 'like_post', liked: false, note: 'already_reacted', url: window.location.href };
-    }
-    stateBtn.click();
-    await sleep(1500 + Math.random() * 1000);
-    const after = (stateBtn.getAttribute('aria-label') || '').toLowerCase();
-    const confirmed = !/no reaction|sem reação|nenhuma reação/.test(after);
-    console.log(`[LinkedIn Copilot] Like post result (reaction button): ${confirmed ? 'liked' : 'uncertain'}`);
-    return { success: true, action: 'like_post', liked: true, confirmed, url: window.location.href };
+  const reaction = await lcReactOnCard(targetPost);
+  if (reaction.note !== 'reaction_button_not_found') {
+    console.log(`[LinkedIn Copilot] Like post result (reaction button): ${JSON.stringify(reaction)}`);
+    return { success: true, action: 'like_post', liked: reaction.liked, confirmed: reaction.confirmed, ...(reaction.note ? { note: reaction.note } : {}), url: window.location.href };
   }
 
   // Find the Like button — LinkedIn uses various structures
