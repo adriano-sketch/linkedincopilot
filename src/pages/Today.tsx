@@ -70,7 +70,7 @@ function Gauge({ label, value, max }: { label: string; value: number; max: numbe
     <div>
       <div className="text-xs text-slate-400">{label}</div>
       <div className="font-display text-[28px] font-semibold leading-tight tabular-nums">{value}<span className="text-slate-500 text-lg">/{max}</span></div>
-      <div className="h-1 rounded bg-[#22304A]"><div className={cn('h-1 rounded', pct >= 90 ? 'bg-amber-400' : 'bg-primary')} style={{ width: `${pct}%` }} /></div>
+      <div className="h-1 rounded bg-[#2E2643]"><div className={cn('h-1 rounded', pct >= 90 ? 'bg-attention' : 'bg-primary')} style={{ width: `${pct}%` }} /></div>
     </div>
   );
 }
@@ -79,7 +79,7 @@ function NeedCard({ to, chip, chipStrong, title, body, cta, minutes }: { to: str
   return (
     <Link to={to} className="group rounded-2xl border border-border bg-card p-5 flex flex-col gap-2.5 hover:border-foreground/30 hover:shadow-elevated transition-all">
       <div className="flex justify-between items-center">
-        <span className={cn('text-[13px] font-semibold px-2.5 py-1 rounded-full', chipStrong ? 'bg-gold-bg text-[#7A4B00]' : 'bg-secondary')}>{chip}</span>
+        <span className={cn('text-[13px] font-semibold px-2.5 py-1 rounded-full', chipStrong ? 'bg-gold-bg text-[#A01268]' : 'bg-secondary')}>{chip}</span>
         {minutes && <span className="font-mono-label text-[11px] text-muted-foreground">{minutes}</span>}
       </div>
       <div className="font-semibold text-[17px] leading-snug">{title}</div>
@@ -109,7 +109,6 @@ export default function Today() {
 
   const needs = s ? s.inbox.replies + s.inbox.comments + s.inbox.messages : 0;
   const minutes = Math.max(1, Math.round(needs * 0.4));
-  const groupsNeeding = s ? [s.inbox.replies, s.inbox.comments, s.inbox.messages].filter(n => n > 0).length : 0;
 
   const extensionReady = !!extensionStatus && !!extensionStatus.last_heartbeat_at;
   const hasRunningCampaign = !!s?.campaigns.some(c => c.status === 'active');
@@ -128,16 +127,20 @@ export default function Today() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="font-mono-label text-xs text-gold-dark">{dateLabel}</div>
-            <h1 className="font-display font-bold uppercase text-4xl sm:text-[44px] leading-none m-0 mt-1">{greeting}{name ? `, ${name}` : ''}</h1>
+            <h1 className="font-display font-extrabold text-4xl sm:text-[52px] leading-none m-0 mt-1">
+              {needs > 0
+                ? <><span className="text-attention">{needs} {needs === 1 ? 'item' : 'items'}</span> {needs === 1 ? 'needs' : 'need'} you today.</>
+                : <>{greeting}{name ? `, ${name}` : ''}</>}
+            </h1>
             <p className="text-muted-foreground text-[17px] m-0 mt-2">
               {isLoading ? 'Getting your briefing…'
-                : needs > 0 ? <><strong className="text-foreground">{groupsNeeding === 1 ? '1 thing needs' : `${groupsNeeding} things need`} you</strong>, about {minutes} min.</>
+                : needs > 0 ? <>{greeting}{name ? `, ${name}` : ''}. About {minutes} min of your time.</>
                 : showSetup ? 'A few steps and your copilot is flying.'
                 : 'Nothing needs you right now. Autopilot keeps working.'}
             </p>
           </div>
           {needs > 0 && (
-            <Link to="/inbox" className="inline-flex items-center gap-2 rounded-xl bg-primary text-primary-foreground font-semibold h-12 px-5 hover:bg-gold-light">
+            <Link to="/inbox" className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground font-semibold h-12 px-6 hover:bg-gold-dark">
               Start review<ArrowRight className="w-4 h-4" />
             </Link>
           )}
@@ -212,7 +215,7 @@ export default function Today() {
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold truncate">{o.name || 'Unknown'}{o.headline && <span className="font-normal text-muted-foreground"> · {o.headline}</span>}</div>
                       {o.why && <div className="text-sm text-foreground/80">{o.why}</div>}
-                      <div className="text-xs font-semibold text-[#7A4B00] mt-1">{(SIGNAL_LABEL[o.signal] || 'Signal').toUpperCase()} · {ago(o.at)}</div>
+                      <div className="text-xs font-semibold text-[#A01268] mt-1">{(SIGNAL_LABEL[o.signal] || 'Signal').toUpperCase()} · {ago(o.at)}</div>
                     </div>
                     {o.status === 'pending' ? (
                       <Link to="/inbox?type=signal" className="self-center text-sm font-semibold text-gold-dark whitespace-nowrap">Comment</Link>
@@ -233,7 +236,7 @@ export default function Today() {
                 ) : (
                   <ol className="list-none m-0 p-0">
                     {s.plan.slice(0, 6).map(p => (
-                      <li key={p.type} className="grid grid-cols-[64px_1fr] gap-3 py-2.5 border-b border-[#22304A] last:border-b-0">
+                      <li key={p.type} className="grid grid-cols-[64px_1fr] gap-3 py-2.5 border-b border-[#2E2643] last:border-b-0">
                         <span className="font-mono text-[13px] text-slate-400">{timeIn(p.next_at, tz)}</span>
                         <span>{PLAN_LABEL[p.type] || p.type.replace(/_/g, ' ')} <span className="text-slate-400">· {p.count}</span></span>
                       </li>
@@ -274,7 +277,7 @@ export default function Today() {
               {s.campaigns.length === 0 ? (
                 <div className="py-6 flex flex-wrap items-center justify-between gap-3">
                   <p className="m-0 text-sm text-muted-foreground">No campaign running yet.</p>
-                  <Link to="/dashboard?new=1" className="inline-flex items-center gap-2 rounded-lg bg-navy text-background font-semibold h-10 px-4 text-sm">Create your first campaign</Link>
+                  <Link to="/dashboard?new=1" className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground hover:bg-gold-dark font-semibold h-10 px-4 text-sm">Create your first campaign</Link>
                 </div>
               ) : s.campaigns.map(c => {
                 const result = c.mode === 'growth'

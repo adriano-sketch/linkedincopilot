@@ -44,11 +44,11 @@ const quickGuides = [
 export default function HelpPage() {
   return (
     <AppShell>
-      <h1 className="font-display font-bold uppercase text-4xl leading-none m-0 mb-6">Help center</h1>
+      <h1 className="font-display font-bold text-4xl leading-none m-0 mb-6">Help center</h1>
       <div className="max-w-4xl space-y-8">
         {/* Campaign Flow */}
         <section>
-          <h2 className="text-xl font-display font-bold uppercase tracking-tight mb-1">How it Works</h2>
+          <h2 className="text-xl font-display font-bold tracking-tight mb-1">How it Works</h2>
           <p className="text-sm text-muted-foreground mb-4">The full automated pipeline — from finding leads to follow-up messages.</p>
           <Card>
             <CardContent className="p-4">
@@ -59,7 +59,7 @@ export default function HelpPage() {
                       <div className="w-9 h-9 rounded-full bg-gold-bg border-2 border-primary text-primary flex items-center justify-center">
                         <step.icon className="w-4 h-4" />
                       </div>
-                      <span className="text-[10px] font-display font-semibold uppercase tracking-wider text-muted-foreground text-center leading-tight">{step.label}</span>
+                      <span className="text-[10px] font-display font-semibold tracking-wider text-muted-foreground text-center leading-tight">{step.label}</span>
                     </div>
                     <div className="pt-1.5">
                       <p className="text-sm text-foreground">{step.desc}</p>
@@ -73,13 +73,13 @@ export default function HelpPage() {
 
         {/* Quick Guides */}
         <section>
-          <h2 className="text-xl font-display font-bold uppercase tracking-tight mb-1">Quick Guides</h2>
+          <h2 className="text-xl font-display font-bold tracking-tight mb-1">Quick Guides</h2>
           <p className="text-sm text-muted-foreground mb-4">Step-by-step instructions for common tasks.</p>
           <div className="grid md:grid-cols-3 gap-4">
             {quickGuides.map((guide) => (
               <Card key={guide.title} className="hover:shadow-card transition-shadow">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-display font-semibold uppercase tracking-wide flex items-center gap-2">
+                  <CardTitle className="text-sm font-display font-semibold tracking-wide flex items-center gap-2">
                     <guide.icon className="w-4 h-4 text-primary" />
                     {guide.title}
                   </CardTitle>
@@ -106,7 +106,7 @@ export default function HelpPage() {
               <div className="flex items-center gap-3">
                 <Monitor className="w-5 h-5 text-primary" />
                 <div>
-                  <p className="font-display font-semibold text-sm uppercase tracking-wide">Keep Your Computer Awake</p>
+                  <p className="font-display font-semibold text-sm tracking-wide">Keep Your Computer Awake</p>
                   <p className="text-xs text-muted-foreground">The Chrome extension needs your computer awake to run 24/7. Follow our setup guide for macOS & Windows.</p>
                 </div>
               </div>
@@ -121,7 +121,7 @@ export default function HelpPage() {
 
         {/* FAQ */}
         <section>
-          <h2 className="text-xl font-display font-bold uppercase tracking-tight mb-1">Frequently Asked Questions</h2>
+          <h2 className="text-xl font-display font-bold tracking-tight mb-1">Frequently Asked Questions</h2>
           <p className="text-sm text-muted-foreground mb-4">Common questions about LinkedIn Copilot.</p>
           <Card>
             <CardContent className="p-4">
@@ -139,12 +139,12 @@ export default function HelpPage() {
 
         {/* Key Info */}
         <section className="pb-8">
-          <h2 className="text-xl font-display font-bold uppercase tracking-tight mb-1">Key Information</h2>
+          <h2 className="text-xl font-display font-bold tracking-tight mb-1">Key Information</h2>
           <p className="text-sm text-muted-foreground mb-4">Important limits and safety features.</p>
           <div className="grid md:grid-cols-2 gap-4">
             <Card>
               <CardContent className="p-4 space-y-2">
-                <h3 className="font-display font-semibold text-sm uppercase tracking-wide flex items-center gap-2">
+                <h3 className="font-display font-semibold text-sm tracking-wide flex items-center gap-2">
                   <Star className="w-4 h-4 text-primary" /> Daily Limits
                 </h3>
                 <ul className="text-xs text-muted-foreground space-y-1.5">
@@ -157,7 +157,7 @@ export default function HelpPage() {
             </Card>
             <Card>
               <CardContent className="p-4 space-y-2">
-                <h3 className="font-display font-semibold text-sm uppercase tracking-wide flex items-center gap-2">
+                <h3 className="font-display font-semibold text-sm tracking-wide flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-primary" /> ICP Enrichment Flow
                 </h3>
                 <ul className="text-xs text-muted-foreground space-y-1.5">

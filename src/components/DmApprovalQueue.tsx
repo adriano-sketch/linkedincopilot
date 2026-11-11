@@ -211,7 +211,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
         ) : samples.length === 0 ? (
           <Badge variant="secondary" className="gap-1"><Lock className="w-3 h-3" /> Waiting for leads</Badge>
         ) : (
-          <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">{samples.length} samples ready</Badge>
+          <Badge variant="outline" className="gap-1 text-attention border-attention/40">{samples.length} samples ready</Badge>
         )}
       </div>
       <div className="flex items-center gap-2">
@@ -272,7 +272,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
               {lead.title && <span className="text-xs text-muted-foreground">— {lead.title}</span>}
               {lead.company && <span className="text-xs text-muted-foreground">@ {lead.company}</span>}
               {isDmPending && (
-                <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-300">
+                <Badge variant="outline" className="text-xs gap-1 text-attention border-attention/40">
                   ⏳ Awaiting approval
                 </Badge>
               )}
@@ -415,7 +415,7 @@ export default function DmApprovalQueue({ leads, onRefresh, campaignProfileId, s
                   <div className="flex items-center gap-2">
                     <CardTitle className="text-lg">DMs</CardTitle>
                     {dmPendingApproval.length > 0 ? (
-                      <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
+                      <Badge variant="outline" className="gap-1 text-attention border-attention/40">
                         {dmPendingApproval.length} awaiting approval
                       </Badge>
                     ) : (

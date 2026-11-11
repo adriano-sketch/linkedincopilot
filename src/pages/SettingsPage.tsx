@@ -203,7 +203,7 @@ export default function SettingsPage() {
   return (
     <AppShell>
       <div className="max-w-3xl space-y-4">
-        <h1 className="font-display font-bold uppercase text-4xl leading-none m-0 mb-2">Settings</h1>
+        <h1 className="font-display font-bold text-4xl leading-none m-0 mb-2">Settings</h1>
 
         {/* Master Profile */}
         <Card>

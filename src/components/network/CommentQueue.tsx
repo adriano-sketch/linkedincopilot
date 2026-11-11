@@ -10,9 +10,9 @@ import { toast } from 'sonner';
 import { useMonitoredPosts, type MonitoredPost, type PostFilter } from '@/hooks/useNetwork';
 
 const SIGNALS: Record<string, { label: string; className: string }> = {
-  business_opportunity: { label: 'Business signal', className: 'bg-gold-bg text-[#7A4B00] border-transparent' },
-  hiring: { label: 'Hiring', className: 'bg-gold-bg text-[#7A4B00] border-transparent' },
-  pain_point: { label: 'Pain point', className: 'bg-gold-bg text-[#7A4B00] border-transparent' },
+  business_opportunity: { label: 'Business signal', className: 'bg-gold-bg text-[#A01268] border-transparent' },
+  hiring: { label: 'Hiring', className: 'bg-gold-bg text-[#A01268] border-transparent' },
+  pain_point: { label: 'Pain point', className: 'bg-gold-bg text-[#A01268] border-transparent' },
   launch: { label: 'Launch', className: 'bg-secondary text-foreground border-transparent' },
   milestone: { label: 'Milestone', className: 'bg-secondary text-foreground border-transparent' },
   relationship: { label: 'Relationship', className: 'bg-secondary text-foreground border-transparent' },
@@ -69,7 +69,7 @@ export function PostCard({
           {(signal || (isSignal && post.signal_reason)) && (
             <div className="flex flex-wrap items-center gap-2">
               {signal && <Badge variant="outline" className={`rounded-full font-semibold ${signal.className}`}>{signal.label}</Badge>}
-              {isSignal && post.signal_reason && <span className="text-[13px] text-[#7A4B00]">{post.signal_reason}</span>}
+              {isSignal && post.signal_reason && <span className="text-[13px] text-[#A01268]">{post.signal_reason}</span>}
             </div>
           )}
           <blockquote className="m-0 rounded-xl bg-background/70 p-4 text-[15px] leading-relaxed whitespace-pre-line">
@@ -93,7 +93,7 @@ export function PostCard({
                 <span className="text-xs text-muted-foreground tabular-nums">{text.length} characters</span>
                 <div className="flex gap-2">
                   <Button variant="outline" className="h-11" onClick={onDismiss} disabled={busy}><X className="w-4 h-4 mr-1" /> Skip</Button>
-                  <Button className="h-11 bg-navy text-background hover:bg-navy-light" onClick={onApprove} disabled={busy || !text.trim()}><Check className="w-4 h-4 mr-1" /> Approve</Button>
+                  <Button className="h-11" onClick={onApprove} disabled={busy || !text.trim()}><Check className="w-4 h-4 mr-1" /> Approve</Button>
                 </div>
               </div>
             </>

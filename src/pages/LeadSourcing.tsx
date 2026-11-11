@@ -151,7 +151,7 @@ export default function LeadSourcing() {
   return (
     <AppShell>
       <div className="max-w-4xl space-y-4">
-        <h1 className="font-display font-bold uppercase text-4xl leading-none m-0 mb-2">Add leads</h1>
+        <h1 className="font-display font-bold text-4xl leading-none m-0 mb-2">Add leads</h1>
 
         {/* Lead Credits Banner */}
         <Card className={isExhausted ? 'border-destructive/50 bg-destructive/5' : isLow ? 'border-warning/50 bg-warning/5' : ''}>
