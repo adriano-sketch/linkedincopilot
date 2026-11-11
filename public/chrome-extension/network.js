@@ -148,6 +148,274 @@ async function lcReadPeopleSearch() {
   return result;
 }
 
+// ── Page reader: Sales Navigator lead search ──────────────────────────────
+// Reads the lead cards, then turns each Sales Navigator lead into the person's public
+// linkedin.com/in/ URL (the rest of the system, invites and acceptance sync, works on those).
+// Leads whose public URL cannot be found are left out. If nothing can be used, it returns
+// sales_nav_unavailable so the backend falls back to the regular search for 24h.
+//
+// Sales Navigator paints the lead cards lazily (only the cards scrolled into view, and only while
+// the tab is visible). The automation tab usually runs in the background, so the cards are often
+// never painted even though the page has loaded the results ("29 results" and the "Add X to
+// selection" checkboxes are there, the names and links are not). When the cards are missing or
+// incomplete, the reader re-reads the search through the same lead-search call the page itself
+// made (visible in the page's resource timing), which does not depend on painting.
+async function lcReadSalesNavSearch() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
+  const lower = (t) => norm(t).toLowerCase();
+  const PAGE_SIZE = 25;
+  const leadLinks = () => Array.from(document.querySelectorAll('a[href*="/sales/lead/"]'));
+  const resultsPanel = () => document.querySelector('#search-results-container');
+  const emptyState = () => /no leads matched|no results|nenhum lead|nenhum resultado/.test(lower(document.body && document.body.innerText));
+  // The page's own lead-search request (the most recent one), from resource timing.
+  const pageSearchCall = () => {
+    const urls = performance.getEntriesByType('resource').map((r) => r.name).filter((u) => u.includes('/sales-api/salesApiLeadSearch?'));
+    return urls.length ? urls[urls.length - 1] : null;
+  };
+  const unavailable = (reason, extra) => ({
+    success: true, sales_nav_unavailable: true, reason, profiles: [], has_next: false,
+    debug: { url: location.href, sample: ((document.querySelector('main') || document.body || {}).innerText || '').slice(0, 400), ...(extra || {}) },
+  });
+  const csrf = ((document.cookie.match(/JSESSIONID=["']?([^;"']+)/) || [])[1] || '').replace(/"/g, '');
+  const apiHeaders = { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0', accept: 'application/json' };
+
+  // Wait for cards, for the page's search call to have happened, for an empty state, or for a
+  // redirect away from the search (no license / contract chooser). Nudge the results panel while
+  // waiting: scrolling is what makes the cards paint when the tab is visible.
+  for (let i = 0; i < 40; i++) {
+    if (leadLinks().length > 0) break;
+    if (emptyState()) break;
+    if (!location.pathname.startsWith('/sales/search')) break;
+    if (i >= 12 && pageSearchCall()) break; // results are loaded; the cards just are not painted
+    const panel = resultsPanel();
+    if (panel && i % 3 === 2) panel.scrollBy(0, 250);
+    await sleep(500);
+  }
+  if (!location.pathname.startsWith('/sales/search')) {
+    return unavailable(/contract/i.test(location.pathname) ? 'contract_chooser' : 'not_on_sales_navigator');
+  }
+
+  const bodyText = lower(document.body && document.body.innerText);
+  if (/commercial use limit|limite de uso comercial|reached the (monthly|daily) limit/.test(bodyText)) {
+    return { success: true, limit_reached: true, profiles: [], has_next: false };
+  }
+
+  // Results live in their own scrolling panel: scroll it like a person so all 25 cards render.
+  const first = leadLinks()[0];
+  let scroller = resultsPanel();
+  if (!scroller && first) {
+    let el = first.parentElement;
+    while (el && el !== document.body) {
+      const st = getComputedStyle(el);
+      if (/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 50) { scroller = el; break; }
+      el = el.parentElement;
+    }
+  }
+  for (let i = 0; i < 8; i++) {
+    if (scroller) scroller.scrollBy(0, 450 + Math.random() * 250); else window.scrollBy(0, 450 + Math.random() * 250);
+    await sleep(700 + Math.random() * 700);
+  }
+  await sleep(1000);
+
+  // 1) Lead cards that were painted
+  const leads = [];
+  const seen = new Set();
+  for (const a of leadLinks()) {
+    const href = a.getAttribute('href') || '';
+    const m = href.match(/\/sales\/lead\/([^,/?#]+),([^,/?#]+),([^/?#]+)/);
+    if (!m || seen.has(m[1])) continue;
+    const box = a.closest('li') || a.closest('[data-x-search-result]') || a.closest('article');
+    if (!box) continue;
+    seen.add(m[1]);
+    const pick = (sel) => norm((box.querySelector(sel) || {}).textContent);
+    const text = norm(box.innerText);
+    const name = pick('[data-anonymize="person-name"]') || norm(a.textContent);
+    if (!name || /linkedin member|membro do linkedin/i.test(name)) continue;
+    const title = pick('[data-anonymize="title"]') || null;
+    const company = pick('[data-anonymize="company-name"]') || null;
+    const loc = pick('[data-anonymize="location"]') || null;
+    const degM = text.match(/\b(1st|2nd|3rd\+?)\b|\b(1º|2º|3º\+?)/i);
+    let degree = degM ? (degM[1] || degM[2]).toLowerCase() : null;
+    if (degree && degree.includes('º')) degree = degree.startsWith('1') ? '1st' : degree.startsWith('2') ? '2nd' : '3rd';
+    leads.push({
+      id: m[1], authType: m[2], authToken: decodeURIComponent(m[3]),
+      name, title, company, location: loc, degree,
+      is_pending: /\bpending\b|pendente/i.test(text),
+      recently_posted: /recently posted|posted on linkedin|publicou recentemente|publicou no linkedin/i.test(text),
+      changed_jobs: /changed jobs|recently hired|new in role|mudou de emprego|novo cargo/i.test(text),
+    });
+  }
+
+  // 2) Cards missing or incomplete: re-read the search through the page's own lead-search call.
+  //    "N results" in the page tells how many to expect on this page.
+  const totalM = bodyText.match(/(\d[\d,.]*)\s+(?:results?|resultados?)\b/);
+  const totalOnPage = totalM ? parseInt(totalM[1].replace(/\D/g, ''), 10) : null;
+  const params = new URLSearchParams(location.search);
+  const pageNo = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+  const expected = totalOnPage == null ? PAGE_SIZE : Math.max(0, Math.min(PAGE_SIZE, totalOnPage - (pageNo - 1) * PAGE_SIZE));
+  let api = null; // { start, count, total, status, error }
+  if (leads.length < expected && !emptyState()) {
+    let url = pageSearchCall();
+    if (!url && params.get('query')) {
+      // The Rest.li query goes in as the page shows it after one URL decode (inner text keeps its %20);
+      // encoding it again returns 400. Verified against the page's own call on 2026-11-07.
+      url = '/sales-api/salesApiLeadSearch?q=searchQuery&query=' + params.get('query') +
+        `&start=${(pageNo - 1) * PAGE_SIZE}&count=${PAGE_SIZE}&decorationId=com.linkedin.sales.deco.desktop.searchv2.LeadSearchResult-17`;
+    }
+    if (url) {
+      try {
+        const r = await fetch(url, { credentials: 'include', headers: apiHeaders });
+        api = { status: r.status, url: url.replace(/trackingParam=[^&]*/, 'trackingParam=…') };
+        if (r.status === 401 || r.status === 403) return unavailable('no_license', { status: r.status });
+        if (r.ok) {
+          const j = await r.json();
+          const u = new URL(url, location.origin);
+          api.start = parseInt(u.searchParams.get('start') || '0', 10) || 0;
+          api.count = 0;
+          api.total = j && j.paging && typeof j.paging.total === 'number' ? j.paging.total : null;
+          for (const el of (j && Array.isArray(j.elements) ? j.elements : [])) {
+            api.count++;
+            const um = String(el.entityUrn || '').match(/\(([^,)]+),([^,)]+),([^)]+)\)/);
+            if (!um || seen.has(um[1])) continue;
+            const name = norm(el.fullName || `${el.firstName || ''} ${el.lastName || ''}`);
+            if (!name || /linkedin member|membro do linkedin/i.test(name)) continue;
+            seen.add(um[1]);
+            const pos = Array.isArray(el.currentPositions) && el.currentPositions[0] ? el.currentPositions[0] : {};
+            const deg = Number(el.degree);
+            leads.push({
+              id: um[1], authType: um[2], authToken: decodeURIComponent(um[3]),
+              name,
+              title: norm(pos.title) || null,
+              company: norm(pos.companyName) || null,
+              location: norm(el.geoRegion) || null,
+              degree: deg === 1 ? '1st' : deg === 2 ? '2nd' : deg === 3 ? '3rd' : null,
+              is_pending: el.pendingInvitation === true,
+              recently_posted: false,
+              changed_jobs: false,
+            });
+          }
+        }
+      } catch (e) {
+        api = { ...(api || {}), error: String(e && e.message || e) };
+      }
+    }
+  }
+
+  if (leads.length === 0) {
+    if (emptyState() || (api && api.total === 0)) return { success: true, profiles: [], has_next: false, page_url: location.href };
+    return unavailable('no_lead_cards', { links: leadLinks().length, results_total: totalOnPage, api });
+  }
+
+  // Public profile URL for each lead (the same call Sales Navigator makes when a lead is opened)
+  const resolve = async (l) => {
+    const path = `/sales-api/salesApiProfiles/(profileId:${l.id},authType:${l.authType},authToken:${encodeURIComponent(l.authToken)})` +
+      '?decoration=%28entityUrn%2CflagshipProfileUrl%29';
+    const r = await fetch(path, {
+      credentials: 'include',
+      headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0', accept: 'application/json' },
+    });
+    if (!r.ok) throw new Error(`profile ${r.status}`);
+    const t = await r.text();
+    const mm = t.match(/linkedin\.com\/in\/([^"\\/?#]+)/);
+    return mm ? `https://www.linkedin.com/in/${mm[1]}` : null;
+  };
+
+  const profiles = [];
+  let failures = 0;
+  let lastError = null;
+  for (const l of leads) {
+    if (failures >= 3 && profiles.length === 0) break; // the lookup is not working: stop early
+    let url = null;
+    try { url = await resolve(l); } catch (e) { lastError = String(e && e.message || e); }
+    if (!url) { failures++; } else {
+      profiles.push({
+        profile_url: url,
+        name: l.name,
+        headline: l.title && l.company ? `${l.title} at ${l.company}` : (l.title || l.company || null),
+        location: l.location,
+        current_company: l.company,
+        degree: l.degree,
+        mutual_connections: null,
+        is_pending: l.is_pending,
+        is_connected: l.degree === '1st',
+        recently_posted: l.recently_posted,
+        changed_jobs: l.changed_jobs,
+        snippet: [l.title, l.company].filter(Boolean).join(' | ') || null,
+      });
+    }
+    await sleep(350 + Math.random() * 550);
+  }
+  if (profiles.length === 0) return unavailable('profile_lookup_failed', { leads: leads.length, error: lastError });
+
+  // Next page: from the search call's paging when we have it, otherwise from the Next button.
+  let hasNext;
+  if (api && typeof api.total === 'number' && typeof api.start === 'number') {
+    hasNext = api.start + Math.max(api.count || 0, leads.length) < api.total;
+  } else if (totalOnPage != null) {
+    hasNext = pageNo * PAGE_SIZE < totalOnPage;
+  } else {
+    const nextBtn = Array.from(document.querySelectorAll('button')).find((b) => {
+      const l = lower(`${b.getAttribute('aria-label') || ''} ${b.textContent || ''}`);
+      return /\bnext\b|avançar|próxim/.test(l) && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+    });
+    hasNext = !!nextBtn;
+  }
+
+  return {
+    success: true, reader: 'sales_navigator', profiles, has_next: hasNext, page_url: location.href,
+    leads_on_page: leads.length, unresolved: leads.length - profiles.length,
+    results_total: api && typeof api.total === 'number' ? api.total : totalOnPage,
+    source: api && api.count ? (leadLinks().length ? 'cards+search_call' : 'search_call') : 'cards',
+  };
+}
+
+// ── Page check: which LinkedIn plan is this account on? ───────────────────
+// Runs inside any linkedin.com tab. Returns { tier, signals } or { tier: null } when unsure.
+async function lcDetectLinkedInTier() {
+  const csrf = ((document.cookie.match(/JSESSIONID=["']?([^;"']+)/) || [])[1] || '').replace(/"/g, '');
+  const signals = { licenses_checked: false, sales_nav_license: false, nav_link: false, premium: null };
+
+  try {
+    const r = await fetch('/sales-api/salesApiIdentity?q=findLicensesByCurrentMember&includeRecentlyRevokedLicenses=false', {
+      credentials: 'include',
+      headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0', accept: 'application/json' },
+    });
+    if (r.ok) {
+      const j = await r.json().catch(() => null);
+      const els = (j && (j.elements || j.data && j.data.elements)) || [];
+      signals.licenses_checked = Array.isArray(els);
+      signals.sales_nav_license = Array.isArray(els) && els.some((e) => e && e.active !== false && e.revoked !== true);
+    } else if (r.status === 403 || r.status === 404) {
+      signals.licenses_checked = true; // the API answered: no Sales Navigator seat
+    }
+  } catch (_) { /* inconclusive */ }
+
+  const nav = document.querySelector('#global-nav, header.global-nav, header');
+  if (nav) {
+    signals.nav_link = Array.from(nav.querySelectorAll('a[href*="/sales/"]')).some((a) =>
+      /sales nav/i.test(`${a.textContent || ''} ${a.getAttribute('aria-label') || ''}`));
+  }
+
+  try {
+    const r = await fetch('/voyager/api/me', {
+      credentials: 'include',
+      headers: { 'csrf-token': csrf, accept: 'application/vnd.linkedin.normalized+json+2.1' },
+    });
+    if (r.ok) {
+      const t = await r.text();
+      signals.premium = /"premiumSubscriber"\s*:\s*true/.test(t);
+    }
+  } catch (_) { /* inconclusive */ }
+
+  let tier = null;
+  // The license check is the source of truth; the nav link only counts when that check was inconclusive.
+  if (signals.sales_nav_license || (signals.nav_link && !signals.licenses_checked)) tier = 'sales_navigator';
+  else if (signals.premium === true) tier = 'premium';
+  else if (signals.premium === false) tier = 'free';
+  return { tier, signals };
+}
+
 // ── Page reader: post (content) search results ─────────────────────────────
 async function lcReadPostSearch() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -292,6 +560,54 @@ async function lcWithdrawInvites(profileUrls) {
 }
 
 // ── Orchestration (runs in the service worker) ────────────────────────────
+
+const TIER_CHECK_EVERY_MS = 12 * 60 * 60 * 1000;
+
+/** Detect the LinkedIn plan at most every 12h (or when forced) and store it in extension_status. */
+async function lcMaybeDetectTier(force) {
+  if (!supabase.userId) return null;
+  const last = await getLocalData('tier_checked_at');
+  if (!force && last && Date.now() - last < TIER_CHECK_EVERY_MS) return null;
+  const tabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/*' });
+  const tab = tabs.find((t) => t.status === 'complete') || tabs[0];
+  if (!tab) return null; // needs an open LinkedIn tab (logged in)
+  let res;
+  try { res = await lcExec(tab.id, lcDetectLinkedInTier, [], 30000); } catch (e) {
+    console.warn('[LC:Tier] detection failed:', e.message);
+    return null;
+  }
+  if (!res || !res.tier) {
+    // Inconclusive (LinkedIn still loading, logged out...): try again in 30 minutes, not 12 hours.
+    await setLocalData('tier_checked_at', Date.now() - TIER_CHECK_EVERY_MS + 30 * 60 * 1000);
+    console.log('[LC:Tier] inconclusive', res && res.signals);
+    return null;
+  }
+  await setLocalData('tier_checked_at', Date.now());
+
+  try {
+    const cur = await fetch(`${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}&select=linkedin_account_tier`, {
+      headers: supabase.getHeaders(),
+    }).then((r) => (r.ok ? r.json() : []));
+    const current = cur && cur[0] ? cur[0].linkedin_account_tier : null;
+    // Never downgrade Sales Navigator on a weak signal: only when the license check really answered.
+    if (current === 'sales_navigator' && res.tier !== 'sales_navigator' && !res.signals.licenses_checked) {
+      console.log('[LC:Tier] keeping sales_navigator, license check inconclusive');
+      return current;
+    }
+    const body = { linkedin_tier_detected_at: new Date().toISOString() };
+    if (current !== res.tier) body.linkedin_account_tier = res.tier;
+    await fetch(`${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}`, {
+      method: 'PATCH',
+      headers: supabase.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    console.log('[LC:Tier] plan:', res.tier, current !== res.tier ? `(was ${current})` : '', res.signals);
+    return res.tier;
+  } catch (e) {
+    console.warn('[LC:Tier] save failed:', e.message);
+    return null;
+  }
+}
 async function lcNavigate(processor, tabId, url) {
   try {
     await chrome.scripting.executeScript({ target: { tabId }, func: () => { window.onbeforeunload = null; } });
@@ -314,6 +630,11 @@ async function runNetworkAction(processor, tab, action) {
   switch (action.action_type) {
     case 'network_search_people': {
       await lcNavigate(processor, tab.id, data.search_url || action.linkedin_url);
+      if (data.reader === 'sales_navigator') {
+        // Sales Navigator is a heavier app: give it a few more seconds before reading.
+        await processor.sleep(3000 + Math.random() * 2000);
+        return await lcExec(tab.id, lcReadSalesNavSearch, [], 180000);
+      }
       return await lcExec(tab.id, lcReadPeopleSearch);
     }
     case 'network_search_posts': {
