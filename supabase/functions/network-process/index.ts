@@ -146,7 +146,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
 
   const { data: me } = await supabase
     .from("profiles")
-    .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone")
+    .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone, comment_topics, comment_avoid, comment_examples")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -240,6 +240,9 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
   const facts: SenderFacts = {
     name: me?.sender_name, title: me?.sender_title, company: me?.company_name,
     about: [me?.company_description, me?.proof_points].filter(Boolean).join(" "), tone: me?.dm_tone,
+    // The user's comment knowledge base: subjects, what to stay out of, and their own voice.
+    // deno-lint-ignore no-explicit-any
+    topics: (me as any)?.comment_topics, avoid: (me as any)?.comment_avoid, examples: (me as any)?.comment_examples,
   };
   let drafted = 0;
   let skipped = 0;

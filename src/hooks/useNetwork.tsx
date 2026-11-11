@@ -110,7 +110,11 @@ export function useNetworkProspects(status: 'accepted' | 'invited' | 'qualified'
 
 export type PostFilter = 'pending' | 'scheduled' | 'posted' | 'dismissed';
 
-export function useMonitoredPosts(filter: PostFilter) {
+/** `campaignId` limits the queue to the drafts of one Growth campaign (its contacts' posts). */
+// Kept in a constant: the schema audit script reads literal select strings.
+const CAMPAIGN_POSTS_SELECT = '*, lead:campaign_leads!inner(campaign_profile_id)';
+
+export function useMonitoredPosts(filter: PostFilter, campaignId?: string) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const statuses: Record<PostFilter, string[]> = {
@@ -121,15 +125,17 @@ export function useMonitoredPosts(filter: PostFilter) {
   };
 
   const query = useQuery({
-    queryKey: ['monitored-posts', user?.id, filter],
+    queryKey: ['monitored-posts', user?.id, filter, campaignId || 'all'],
     enabled: !!user,
     refetchInterval: 60000,
     queryFn: async () => {
-      let q = supabase
-        .from('monitored_posts')
-        .select('*')
-        .eq('user_id', user!.id)
-        .in('status', statuses[filter]);
+      // The campaign link (monitored_posts.campaign_lead_id) is not in the generated types yet.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = campaignId
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? (supabase as any).from('monitored_posts').select(CAMPAIGN_POSTS_SELECT).eq('lead.campaign_profile_id', campaignId)
+        : supabase.from('monitored_posts').select('*');
+      q = q.eq('user_id', user!.id).in('status', statuses[filter]);
       q = filter === 'pending'
         ? q.order('priority', { ascending: false }).order('created_at', { ascending: false })
         : q.order('updated_at', { ascending: false });

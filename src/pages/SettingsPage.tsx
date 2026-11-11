@@ -1,3 +1,4 @@
+import CommentKnowledgeBase from '@/components/CommentKnowledgeBase';
 import AppShell from '@/components/app/AppShell';
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -223,6 +224,8 @@ export default function SettingsPage() {
             </CollapsibleContent>
           </Collapsible>
         </Card>
+
+        <CommentKnowledgeBase />
 
         {/* Billing */}
         <Card>

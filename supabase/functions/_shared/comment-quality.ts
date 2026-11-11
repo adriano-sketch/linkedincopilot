@@ -48,14 +48,15 @@ const PRAISE_OPENERS = [
 ];
 
 /** Deterministic problems we never let through. Empty array = passes. */
-export function localIssues(comment: string, post: string): string[] {
+export function localIssues(comment: string, post: string, kind: PostKind = "on_topic"): string[] {
   const c = String(comment || "").trim();
   const issues: string[] = [];
   if (c.length < 25) issues.push("too short to say anything specific");
   if (c.length > 450) issues.push("too long for a LinkedIn comment");
   const head = c.toLowerCase().replace(/^[^a-zà-ÿ]+/, "").slice(0, 40);
   const opener = PRAISE_OPENERS.find((p) => head.startsWith(p));
-  if (opener) issues.push(`opens with generic praise ("${opener}")`);
+  // A congratulation is the point of a milestone comment.
+  if (opener && kind !== "milestone") issues.push(`opens with generic praise ("${opener}")`);
   if (/https?:\/\/|www\./i.test(c)) issues.push("contains a link");
   if (/#\w/.test(c)) issues.push("contains a hashtag");
   if (/[—–]/.test(c)) issues.push("contains a dash typical of AI text");
@@ -73,7 +74,59 @@ export type SenderFacts = {
   company?: string | null;
   about?: string | null; // company description / value proposition / proof points the USER wrote
   tone?: string | null;
+  // The user's comment knowledge base (profiles.comment_topics / comment_avoid / comment_examples).
+  topics?: string | null;   // subjects where they have something to say
+  avoid?: string | null;    // subjects they stay out of
+  examples?: string | null; // comments they wrote themselves, as a voice reference
 };
+
+/** What a post is, seen from the sender's business. Decides whether and how to comment. */
+export type PostKind = "on_topic" | "milestone" | "off_topic";
+export type Triage = { kind: PostKind; topic: string; reason: string };
+
+/** True when the user told us what they work on. Without it there is no basis to judge relevance. */
+export function hasKnowledgeBase(f: SenderFacts): boolean {
+  return String(f.topics || "").trim().length >= 10;
+}
+
+/**
+ * Sorts a post before any comment is written:
+ *   on_topic  : touches one of the sender's subjects, so they have something real to add
+ *   milestone : a personal or professional milestone of the author (new role, anniversary, award)
+ *   off_topic : everything else; the post gets a like and no comment
+ * Fails closed: if the model cannot answer, the post is off_topic (no comment).
+ */
+export async function triagePost(
+  post: string,
+  author: { name?: string | null; title?: string | null; company?: string | null },
+  f: SenderFacts,
+): Promise<Triage> {
+  const system = `You decide whether a LinkedIn post deserves a comment from this person. You do not write the comment.
+
+THE PERSON:
+${factsBlock(f)}
+
+Classify the post as exactly one of:
+- "on_topic": the post is substantially about one of the subjects listed under "Subjects they have something to say about". A passing mention is not enough: the subject must be what the post is about, or a clear part of it. Belonging to the same department or sharing a word is not enough either: a post about training maintenance crews, a new procedure manual or a team event is NOT a post about "maintenance prioritization" or "predictive maintenance". Ask yourself: could this person add something specific from that subject without changing the topic of the post? If not, it is off_topic.
+- "milestone": the post announces a personal or professional milestone of the AUTHOR (new job or role, promotion, work anniversary, award, graduation, retirement). Company marketing and project announcements are NOT milestones.
+- "off_topic": anything else, including posts about a subject the person stays out of, job openings, sponsorships, institutional announcements, politics, motivational text, and posts from the right industry that are not about the person's subjects.
+When a post is both a milestone and on topic, answer "on_topic". When in doubt, answer "off_topic": no comment is better than a comment with nothing behind it.
+Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words>"}`;
+  const user = [
+    `AUTHOR: ${author.name || "Unknown"} (${author.title || "role unknown"}${author.company ? `, ${author.company}` : ""})`,
+    `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,
+  ].join("\n\n");
+  try {
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 200, temperature: 0 });
+    const m = text.match(/\{[\s\S]*\}/);
+    const r = JSON.parse(m ? m[0] : text) as { kind?: string; topic?: string; reason?: string };
+    const kind: PostKind = r.kind === "on_topic" || r.kind === "milestone" ? r.kind : "off_topic";
+    return { kind, topic: String(r.topic || "").slice(0, 60), reason: String(r.reason || "").slice(0, 140) };
+  } catch (e) {
+    console.error("post triage failed:", e instanceof Error ? e.message : e);
+    return { kind: "off_topic", topic: "", reason: "triage unavailable" };
+  }
+}
 
 function factsBlock(f: SenderFacts): string {
   const lines = [
@@ -81,15 +134,54 @@ function factsBlock(f: SenderFacts): string {
     f.title ? `Role: ${f.title}` : "",
     f.company ? `Company: ${f.company}` : "",
     f.about ? `What they do (written by them): ${String(f.about).slice(0, 700)}` : "",
+    f.topics ? `Subjects they have something to say about: ${String(f.topics).slice(0, 600)}` : "",
+    f.avoid ? `Subjects they stay out of: ${String(f.avoid).slice(0, 400)}` : "",
   ].filter(Boolean);
   return lines.length ? lines.join("\n") : "(no facts provided)";
 }
 
-/** Writer rules used by every comment prompt. */
-export function commentRules(f: SenderFacts): string {
+function voiceBlock(f: SenderFacts): string {
+  const ex = String(f.examples || "").trim();
+  return ex
+    ? `\nComments this person wrote themselves. Match their voice, length and rhythm. Do not copy their content:\n"""\n${ex.slice(0, 1200)}\n"""\n`
+    : "";
+}
+
+/** Rules for a milestone post: a short, specific congratulation. No question, no analysis. */
+function milestoneRules(f: SenderFacts): string {
   return `You write LinkedIn comments for this person. These are the ONLY facts you know about them:
 ${factsBlock(f)}
+${voiceBlock(f)}
+The post announces a milestone of its author (new role, anniversary, award). The comment is what a colleague from the
+same industry would write: a short, warm, specific congratulation.
 
+Hard rules:
+- Write in the SAME language as the post.
+- 1 or 2 short sentences, under 200 characters.
+- Name the specific milestone (the role, the company, the number of years). Never a generic "Congratulations!".
+- No question that makes the author explain or justify anything. No analysis, no advice, no "what about".
+- NEVER invent a shared history, a past meeting or an opinion about their work. Only use the facts above.
+- Never sell, never mention the sender's company, products or services, no links, no hashtags, no @mentions.
+- No em dashes or en dashes. At most one emoji, and only if the post uses emojis.
+- Tone: ${f.tone || "professional and warm"}.
+
+If the post is not really a milestone of the author, SKIP it.`;
+}
+
+/** Writer rules used by every comment prompt. `kind` comes from triagePost (default: a post on the sender's subjects). */
+export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic = ""): string {
+  if (kind === "milestone") return milestoneRules(f);
+  // Only when a triage picked this post for a subject (Growth). Network posts are chosen by who wrote them.
+  const lens = hasKnowledgeBase(f) && topic
+    ? `\nThis post was chosen because it touches a subject the sender works on${topic ? ` (${topic})` : ""}. Write from that
+knowledge: the question or consideration must be one that someone who works on that subject would raise. Do not drift
+to parts of the post that are outside the sender's subjects (contracts, finance, politics, institutional news).
+The comment must stay on what the post actually describes. If connecting the post to the sender's subject needs a
+stretch, or you are not sure what a technical term in the post means, SKIP: a forced link is worse than no comment.\n`
+    : "";
+  return `You write LinkedIn comments for this person. These are the ONLY facts you know about them:
+${factsBlock(f)}
+${voiceBlock(f)}${lens}
 The comment exists to start a real conversation with the author, the way a respected peer would. LinkedIn is full of
 generic comments ("Impressive results!", "Incredible to see how technology...") written by people who want to sell
 something. Those comments are worthless and hurt the sender's reputation. Never write one.
@@ -115,9 +207,13 @@ where any comment would be generic), SKIP it. Skipping is a good outcome.`;
 export type Review = { ok: boolean; reason: string };
 
 /** Strict second opinion. Fails closed: if the reviewer cannot answer, every draft is rejected. */
-export async function reviewComments(items: { post: string; comment: string; author?: string | null }[], f: SenderFacts): Promise<Review[]> {
+export async function reviewComments(
+  items: { post: string; comment: string; author?: string | null }[],
+  f: SenderFacts,
+  kind: PostKind = "on_topic",
+): Promise<Review[]> {
   const out: Review[] = items.map((it) => {
-    const local = localIssues(it.comment, it.post);
+    const local = localIssues(it.comment, it.post, kind);
     return local.length ? { ok: false, reason: local.join("; ") } : { ok: true, reason: "" };
   });
   const toCheck = items.map((it, i) => ({ ...it, i })).filter((it) => out[it.i].ok);
@@ -127,7 +223,18 @@ export async function reviewComments(items: { post: string; comment: string; aut
     `[${idx}] POST${it.author ? ` by ${it.author}` : ""}:\n${String(it.post).slice(0, 1800)}`,
     `DRAFT COMMENT:\n${it.comment}`,
   ].join("\n")).join("\n=====\n");
-  const system = `You are a strict editor protecting a professional's reputation on LinkedIn. Reject any draft comment that:
+  const milestoneSystem = `You are a strict editor protecting a professional's reputation on LinkedIn. Each post announces a milestone
+of its author and each draft is a congratulation. Reject any draft that:
+1. does not name the specific milestone (role, company, years) and could be pasted under any announcement;
+2. asks the author to explain, justify or analyse anything, or gives advice;
+3. claims a shared history, a past meeting, experience or opinions not supported by these facts about the sender:
+${factsBlock(f)}
+4. sells, pitches, hints at the sender's services, or asks for a call or DM;
+5. is longer than two sentences, or sounds like AI or marketing copy;
+6. is not in the same language as the post.
+A warm, specific congratulation is what we want: do not reject it for being praise.
+Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rejected: max 20 words, what to fix>"}]`;
+  const topicSystem = `You are a strict editor protecting a professional's reputation on LinkedIn. Reject any draft comment that:
 1. is generic: it would make sense under a different post on the same topic (the "swap test");
 2. does not reference a concrete detail of THIS post (number, result, method, claim, place);
 3. paraphrases or summarizes the post instead of adding a question, a consideration or a perspective;
@@ -135,11 +242,15 @@ export async function reviewComments(items: { post: string; comment: string; aut
 ${factsBlock(f)}
 5. sells, pitches, hints at the sender's services, or asks for a call or DM;
 6. opens with praise or flattery, or sounds like AI or marketing copy;
-7. is not in the same language as the post.
+7. is not in the same language as the post;
+8. questions the author's competence or decisions, or reads like an auditor or an interviewer rather than a peer;
+9. is about a part of the post unrelated to the subjects the sender works on, when those subjects are listed above;
+10. changes the topic: it asks about something the post does not describe, or uses a technical term from the post in a way that does not fit what the post says.
 Approve only comments a respected peer would be glad to have written.
 Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rejected: max 20 words, what to fix>"}]`;
 
   try {
+    const system = kind === "milestone" ? milestoneSystem : topicSystem;
     const text = await callClaude({ model: modelFast(), system, user, maxTokens: 1200, temperature: 0 });
     const res = parseJsonArray<{ index: number; ok: boolean; reason?: string }>(text);
     const seen = new Set<number>();

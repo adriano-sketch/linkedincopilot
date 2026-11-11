@@ -84,7 +84,7 @@ const GROWTH_STAGES = [
   { key: 'g_post_found', label: 'Post found', color: 'text-indigo-600', statuses: ['post_found'], emoji: '📰' },
   { key: 'g_drafting', label: 'Liked, drafting', color: 'text-purple-600', statuses: ['post_liked'], emoji: '👍' },
   { key: 'g_review', label: 'To approve', color: 'text-orange-500', statuses: ['comment_review'], highlight: true, emoji: '📬' },
-  { key: 'g_done', label: 'Engaged', color: 'text-emerald-700', statuses: ['engagement_done'], emoji: '✅' },
+  { key: 'g_done', label: 'Resting', color: 'text-emerald-700', statuses: ['engagement_done'], emoji: '✅' },
   { key: 'excluded', label: 'Excluded', color: 'text-red-500', statuses: ['skipped', 'do_not_contact', 'error'], emoji: '🚫' },
 ];
 
@@ -117,6 +117,12 @@ export default function PipelineStats({ counts, onStageClick, activeFilter, qual
       })}
     </div>
   );
+}
+
+/** Human label of a stage key, for headings ("To approve" instead of "g review"). */
+export function stageLabel(key: string): string {
+  const stage = [...GROWTH_STAGES, ...PIPELINE_STAGES].find(s => s.key === key);
+  return stage ? stage.label : key.replace(/_/g, ' ');
 }
 
 export const STAGE_STATUS_MAP: Record<string, string[]> = {

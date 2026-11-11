@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import LeadRow from '@/components/LeadRow';
-import PipelineStats, { STAGE_STATUS_MAP } from '@/components/PipelineStats';
+import PipelineStats, { STAGE_STATUS_MAP, stageLabel } from '@/components/PipelineStats';
+import CommentQueue from '@/components/network/CommentQueue';
 import CampaignMetricsPanel from '@/components/CampaignMetricsPanel';
 import CampaignSelector from '@/components/CampaignSelector';
 import CampaignWizard, { CampaignFormData } from '@/components/CampaignWizard';
@@ -61,6 +62,16 @@ export default function Dashboard() {
   }, [campaigns, selectedCampaignId]);
 
   const { leads, pipelineCounts, updateLeadStatus, refresh: refreshLeads } = useCampaignLeads(selectedCampaignId);
+
+  // Growth campaigns have two views: the comments waiting for approval and the people. The
+  // Sequence and Health tabs describe invites and DMs, which a Growth campaign does not have.
+  const selectedIsGrowth = (campaigns.find(c => c.id === selectedCampaignId) as { campaign_mode?: string } | undefined)?.campaign_mode === 'growth';
+  const hasCommentsToApprove = leads.some(l => l.status === 'comment_review');
+  useEffect(() => {
+    if (!selectedIsGrowth) return;
+    setActiveTab(t => (t === 'sequence' || t === 'health') ? (hasCommentsToApprove ? 'approval' : 'pipeline') : t);
+  }, [selectedIsGrowth, selectedCampaignId, hasCommentsToApprove]);
+
 
   // Top bar "New campaign" and the ⌘K palette navigate here with ?new=1 / ?campaign=<id>.
   useEffect(() => {
@@ -522,7 +533,13 @@ export default function Dashboard() {
               connected: acceptedDisplayCount,
               connection_accepted: 0,
             }}
-            onStageClick={s => { setPipelineStageFilter(s); setPipelineFilter(null); }}
+            onStageClick={s => {
+              setPipelineFilter(null);
+              // "To approve" opens the approval queue itself, not a list of names.
+              if (s === 'g_review') { setPipelineStageFilter(null); setActiveTab('approval'); return; }
+              setPipelineStageFilter(s);
+              if (s) setActiveTab('pipeline');
+            }}
             activeFilter={pipelineStageFilter}
             qualifiedTotal={isGrowth ? undefined : leads.filter(l => l.icp_match === true).length}
           />
@@ -530,15 +547,29 @@ export default function Dashboard() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
-            <TabsTrigger value="sequence">Sequence</TabsTrigger>
-            <TabsTrigger value="pipeline">People</TabsTrigger>
-            <TabsTrigger value="approval" className="relative">
-              Approvals
-              {needsApproval && (
-                <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 text-[10px] px-1.5">!</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="health">Health</TabsTrigger>
+            {isGrowth ? (
+              <>
+                <TabsTrigger value="approval" className="relative">
+                  Comments to approve
+                  {growthCounts.toApprove > 0 && (
+                    <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 text-[10px] px-1.5">{growthCounts.toApprove}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="pipeline">People</TabsTrigger>
+              </>
+            ) : (
+              <>
+                <TabsTrigger value="sequence">Sequence</TabsTrigger>
+                <TabsTrigger value="pipeline">People</TabsTrigger>
+                <TabsTrigger value="approval" className="relative">
+                  Approvals
+                  {needsApproval && (
+                    <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 text-[10px] px-1.5">!</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="health">Health</TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           {/* Sequence View Tab */}
@@ -560,8 +591,8 @@ export default function Dashboard() {
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-lg">
                   {pipelineStageFilter
-                    ? `${pipelineStageFilter.replace(/_/g, ' ')} (${filteredLeads.length})`
-                    : `All Leads (${leads.length})`}
+                    ? `${stageLabel(pipelineStageFilter)} (${filteredLeads.length})`
+                    : `${isGrowth ? 'All contacts' : 'All Leads'} (${leads.length})`}
                 </CardTitle>
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="relative">
@@ -585,7 +616,7 @@ export default function Dashboard() {
                       </SelectContent>
                     </Select>
                   )}
-                  <Select value={qualityFilter} onValueChange={(v) => setQualityFilter(v as any)}>
+                  {!isGrowth && <Select value={qualityFilter} onValueChange={(v) => setQualityFilter(v as any)}>
                     <SelectTrigger className="h-8 text-xs w-[150px]">
                       <SelectValue placeholder="Quality" />
                     </SelectTrigger>
@@ -595,7 +626,7 @@ export default function Dashboard() {
                       <SelectItem value="pending">Quality pending</SelectItem>
                       <SelectItem value="ghost">Ghost profiles</SelectItem>
                     </SelectContent>
-                  </Select>
+                  </Select>}
                   {(pipelineFilter || pipelineStageFilter) && (
                     <Button variant="ghost" size="sm" onClick={() => { setPipelineFilter(null); setPipelineStageFilter(null); }} className="text-xs">
                       Show All
@@ -609,6 +640,8 @@ export default function Dashboard() {
               <CardContent className="p-0">
                 {!selectedCampaignId ? (
                   <div className="text-center py-12 text-muted-foreground">Select a campaign to view its leads.</div>
+                ) : filteredLeads.length === 0 && isGrowth ? (
+                  <div className="text-center py-12 px-4 text-sm text-muted-foreground">No contacts here right now.</div>
                 ) : filteredLeads.length === 0 ? (
                   <div className="text-center py-12 px-4">
                     <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-4">
@@ -626,8 +659,17 @@ export default function Dashboard() {
                           <th className="px-3 py-3 w-10"></th>
                           <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
                           <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Company</th>
-                          <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Location</th>
-                          <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Invite Note</th>
+                          {isGrowth ? (
+                            <>
+                              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Their post</th>
+                              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Your comment</th>
+                            </>
+                          ) : (
+                            <>
+                              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Location</th>
+                              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Invite Note</th>
+                            </>
+                          )}
                           <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
                           {hasVerificationData && (
                             <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Verification</th>
@@ -643,6 +685,8 @@ export default function Dashboard() {
                             onUpdateStatus={(id, status, extras) => updateLeadStatus.mutate({ leadId: id, status, extras })}
                             isUpdating={updateLeadStatus.isPending}
                             showVerification={hasVerificationData}
+                            mode={isGrowth ? 'growth' : 'outreach'}
+                            onReview={() => { setPipelineStageFilter(null); setActiveTab('approval'); }}
                           />
                         ))}
                       </tbody>
@@ -655,6 +699,22 @@ export default function Dashboard() {
 
           {/* Approval Queue Tab */}
           <TabsContent value="approval">
+            {isGrowth && selectedCampaignId ? (
+              <div className="space-y-4">
+                {!String((profile as { comment_topics?: string | null } | null)?.comment_topics || '').trim() && (
+                  <Card className="border-orange-300 bg-orange-50">
+                    <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
+                      <p className="text-sm m-0">
+                        <span className="font-semibold">Tell the AI what you comment on.</span>{' '}
+                        Until you list your subjects, contacts' posts get a like and no comment is drafted.
+                      </p>
+                      <Link to="/settings#comment-knowledge-base"><Button size="sm">Add your subjects</Button></Link>
+                    </CardContent>
+                  </Card>
+                )}
+                <CommentQueue campaignId={selectedCampaignId} />
+              </div>
+            ) : (
             <DmApprovalQueue
               leads={leads}
               onRefresh={refreshLeads}
@@ -665,6 +725,7 @@ export default function Dashboard() {
                 if (c) setEditingCampaign(c);
               }}
             />
+            )}
           </TabsContent>
 
           {/* Pipeline Health Tab — calls campaign-metrics edge function and
