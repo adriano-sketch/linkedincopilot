@@ -11,7 +11,7 @@ export default function Logo({
       <span
         aria-hidden="true"
         className={cn(
-          'font-display font-bold uppercase tracking-[0.06em] whitespace-nowrap leading-none',
+          'font-display font-bold tracking-[0.06em] whitespace-nowrap leading-none',
           tone === 'dark' ? 'text-white' : 'text-foreground',
         )}
         style={{ fontSize: '1.2em' }}

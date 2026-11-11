@@ -144,7 +144,7 @@ export default function AuthPage() {
                 <Input id="password" type="password" placeholder="Min. 8 chars, 1 uppercase, 1 number" value={password} onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }} minLength={8} required />
                 {passwordError && <p className="text-xs text-destructive">{passwordError}</p>}
               </div>
-              <Button type="submit" className="w-full bg-gold hover:opacity-90 text-navy font-semibold" disabled={submitting}>
+              <Button type="submit" className="w-full bg-gold hover:opacity-90 text-primary-foreground font-semibold" disabled={submitting}>
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Mail className="w-4 h-4 mr-2" />}
                 {mode === 'signup' ? 'Create Account' : 'Sign In'}
               </Button>
@@ -166,7 +166,7 @@ export default function AuthPage() {
                 <Label htmlFor="reset-email">Email</Label>
                 <Input id="reset-email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
-              <Button type="submit" className="w-full bg-gold hover:opacity-90 text-navy font-semibold" disabled={submitting}>
+              <Button type="submit" className="w-full bg-gold hover:opacity-90 text-primary-foreground font-semibold" disabled={submitting}>
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Mail className="w-4 h-4 mr-2" />}
                 Send reset email
               </Button>
@@ -207,7 +207,7 @@ export default function AuthPage() {
                 />
                 {passwordError && <p className="text-xs text-destructive">{passwordError}</p>}
               </div>
-              <Button type="submit" className="w-full bg-gold hover:opacity-90 text-navy font-semibold" disabled={submitting}>
+              <Button type="submit" className="w-full bg-gold hover:opacity-90 text-primary-foreground font-semibold" disabled={submitting}>
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Mail className="w-4 h-4 mr-2" />}
                 Update password
               </Button>

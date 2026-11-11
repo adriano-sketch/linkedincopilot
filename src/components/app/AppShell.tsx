@@ -36,7 +36,7 @@ function AutopilotCard() {
 
   if (!extensionStatus) {
     return (
-      <Link to="/setup-guide" className="block rounded-xl border border-[#22304A] bg-navy-light p-3.5 text-[13px] hover:border-primary/60">
+      <Link to="/setup-guide" className="block rounded-xl border border-[#2E2643] bg-navy-light p-3.5 text-[13px] hover:border-primary/60">
         <div className="font-mono-label text-[11px] text-slate-400">Autopilot</div>
         <div className="mt-1 font-semibold text-white">Not set up yet</div>
         <div className="text-slate-400">Install the Chrome extension to start.</div>
@@ -46,7 +46,7 @@ function AutopilotCard() {
 
   const online = !!extensionStatus.last_heartbeat_at && Date.now() - new Date(extensionStatus.last_heartbeat_at).getTime() < 3 * 60 * 1000;
   const paused = !!extensionStatus.is_paused;
-  const state = paused ? { label: 'Paused', dot: 'bg-amber-400', text: 'text-amber-300' }
+  const state = paused ? { label: 'Paused', dot: 'bg-attention', text: 'text-gold-light' }
     : online ? { label: 'On', dot: 'bg-emerald-400', text: 'text-emerald-400' }
     : { label: 'Offline', dot: 'bg-slate-500', text: 'text-slate-400' };
   const note = paused ? 'Nothing runs until you resume.'
@@ -62,7 +62,7 @@ function AutopilotCard() {
   };
 
   return (
-    <div className="rounded-xl border border-[#22304A] bg-navy-light p-3.5 text-[13px] flex flex-col gap-1.5">
+    <div className="rounded-xl border border-[#2E2643] bg-navy-light p-3.5 text-[13px] flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <span className="font-mono-label text-[11px] text-slate-400">Autopilot</span>
         <span className={cn('flex items-center gap-1.5 font-semibold', state.text)}><span className={cn('w-2 h-2 rounded-full', state.dot)} />{state.label}</span>
@@ -91,7 +91,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col gap-6 px-3.5 py-5">
       <Link to="/today" onClick={onNavigate} className="flex items-center gap-2.5 px-2 text-white">
         <BrandMark className="w-7 h-7" />
-        <span className="font-display font-bold text-lg tracking-[0.06em] uppercase">Copilot</span>
+        <span className="font-display font-bold text-lg tracking-[0.06em]">Copilot</span>
       </Link>
       <nav aria-label="Main" className="flex flex-col gap-0.5">
         {nav.map(item => {
@@ -206,7 +206,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <kbd className="hidden sm:inline font-mono text-[11px] border border-border rounded px-1.5 py-0.5">⌘K</kbd>
           </button>
           <button onClick={() => navigate('/dashboard?new=1')}
-            className="ml-auto inline-flex items-center gap-2 rounded-lg bg-navy text-background font-semibold px-4 h-10 text-sm hover:bg-navy-light">
+            className="ml-auto inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground font-semibold px-4 h-10 text-sm hover:bg-gold-dark">
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">New campaign</span>
           </button>
         </header>

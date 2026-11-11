@@ -295,7 +295,7 @@ export default function Dashboard() {
     <AppShell>
       <div className="space-y-5">
         <div className="flex flex-col gap-1">
-          <h1 className="font-display font-bold uppercase text-4xl leading-none m-0">Campaigns</h1>
+          <h1 className="font-display font-bold text-4xl leading-none m-0">Campaigns</h1>
           <p className="text-muted-foreground m-0">Pick a campaign to see its people, messages and results.</p>
         </div>
         {/* Campaign Selector */}
@@ -508,7 +508,7 @@ export default function Dashboard() {
               </div>
               <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Needs verification</p>
-                <p className="text-xl font-semibold text-amber-600">{verificationNeedsRefresh.length}</p>
+                <p className="text-xl font-semibold text-attention">{verificationNeedsRefresh.length}</p>
               </div>
               <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total invites sent</p>
@@ -702,7 +702,7 @@ export default function Dashboard() {
             {isGrowth && selectedCampaignId ? (
               <div className="space-y-4">
                 {!String((profile as { comment_topics?: string | null } | null)?.comment_topics || '').trim() && (
-                  <Card className="border-orange-300 bg-orange-50">
+                  <Card className="border-attention/40 bg-attention/5">
                     <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
                       <p className="text-sm m-0">
                         <span className="font-semibold">Tell the AI what you comment on.</span>{' '}

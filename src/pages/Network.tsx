@@ -50,7 +50,7 @@ export default function Network() {
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-1">
-            <h1 className="font-display font-bold uppercase text-4xl leading-none m-0">Network</h1>
+            <h1 className="font-display font-bold text-4xl leading-none m-0">Network</h1>
             <p className="text-muted-foreground max-w-[64ch] m-0">{SUBTITLES[tab]}</p>
           </div>
           {pending > 0 && (

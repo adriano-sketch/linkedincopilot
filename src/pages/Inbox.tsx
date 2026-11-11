@@ -146,7 +146,7 @@ export default function InboxPage() {
       <div className="flex flex-col gap-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display font-bold uppercase text-4xl leading-none m-0">Inbox</h1>
+            <h1 className="font-display font-extrabold text-4xl leading-none m-0">Inbox{countOf('all') > 0 && <span className="text-attention"> {countOf('all')}</span>}</h1>
             <p className="text-muted-foreground m-0 mt-1.5">
               {loading ? 'Loading…' : open.length === 0 ? 'You are all caught up.'
                 : `${open.length} to review${replies ? `, ${replies} ${replies === 1 ? 'reply is' : 'replies are'} waiting on you` : ''}. About ${minutes} min.`}
@@ -159,8 +159,8 @@ export default function InboxPage() {
               return (
                 <button key={f.key} onClick={() => setFilter(f.key)} aria-pressed={active}
                   className={cn('h-10 px-3.5 rounded-full border text-sm transition-colors',
-                    active ? 'bg-navy text-background border-navy font-semibold' : 'bg-card border-border hover:border-foreground/30')}>
-                  {f.label} <span className={cn('tabular-nums', active ? 'text-primary' : 'text-muted-foreground')}>{n}</span>
+                    active ? 'bg-primary text-primary-foreground border-primary font-semibold' : 'bg-card border-border hover:border-foreground/30')}>
+                  {f.label} <span className={cn('tabular-nums', active ? 'text-primary-foreground/80' : n > 0 ? 'text-attention font-semibold' : 'text-muted-foreground')}>{n}</span>
                 </button>
               );
             })}
@@ -209,7 +209,7 @@ export default function InboxPage() {
                           </span>
                           <span className="flex items-center gap-1.5 my-0.5">
                             <span className={cn('text-[11px] font-semibold px-2 py-px rounded-full', i.kind === 'reply' ? 'bg-navy text-primary' : 'bg-secondary text-foreground/80')}>{KIND_LABEL[i.kind]}</span>
-                            {i.signal && <span className="text-[11px] font-semibold text-[#7A4B00] truncate">● {i.signal}</span>}
+                            {i.signal && <span className="text-[11px] font-semibold text-[#A01268] truncate">● {i.signal}</span>}
                           </span>
                           <span className="block text-[13px] text-muted-foreground truncate">{i.preview}</span>
                         </span>
@@ -245,7 +245,7 @@ export default function InboxPage() {
                   <div className="font-mono-label text-[11px] text-muted-foreground">{current.contextLabel}</div>
                   <div className="text-[15px] leading-relaxed whitespace-pre-line">{current.context}</div>
                   {current.signal && (
-                    <div className="text-[13px] font-semibold text-[#7A4B00] bg-gold-bg rounded-lg px-3 py-2">
+                    <div className="text-[13px] font-semibold text-[#A01268] bg-gold-bg rounded-lg px-3 py-2">
                       {current.signal}{current.signalWhy ? `: ${current.signalWhy}` : ''}
                     </div>
                   )}
@@ -256,7 +256,7 @@ export default function InboxPage() {
                     <span className="flex justify-between">{EDITOR_LABEL[current.kind]}<span className="tabular-nums font-normal">{textOf(current).length} characters</span></span>
                     <textarea ref={editorRef} rows={5} value={textOf(current)}
                       onChange={e => setEdits(prev => ({ ...prev, [current.key]: e.target.value }))}
-                      className="w-full rounded-xl border-[1.5px] border-[#C99526] bg-card px-4 py-3 text-base leading-relaxed text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-ring" />
+                      className="w-full rounded-xl border-2 border-primary bg-card px-4 py-3 text-base leading-relaxed text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-ring" />
                   </label>
                 )}
                 {current.why && <p className="text-[13px] text-muted-foreground m-0 flex gap-2"><Sparkles className="w-4 h-4 shrink-0 text-gold-dark" />{current.why}</p>}
@@ -264,20 +264,20 @@ export default function InboxPage() {
                 <div className="flex flex-wrap items-center gap-2.5">
                   {current.kind === 'reply' && current.profileUrl && (
                     <a href="https://www.linkedin.com/messaging/" target="_blank" rel="noreferrer"
-                      className="h-12 px-5 rounded-xl bg-navy text-background font-semibold inline-flex items-center gap-2">
+                      className="h-12 px-5 rounded-full bg-primary text-primary-foreground hover:bg-gold-dark font-semibold inline-flex items-center gap-2">
                       Answer on LinkedIn<ExternalLink className="w-4 h-4" />
                     </a>
                   )}
                   <button onClick={() => doApprove(current)} disabled={busy}
-                    className={cn('h-12 px-5 rounded-xl font-semibold inline-flex items-center gap-2.5 disabled:opacity-60',
-                      current.kind === 'reply' ? 'border border-border bg-card' : 'bg-navy text-background')}>
+                    className={cn('h-12 px-5 rounded-full font-semibold inline-flex items-center gap-2.5 disabled:opacity-60',
+                      current.kind === 'reply' ? 'border border-border bg-card' : 'bg-primary text-primary-foreground hover:bg-gold-dark')}>
                     {current.kind === 'reply' && <CheckCircle2 className="w-4 h-4" />}
                     {APPROVE_LABEL[current.kind]}
-                    <kbd className={cn('font-mono text-[11px] rounded px-1.5 py-0.5', current.kind === 'reply' ? 'bg-secondary' : 'bg-navy-light text-slate-300')}>A</kbd>
+                    <kbd className={cn('font-mono text-[11px] rounded px-1.5 py-0.5', current.kind === 'reply' ? 'bg-secondary' : 'bg-white/20 text-white')}>A</kbd>
                   </button>
                   {SECONDARY_LABEL[current.kind] && (
                     <button onClick={() => doSecondary(current)} disabled={busy}
-                      className="h-12 px-4 rounded-xl border border-border bg-card font-medium inline-flex items-center gap-2.5 disabled:opacity-60">
+                      className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2.5 disabled:opacity-60">
                       {current.kind === 'message' && <RefreshCw className="w-4 h-4" />}
                       {SECONDARY_LABEL[current.kind]}
                       {current.kind === 'comment' && <kbd className="font-mono text-[11px] bg-secondary rounded px-1.5 py-0.5">S</kbd>}

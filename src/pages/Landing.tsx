@@ -192,7 +192,7 @@ export default function Landing() {
         <div className="max-w-[1240px] mx-auto flex items-center justify-between h-[72px] px-4 sm:px-6 gap-4">
           <Link to="/" className="flex items-center gap-3 text-white" aria-label="LinkedIn Copilot home">
             <BrandMark className="w-8 h-8" />
-            <span className="font-display font-bold text-lg sm:text-xl tracking-[0.06em] uppercase whitespace-nowrap"><span className="hidden sm:inline">LinkedIn </span>Copilot</span>
+            <span className="font-display font-bold text-lg sm:text-xl tracking-[0.06em] whitespace-nowrap"><span className="hidden sm:inline">LinkedIn </span>Copilot</span>
           </Link>
           <div className="hidden md:flex items-center gap-7 text-[15px] text-slate-300">
             <button onClick={() => scrollTo(modesRef)} className="hover:text-white transition-colors">Modes</button>
@@ -202,7 +202,7 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-2">
             <Link to="/auth" className="text-[15px] text-white px-3 py-2.5 whitespace-nowrap hover:text-primary transition-colors">Log in</Link>
-            <Button onClick={handleCTA} className="bg-primary text-primary-foreground hover:bg-gold-light font-semibold rounded-lg h-11 px-5">
+            <Button onClick={handleCTA} className="bg-primary text-primary-foreground hover:bg-gold-dark font-semibold rounded-lg h-11 px-5">
               Start free
             </Button>
           </div>
@@ -221,7 +221,7 @@ export default function Landing() {
             <motion.p
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' as const }}
               aria-hidden="true"
-              className="font-display font-bold uppercase leading-[0.92] tracking-tight m-0"
+              className="font-display font-bold leading-[0.92] tracking-tight m-0"
               style={{ fontSize: 'clamp(48px, 6.3vw, 92px)' }}
             >
               You set the course.<br /><span className="text-primary">Copilot flies it.</span>
@@ -230,7 +230,7 @@ export default function Landing() {
               Define your ideal customer once. Copilot finds them on LinkedIn, connects, writes the messages and drafts the comments. Nothing goes out that you would not have sent yourself.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }} className="flex flex-wrap items-center gap-4">
-              <Button onClick={handleCTA} size="lg" className="bg-primary text-primary-foreground hover:bg-gold-light font-semibold text-base rounded-xl h-14 px-6">
+              <Button onClick={handleCTA} size="lg" className="bg-primary text-primary-foreground hover:bg-gold-dark font-semibold text-base rounded-xl h-14 px-6">
                 Start free · 50 outreach credits <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <button onClick={() => scrollTo(networkRef)} className="text-base text-white py-3 border-b border-slate-600 hover:border-primary transition-colors">
@@ -246,34 +246,34 @@ export default function Landing() {
 
           <motion.div
             initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.2 }}
-            className="bg-navy-light/60 border border-[#22304A] rounded-[20px] p-5 sm:p-6 flex flex-col gap-5 shadow-hero"
+            className="bg-navy-light/60 border border-[#2E2643] rounded-[20px] p-5 sm:p-6 flex flex-col gap-5 shadow-hero"
             aria-hidden="true"
           >
             <div className="flex justify-between items-center font-mono-label text-[11px] text-slate-400">
               <span>ICP radar · Ops leaders, Florida</span>
               <span className="flex items-center gap-2 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />Scanning</span>
             </div>
-            <div className="relative aspect-[1.6/1] rounded-2xl bg-navy border border-[#1C2740] overflow-hidden">
+            <div className="relative aspect-[1.6/1] rounded-2xl bg-navy border border-[#241D36] overflow-hidden">
               <svg viewBox="0 0 480 300" className="w-full h-full" preserveAspectRatio="xMidYMid slice">
                 <defs>
                   <radialGradient id="lc-sweep" cx="240" cy="150" r="200" gradientUnits="userSpaceOnUse">
-                    <stop offset="0" stopColor="#E0A82E" stopOpacity="0.35" />
-                    <stop offset="1" stopColor="#E0A82E" stopOpacity="0" />
+                    <stop offset="0" stopColor="#A78BFF" stopOpacity="0.35" />
+                    <stop offset="1" stopColor="#A78BFF" stopOpacity="0" />
                   </radialGradient>
                 </defs>
-                <g fill="none" stroke="#22304A">
+                <g fill="none" stroke="#2E2643">
                   <circle cx="240" cy="150" r="50" /><circle cx="240" cy="150" r="100" /><circle cx="240" cy="150" r="150" /><circle cx="240" cy="150" r="200" />
                   <path d="M40 150h400M240 -50v400" />
                 </g>
                 <g className="lc-radar-sweep" style={{ transformOrigin: '240px 150px' }}>
                   <path d="M240 150 L 418 60 A 200 200 0 0 1 440 150 Z" fill="url(#lc-sweep)" />
                 </g>
-                <g fill="#E0A82E"><circle cx="330" cy="102" r="6" /><circle cx="182" cy="96" r="4" /><circle cx="300" cy="214" r="5" /><circle cx="140" cy="190" r="3.5" /><circle cx="378" cy="168" r="4.5" /></g>
-                <g fill="#4A5A7A"><circle cx="210" cy="230" r="3" /><circle cx="120" cy="120" r="3" /><circle cx="268" cy="70" r="3" /><circle cx="350" cy="240" r="3" /></g>
-                <circle cx="330" cy="102" r="14" fill="none" stroke="#E0A82E" strokeOpacity="0.6" />
-                <circle cx="240" cy="150" r="5" fill="#E8ECF4" />
+                <g fill="#A78BFF"><circle cx="330" cy="102" r="6" /><circle cx="182" cy="96" r="4" /><circle cx="300" cy="214" r="5" /><circle cx="140" cy="190" r="3.5" /><circle cx="378" cy="168" r="4.5" /></g>
+                <g fill="#5A5078"><circle cx="210" cy="230" r="3" /><circle cx="120" cy="120" r="3" /><circle cx="268" cy="70" r="3" /><circle cx="350" cy="240" r="3" /></g>
+                <circle cx="330" cy="102" r="14" fill="none" stroke="#A78BFF" strokeOpacity="0.6" />
+                <circle cx="240" cy="150" r="5" fill="#EDEAF5" />
               </svg>
-              <div className="absolute left-[60%] top-[12%] bg-navy-light border border-[#3A4A6B] rounded-xl px-3 py-2.5 text-[13px] leading-snug min-w-[160px]">
+              <div className="absolute left-[60%] top-[12%] bg-navy-light border border-[#4A4066] rounded-xl px-3 py-2.5 text-[13px] leading-snug min-w-[160px]">
                 <div className="font-semibold">Marina Alves</div>
                 <div className="text-slate-400">VP Operations · 14 mutual</div>
                 <div className="font-mono text-[11px] text-primary mt-1">FIT 92 · QUALIFIED</div>
@@ -283,7 +283,7 @@ export default function Landing() {
               <div className="bg-navy-light rounded-xl p-3.5">
                 <div className="font-mono-label text-[10px] text-slate-400">Invites / week</div>
                 <div className="font-display text-[32px] font-semibold leading-tight">64<span className="text-slate-500 text-xl">/100</span></div>
-                <div className="h-1 bg-[#22304A] rounded"><div className="h-1 w-[64%] bg-primary rounded" /></div>
+                <div className="h-1 bg-[#2E2643] rounded"><div className="h-1 w-[64%] bg-primary rounded" /></div>
               </div>
               <div className="bg-navy-light rounded-xl p-3.5">
                 <div className="font-mono-label text-[10px] text-slate-400">Accepted</div>
@@ -293,12 +293,12 @@ export default function Landing() {
               <div className="bg-navy-light rounded-xl p-3.5">
                 <div className="font-mono-label text-[10px] text-slate-400">To approve</div>
                 <div className="font-display text-[32px] font-semibold leading-tight">7</div>
-                <div className="text-[13px] text-amber-300">2 signals</div>
+                <div className="text-[13px] text-gold-light">2 signals</div>
               </div>
             </div>
           </motion.div>
         </div>
-        <div className="border-t border-white/[0.06] bg-[#0D1322]">
+        <div className="border-t border-white/[0.06] bg-[#15111F]">
           <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-5 flex flex-wrap justify-between gap-4 font-mono-label text-[11px] text-slate-400">
             <span>Claude Sonnet writes · Claude Haiku qualifies</span>
             <span>No Sales Navigator required</span>
@@ -312,7 +312,7 @@ export default function Landing() {
       <section id="what-is-linkedin-automation" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-3xl relative z-10">
           <motion.div {...fadeUp} className="text-center">
-            <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight mb-6">
+            <h2 className="font-display font-bold text-3xl md:text-4xl tracking-tight mb-6">
               What Is <span className="text-gradient-gold">LinkedIn Automation?</span>
             </h2>
             <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
@@ -327,7 +327,7 @@ export default function Landing() {
         <div className="max-w-[1240px] mx-auto flex flex-col gap-12">
           <motion.div {...fadeUp} className="flex flex-col gap-3 max-w-3xl">
             <div className="font-mono-label text-xs text-gold-dark">01 // Three modes</div>
-            <h2 className="font-display font-bold uppercase leading-[0.98] m-0" style={{ fontSize: 'clamp(40px, 5vw, 64px)' }}>
+            <h2 className="font-display font-bold leading-[0.98] m-0" style={{ fontSize: 'clamp(40px, 5vw, 64px)' }}>
               One cockpit for every way you sell on LinkedIn
             </h2>
           </motion.div>
@@ -342,7 +342,7 @@ export default function Landing() {
               >
                 {m.isNew && <span className="absolute top-6 right-6 font-mono-label text-[11px] bg-primary text-primary-foreground px-2 py-1 rounded-md">New</span>}
                 <m.icon className={`w-9 h-9 ${m.isNew ? 'text-primary' : 'text-gold-dark'}`} strokeWidth={1.5} />
-                <h3 className="font-display font-semibold text-[32px] uppercase leading-none m-0">{m.title}</h3>
+                <h3 className="font-display font-semibold text-[32px] leading-none m-0">{m.title}</h3>
                 <p className={`m-0 ${m.isNew ? 'text-slate-300' : 'text-muted-foreground'}`}>{m.desc}</p>
                 <ul className="list-none p-0 m-0 flex flex-col gap-2.5 text-[15px]">
                   {m.bullets.map(b => (
@@ -361,21 +361,21 @@ export default function Landing() {
           <motion.div {...fadeUp} className="flex flex-col gap-8">
             <div className="flex flex-col gap-3">
               <div className="font-mono-label text-xs text-primary">02 // Network module</div>
-              <h2 className="font-display font-bold uppercase leading-[0.98] m-0" style={{ fontSize: 'clamp(40px, 5vw, 64px)' }}>
+              <h2 className="font-display font-bold leading-[0.98] m-0" style={{ fontSize: 'clamp(40px, 5vw, 64px)' }}>
                 Read the post. Spot the deal. Approve in one click.
               </h2>
               <p className="text-lg text-slate-300 m-0">
                 Copilot watches what people in your ICP are posting and drafts a comment for each. You see their words next to the suggestion, so a buying signal never slips by.
               </p>
             </div>
-            <ol className="list-none p-0 m-0 border-t border-[#22304A]">
+            <ol className="list-none p-0 m-0 border-t border-[#2E2643]">
               {[
                 ['Define one or more ICPs.', 'Titles, locations, keywords, topics they post about.'],
                 ['Copilot prospects.', 'People search on your own account, scored for fit by Claude.'],
                 ['It connects.', 'No note, spaced through your active hours, withdrawn after 21 days.'],
                 ['You approve the comments.', 'Edit inline or approve the whole queue at once.'],
               ].map(([t, d], i) => (
-                <li key={t} className="flex gap-5 py-4 border-b border-[#22304A]">
+                <li key={t} className="flex gap-5 py-4 border-b border-[#2E2643]">
                   <span className="font-mono text-sm text-primary pt-0.5">0{i + 1}</span>
                   <span><strong className="font-semibold">{t}</strong> <span className="text-slate-400">{d}</span></span>
                 </li>
@@ -390,15 +390,15 @@ export default function Landing() {
                 <div className="font-semibold">Rafael Teixeira</div>
                 <div className="text-sm text-muted-foreground">Director of Facilities · 2nd · 3h</div>
               </div>
-              <span className="text-xs font-semibold bg-gold-bg text-[#7A4B00] px-2.5 py-1 rounded-full">Business signal</span>
+              <span className="text-xs font-semibold bg-gold-bg text-[#A01268] px-2.5 py-1 rounded-full">Business signal</span>
             </div>
             <p className="m-0 text-[15px] leading-relaxed p-4 bg-card border border-border rounded-xl">
               We are consolidating three sites into one control room next quarter. Still looking for a partner who has done this in a 24/7 operation, not just on paper.
             </p>
-            <div className="text-[13px] text-[#7A4B00] flex gap-2 items-center"><Sparkles className="w-3.5 h-3.5" />Actively looking for a vendor</div>
+            <div className="text-[13px] text-[#A01268] flex gap-2 items-center"><Sparkles className="w-3.5 h-3.5" />Actively looking for a vendor</div>
             <div className="flex flex-col gap-1.5">
               <span className="text-[13px] text-muted-foreground">Suggested comment</span>
-              <p className="m-0 text-[15px] leading-relaxed p-4 bg-card border-[1.5px] border-[#C99526] rounded-xl">
+              <p className="m-0 text-[15px] leading-relaxed p-4 bg-card border-[1.5px] border-[#6D28FF] rounded-xl">
                 The hardest part we have seen is the cutover week, when both sites still need eyes on them. Are you planning a parallel run or a hard switch?
               </p>
             </div>
@@ -414,14 +414,14 @@ export default function Landing() {
       <section ref={howRef} id="how-it-works" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-16">
-            <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight">
+            <h2 className="font-display font-bold text-3xl md:text-4xl tracking-tight">
               How It <span className="text-gradient-gold">Works</span>
             </h2>
             <p className="text-lg text-gray-600 mt-3 max-w-2xl mx-auto">Two modes, same simplicity. Set up in minutes, then it runs on autopilot.</p>
           </motion.div>
 
           <motion.div {...fadeUp} className="mb-8">
-            <h3 className="text-xl font-display font-bold uppercase tracking-wide text-center mb-2">
+            <h3 className="text-xl font-display font-bold tracking-wide text-center mb-2">
               <Target className="w-5 h-5 inline-block mr-2 text-primary" />
               Outreach Mode
             </h3>
@@ -437,7 +437,7 @@ export default function Landing() {
                   <div className="w-20 h-20 rounded-full bg-gold-bg border-2 border-primary flex items-center justify-center text-2xl font-display font-extrabold text-primary mb-4 shadow-soft">
                     {s.num}
                   </div>
-                  <h3 className="font-display font-bold text-xs uppercase tracking-wider mb-1.5">{s.title}</h3>
+                  <h3 className="font-display font-bold text-xs tracking-wider mb-1.5">{s.title}</h3>
                   <p className="text-xs text-muted-foreground leading-snug max-w-[160px]">{s.desc}</p>
                 </motion.div>
               ))}
@@ -453,7 +453,7 @@ export default function Landing() {
                     {s.num}
                   </div>
                   <div>
-                    <h3 className="font-display font-bold text-sm uppercase tracking-wider">{s.title}</h3>
+                    <h3 className="font-display font-bold text-sm tracking-wider">{s.title}</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">{s.desc}</p>
                   </div>
                 </div>
@@ -467,7 +467,7 @@ export default function Landing() {
           {/* Growth Mode Steps */}
           <div className="mt-16 pt-16 border-t border-border/40">
             <motion.div {...fadeUp} className="mb-8">
-              <h3 className="text-xl font-display font-bold uppercase tracking-wide text-center mb-2">
+              <h3 className="text-xl font-display font-bold tracking-wide text-center mb-2">
                 <TrendingUp className="w-5 h-5 inline-block mr-2 text-emerald-600" />
                 Growth Mode
               </h3>
@@ -483,7 +483,7 @@ export default function Landing() {
                     <div className="w-20 h-20 rounded-full bg-emerald-50 border-2 border-emerald-400 flex items-center justify-center text-2xl font-display font-extrabold text-emerald-600 mb-4 shadow-soft">
                       {s.num}
                     </div>
-                    <h3 className="font-display font-bold text-xs uppercase tracking-wider mb-1.5">{s.title}</h3>
+                    <h3 className="font-display font-bold text-xs tracking-wider mb-1.5">{s.title}</h3>
                     <p className="text-xs text-muted-foreground leading-snug max-w-[180px]">{s.desc}</p>
                   </motion.div>
                 ))}
@@ -499,7 +499,7 @@ export default function Landing() {
                       {s.num}
                     </div>
                     <div>
-                      <h3 className="font-display font-bold text-sm uppercase tracking-wider">{s.title}</h3>
+                      <h3 className="font-display font-bold text-sm tracking-wider">{s.title}</h3>
                       <p className="text-xs text-muted-foreground mt-0.5">{s.desc}</p>
                     </div>
                   </div>
@@ -517,19 +517,19 @@ export default function Landing() {
       <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold tracking-tight mb-2">
               Your LinkedIn Outreach Is Broken.
             </h2>
-            <p className="text-lg sm:text-xl font-display font-semibold uppercase tracking-wide text-muted-foreground">Here's Why.</p>
+            <p className="text-lg sm:text-xl font-display font-semibold tracking-wide text-muted-foreground">Here's Why.</p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {painPoints.map((p, i) => (
               <motion.div key={i} {...stagger(i)}>
-                <Card className="hover-float h-full border-amber-200 bg-amber-50 rounded-2xl shadow-sm border-l-4 border-l-amber-400">
-                  <CardContent className="p-6 sm:p-8 text-center">
-                    <span className="text-5xl mb-5 block text-amber-600">{p.emoji}</span>
-                    <h3 className="font-display font-bold uppercase tracking-wide mb-3 text-base sm:text-lg">{p.title}</h3>
+                <Card className="hover-float h-full bg-card rounded-2xl shadow-sm">
+                  <CardContent className="p-6 sm:p-8">
+                    <span className="font-display font-extrabold text-2xl mb-4 block text-gold-dark">{String(i + 1).padStart(2, '0')}</span>
+                    <h3 className="font-display font-bold tracking-wide mb-3 text-base sm:text-lg">{p.title}</h3>
                     <p className="text-sm text-gray-600 leading-relaxed">{p.desc}</p>
                   </CardContent>
                 </Card>
@@ -544,7 +544,7 @@ export default function Landing() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[200px] pointer-events-none" />
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-white mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold tracking-tight text-white mb-2">
               This Is How Precision Outreach <span className="text-gradient-gold text-glow">Works.</span>
             </h2>
           </motion.div>
@@ -557,7 +557,7 @@ export default function Landing() {
                     <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center mb-4 border border-primary/30">
                       <f.icon className="w-5 h-5 text-primary" />
                     </div>
-                    <h3 className="font-display font-bold uppercase tracking-wide mb-2 text-white text-sm">{f.title}</h3>
+                    <h3 className="font-display font-bold tracking-wide mb-2 text-white text-sm">{f.title}</h3>
                     <p className="text-sm text-slate-400 leading-relaxed">{f.desc}</p>
                   </CardContent>
                 </Card>
@@ -571,7 +571,7 @@ export default function Landing() {
       <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-3">
+            <h2 className="text-3xl md:text-4xl font-display font-bold tracking-tight mb-3">
               Not Another <span className="text-gradient-gold">Template Tool</span>
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -587,44 +587,44 @@ export default function Landing() {
                     <tr className="border-b border-border/60">
                       <th className="py-3 pr-3 font-semibold">Feature</th>
                       <th className="py-3 px-3 font-semibold">Dripify / Expandi / Waalaxy</th>
-                      <th className="py-3 pl-3 font-semibold bg-amber-50/60 rounded-tr-xl">LinkedIn Copilot</th>
+                      <th className="py-3 pl-3 font-semibold bg-gold-bg rounded-tr-xl">LinkedIn Copilot</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">Message Personalization</td>
                       <td className="py-3 px-3">Template with {'{firstName}'} merge tags</td>
-                      <td className="py-3 pl-3 bg-amber-50/60">AI reads full profile, writes unique message per lead</td>
+                      <td className="py-3 pl-3 bg-gold-bg">AI reads full profile, writes unique message per lead</td>
                     </tr>
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">ICP Filtering</td>
                       <td className="py-3 px-3">Manual list building, filter by title only</td>
-                      <td className="py-3 pl-3 bg-amber-50/60">AI analyzes employer company to validate fit</td>
+                      <td className="py-3 pl-3 bg-gold-bg">AI analyzes employer company to validate fit</td>
                     </tr>
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">Campaign Setup</td>
                       <td className="py-3 px-3">Complex sequence builder with 10+ steps</td>
-                      <td className="py-3 pl-3 bg-amber-50/60">Simple wizard — set ICP, tone, and go</td>
+                      <td className="py-3 pl-3 bg-gold-bg">Simple wizard — set ICP, tone, and go</td>
                     </tr>
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">Warm-up</td>
                       <td className="py-3 px-3">Basic or none</td>
-                      <td className="py-3 pl-3 bg-amber-50/60">3-day warm-up: visit → follow → personalized note</td>
+                      <td className="py-3 pl-3 bg-gold-bg">3-day warm-up: visit → follow → personalized note</td>
                     </tr>
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">Message Quality</td>
                       <td className="py-3 px-3">"Hi {'{firstName}'}, I noticed you work at {'{company}'}..."</td>
-                      <td className="py-3 pl-3 bg-amber-50/60">Mentions specific details from their profile, role, and company context</td>
+                      <td className="py-3 pl-3 bg-gold-bg">Mentions specific details from their profile, role, and company context</td>
                     </tr>
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">Account Growth</td>
                       <td className="py-3 px-3">Not available</td>
-                      <td className="py-3 pl-3 bg-amber-50/60">Growth Mode: AI engages with target profiles' content weekly</td>
+                      <td className="py-3 pl-3 bg-gold-bg">Growth Mode: AI engages with target profiles' content weekly</td>
                     </tr>
                     <tr>
                       <td className="py-3 pr-3 text-muted-foreground">Pricing</td>
                       <td className="py-3 px-3">$59-$99/mo for templates</td>
-                      <td className="py-3 pl-3 bg-amber-50/60">Similar price, real AI personalization included</td>
+                      <td className="py-3 pl-3 bg-gold-bg">Similar price, real AI personalization included</td>
                     </tr>
                   </tbody>
                 </table>
@@ -641,7 +641,7 @@ export default function Landing() {
       <section className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold tracking-tight mb-2">
               The Sequence That Gets You <span className="text-gradient-gold">Accepted.</span>
             </h2>
           </motion.div>
@@ -660,11 +660,11 @@ export default function Landing() {
                     { day: 'Day +4', emoji: '\uD83D\uDCE9', label: 'Follow-up', sub: 'if no reply' },
                   ].map((step, i) => (
                     <motion.div key={i} {...stagger(i)} className="flex flex-col items-center text-center relative z-10">
-                      <p className="text-xs font-display font-semibold uppercase tracking-wider text-muted-foreground mb-3">{step.day}</p>
-                      <div className="w-[80px] h-[80px] rounded-full bg-gold-bg border-2 border-primary flex items-center justify-center text-3xl mb-3">
-                        {step.emoji}
+                      <p className="text-xs font-display font-semibold tracking-wider text-muted-foreground mb-3">{step.day}</p>
+                      <div className="w-[80px] h-[80px] rounded-full bg-gold-bg border-2 border-primary flex items-center justify-center font-display font-extrabold text-2xl text-gold-dark mb-3">
+                        {i + 1}
                       </div>
-                      <p className="font-display font-bold text-xs uppercase tracking-wider">{step.label}</p>
+                      <p className="font-display font-bold text-xs tracking-wider">{step.label}</p>
                       {step.sub && <p className="text-[10px] text-muted-foreground mt-0.5">{step.sub}</p>}
                     </motion.div>
                   ))}
@@ -683,12 +683,12 @@ export default function Landing() {
               ].map((step, i) => (
                 <div key={i} className="relative">
                   <div className="flex items-center gap-4 py-3">
-                    <div className="w-14 h-14 rounded-full bg-gold-bg border-2 border-primary flex items-center justify-center text-2xl shrink-0">
-                      {step.emoji}
+                    <div className="w-14 h-14 rounded-full bg-gold-bg border-2 border-primary flex items-center justify-center font-display font-extrabold text-xl text-gold-dark shrink-0">
+                      {i + 1}
                     </div>
                     <div>
-                      <p className="text-[10px] font-display font-semibold uppercase tracking-wider text-muted-foreground">{step.day}</p>
-                      <p className="font-display font-bold text-sm uppercase tracking-wider">{step.label}</p>
+                      <p className="text-[10px] font-display font-semibold tracking-wider text-muted-foreground">{step.day}</p>
+                      <p className="font-display font-bold text-sm tracking-wider">{step.label}</p>
                       {step.sub && <p className="text-[10px] text-muted-foreground">{step.sub}</p>}
                     </div>
                   </div>
@@ -709,7 +709,7 @@ export default function Landing() {
         <div className="absolute bottom-0 right-10 w-80 h-80 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-white mb-2">
+            <h2 className="text-3xl md:text-4xl font-display font-bold tracking-tight text-white mb-2">
               Your Account Is Safe. <span className="text-gradient-gold text-glow">Period.</span>
             </h2>
             <p className="text-base text-slate-300 mt-3 max-w-2xl mx-auto">
@@ -721,9 +721,9 @@ export default function Landing() {
             {trustCards.map((card, i) => (
               <motion.div key={i} {...stagger(i)}>
                 <Card className="bg-navy-light border-border/30 hover-float h-full rounded-2xl shadow-sm">
-                  <CardContent className="p-5 sm:p-6 text-center">
-                    <span className="text-3xl sm:text-4xl mb-3 sm:mb-4 block">{card.emoji}</span>
-                    <h3 className="font-display font-bold uppercase tracking-wide mb-2 text-white text-xs sm:text-sm">{card.title}</h3>
+                  <CardContent className="p-5 sm:p-6">
+                    <span className="font-display font-extrabold text-2xl mb-3 block text-gold-light">{String(i + 1).padStart(2, '0')}</span>
+                    <h3 className="font-display font-bold tracking-wide mb-2 text-white text-xs sm:text-sm">{card.title}</h3>
                     <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">{card.desc}</p>
                   </CardContent>
                 </Card>
@@ -740,20 +740,20 @@ export default function Landing() {
       {/* SECTION 7: PRICING (light) */}
       <section ref={pricingRef} id="pricing" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl text-center relative z-10">
-          <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight mb-2">Pricing built for real outreach.</motion.h2>
+          <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold tracking-tight mb-2">Pricing built for real outreach.</motion.h2>
           <motion.p {...fadeUp} className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">Start free, validate results, then scale with confidence.</motion.p>
 
           <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
             {pricing.map((plan, i) => (
               <motion.div key={plan.name} {...stagger(i)}>
-                <Card className={`relative hover-float h-full rounded-2xl shadow-sm ${plan.highlighted ? 'border-2 border-amber-400 bg-amber-50/40 ring-2 ring-amber-200/40' : 'bg-white/85 border border-gray-100'}`}>
+                <Card className={`relative hover-float h-full rounded-2xl shadow-sm ${plan.highlighted ? 'border-2 border-primary bg-gold-bg ring-2 ring-primary/15' : 'bg-white/85 border border-gray-100'}`}>
                   {plan.highlighted && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-black text-xs font-display font-bold uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1">
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-display font-bold tracking-wider px-3 py-1 rounded-full flex items-center gap-1">
                       <Star className="w-3 h-3" /> Most Popular
                     </div>
                   )}
                   <CardContent className="p-6 md:p-8 pt-10 flex flex-col h-full">
-                    <h3 className="text-lg font-display font-bold uppercase tracking-wide">{plan.name}</h3>
+                    <h3 className="text-lg font-display font-bold tracking-wide">{plan.name}</h3>
                     <div className="mt-2">
                       <span className="text-5xl font-numbers font-extrabold">{plan.price}</span>
                       <span className="text-muted-foreground text-sm">{plan.period}</span>
@@ -771,14 +771,14 @@ export default function Landing() {
                     <ul className="space-y-3 text-sm text-left flex-1 mt-4">
                       {plan.features.map((f) => (
                         <li key={f} className="flex items-start gap-2">
-                          <Check className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                           <span>{f}</span>
                         </li>
                       ))}
                     </ul>
                     <Button
                       onClick={handleCTA}
-                      className={`mt-6 w-full font-display font-bold uppercase tracking-wider rounded-xl shine-effect ${plan.highlighted ? 'bg-amber-500 text-black hover:bg-amber-400' : ''}`}
+                      className={`mt-6 w-full font-display font-bold tracking-wider rounded-xl shine-effect ${plan.highlighted ? 'bg-primary text-primary-foreground hover:bg-gold-dark' : ''}`}
                       variant={plan.highlighted ? 'default' : 'outline'}
                     >
                       {plan.cta}
@@ -795,10 +795,10 @@ export default function Landing() {
               <CardContent className="p-6 md:p-8">
                 <h3 className="font-bold text-sm mb-2">Everything included</h3>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> AI message generation (notes, DMs, follow-ups)</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> Smart lead filtering: ICP validation + ghost detection</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> Extension-based, safe automation</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-amber-500 mt-0.5" /> You only spend credits on qualified leads</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> AI message generation (notes, DMs, follow-ups)</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> Smart lead filtering: ICP validation + ghost detection</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> Extension-based, safe automation</li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5" /> You only spend credits on qualified leads</li>
                 </ul>
               </CardContent>
             </Card>
@@ -888,7 +888,7 @@ export default function Landing() {
       {/* SECTION 8: FAQ (light) */}
       <section id="faq" className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-2xl relative z-10">
-          <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold uppercase tracking-tight text-center mb-4">
+          <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold tracking-tight text-center mb-4">
             Frequently Asked <span className="text-gradient-gold">Questions</span>
           </motion.h2>
           <motion.p {...fadeUp} className="text-center text-lg text-gray-600 mb-10">
@@ -915,7 +915,7 @@ export default function Landing() {
       <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-3xl relative z-10">
           <motion.div {...fadeUp} className="text-center">
-            <h2 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-tight mb-6">
+            <h2 className="font-display font-bold text-3xl md:text-4xl tracking-tight mb-6">
               Built by a <span className="text-gradient-gold">Practitioner</span>
             </h2>
             <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto mb-4">
@@ -930,7 +930,7 @@ export default function Landing() {
 
       {/* SECTION 9: FINAL CTA (dark) */}
       <section className="py-20 md:py-28 px-4 bg-navy relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0b1325] via-[#0a1020] to-[#060a16] opacity-90" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#15111F] via-[#120E1B] to-[#0D0A14] opacity-90" />
         <div className="container mx-auto max-w-4xl text-center relative z-10">
           <motion.div
             {...fadeUp}
@@ -940,7 +940,7 @@ export default function Landing() {
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
 
             <div className="relative z-10">
-              <h2 className="text-2xl sm:text-3xl md:text-5xl font-display font-extrabold uppercase tracking-tight text-white mb-4">
+              <h2 className="text-2xl sm:text-3xl md:text-5xl font-display font-extrabold tracking-tight text-white mb-4">
                 Ready to Fly?
               </h2>
               <p className="text-slate-300 text-sm mb-8 max-w-lg mx-auto">
@@ -950,7 +950,7 @@ export default function Landing() {
                 <Button
                   onClick={handleCTA}
                   size="lg"
-                  className="bg-amber-500 text-black hover:bg-amber-400 px-8 py-6 text-sm sm:text-base font-display font-bold uppercase tracking-wider rounded-xl shine-effect"
+                  className="bg-primary text-primary-foreground hover:bg-gold-dark px-8 py-6 text-sm sm:text-base font-display font-bold tracking-wider rounded-xl shine-effect"
                 >
                   Start Free &mdash; 50 Outreach Credits
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -959,7 +959,7 @@ export default function Landing() {
                   variant="outline"
                   size="lg"
                   onClick={() => scrollTo(featuresRef)}
-                  className="border-white/30 text-white hover:bg-white/10 px-8 py-6 text-sm sm:text-base font-display font-bold uppercase tracking-wider rounded-xl"
+                  className="border-white/30 text-white hover:bg-white/10 px-8 py-6 text-sm sm:text-base font-display font-bold tracking-wider rounded-xl"
                 >
                   See Demo
                 </Button>
@@ -967,7 +967,7 @@ export default function Landing() {
               <p className="text-slate-500 text-xs mt-4">
                 Free plan includes Claude Sonnet powered DMs, Claude Haiku ICP validation, ghost profile detection, Chrome Extension, and 50 outreach credits with smart lead filtering.
               </p>
-              <p className="text-gold-light text-xs font-display font-semibold uppercase tracking-widest mt-6 text-glow">
+              <p className="text-gold-light text-xs font-display font-semibold tracking-widest mt-6 text-glow">
                 Lock On Target. Deploy Precision Messages. Close Deals.
               </p>
             </div>
@@ -986,7 +986,7 @@ export default function Landing() {
             </div>
             <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-8">
               <div>
-                <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-gold-light mb-4">Product</h4>
+                <h4 className="font-display font-semibold text-sm tracking-wider text-gold-light mb-4">Product</h4>
                 <ul className="space-y-2.5 text-sm text-gray-400">
                   <li><button onClick={() => scrollTo(howRef)} className="hover:text-white transition-colors">How it Works</button></li>
                   <li><button onClick={() => scrollTo(featuresRef)} className="hover:text-white transition-colors">Features</button></li>
@@ -994,14 +994,14 @@ export default function Landing() {
                 </ul>
               </div>
               <div>
-                <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-gold-light mb-4">Resources</h4>
+                <h4 className="font-display font-semibold text-sm tracking-wider text-gold-light mb-4">Resources</h4>
                 <ul className="space-y-2.5 text-sm text-gray-400">
                   <li><Link to="/help" className="hover:text-white transition-colors">Help Center</Link></li>
                   <li><Link to="/setup-guide" className="hover:text-white transition-colors">Setup Guide</Link></li>
                 </ul>
               </div>
               <div>
-                <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-gold-light mb-4">Legal</h4>
+                <h4 className="font-display font-semibold text-sm tracking-wider text-gold-light mb-4">Legal</h4>
                 <ul className="space-y-2.5 text-sm text-gray-400">
                   <li><Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
                   <li><span className="cursor-default">Terms of Service</span></li>

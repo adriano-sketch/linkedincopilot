@@ -139,7 +139,7 @@ function GrowthStepper({ leadsCount, growthCounts }: CampaignStepperProps) {
                 {!isLast && <div className={cn('absolute top-4 left-[calc(50%+16px)] right-[calc(-50%+16px)] h-0.5', done ? 'bg-primary' : 'bg-border')} />}
                 <div className={cn(
                   'w-8 h-8 rounded-full flex items-center justify-center z-10 border-2 transition-colors',
-                  waitingOnUser ? 'bg-orange-50 border-orange-400 text-orange-600'
+                  waitingOnUser ? 'bg-attention/5 border-attention text-attention'
                     : done ? 'bg-primary border-primary text-primary-foreground'
                     : 'bg-muted border-border text-muted-foreground',
                 )}>

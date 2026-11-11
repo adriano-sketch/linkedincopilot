@@ -20,7 +20,7 @@ const PIPELINE_STAGES = [
   {
     key: 'warming',
     label: 'Warming',
-    color: 'text-amber-500',
+    color: 'text-attention',
     statuses: ['visiting_profile', 'following', 'queued_for_connection'],
     emoji: '🔥',
   },
@@ -41,7 +41,7 @@ const PIPELINE_STAGES = [
   {
     key: 'pending_approval',
     label: 'Pending',
-    color: 'text-orange-500',
+    color: 'text-attention',
     statuses: ['dm_ready', 'ready_for_dm'],
     highlight: true,
     emoji: '📬',
@@ -83,7 +83,7 @@ const GROWTH_STAGES = [
   { key: 'g_waiting', label: 'Waiting', color: 'text-blue-600', statuses: ['new', 'ready', 'imported', 'visiting_profile'], emoji: '🕒' },
   { key: 'g_post_found', label: 'Post found', color: 'text-indigo-600', statuses: ['post_found'], emoji: '📰' },
   { key: 'g_drafting', label: 'Liked, drafting', color: 'text-purple-600', statuses: ['post_liked'], emoji: '👍' },
-  { key: 'g_review', label: 'To approve', color: 'text-orange-500', statuses: ['comment_review'], highlight: true, emoji: '📬' },
+  { key: 'g_review', label: 'To approve', color: 'text-attention', statuses: ['comment_review'], highlight: true, emoji: '📬' },
   { key: 'g_done', label: 'Resting', color: 'text-emerald-700', statuses: ['engagement_done'], emoji: '✅' },
   { key: 'excluded', label: 'Excluded', color: 'text-red-500', statuses: ['skipped', 'do_not_contact', 'error'], emoji: '🚫' },
 ];
@@ -103,14 +103,13 @@ export default function PipelineStats({ counts, onStageClick, activeFilter, qual
         return (
           <Card
             key={stage.key}
-            className={`cursor-pointer transition-all hover:shadow-md ${isActive ? 'ring-2 ring-primary' : ''} ${shouldHighlight ? 'border-orange-400 bg-orange-50 dark:bg-orange-950/20' : ''}`}
+            className={`cursor-pointer transition-all hover:shadow-md ${isActive ? 'ring-2 ring-primary' : ''} ${shouldHighlight ? 'border-2 border-attention' : ''}`}
             onClick={() => onStageClick?.(isActive ? null : stage.key)}
           >
-            <CardContent className="p-3 text-center">
-              <p className="text-lg mb-0.5">{stage.emoji}</p>
-              <p className={`text-xl font-bold ${stage.color}`}>{count}</p>
-              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{stage.label}</p>
-              {pct > 0 && <p className="text-[9px] text-muted-foreground mt-0.5">{pct}%</p>}
+            <CardContent className="p-4">
+              <p className={`font-display text-3xl font-extrabold leading-none ${shouldHighlight ? 'text-attention' : 'text-foreground'}`}>{count}</p>
+              <p className={`mt-1.5 text-xs ${shouldHighlight ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{stage.label}</p>
+              {pct > 0 && <p className="text-[11px] text-muted-foreground mt-0.5">{pct}%</p>}
             </CardContent>
           </Card>
         );
