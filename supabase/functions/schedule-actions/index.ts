@@ -28,12 +28,17 @@ const STATUS_TO_ACTION: Record<string, string> = {
 // Status → next action mapping (GROWTH mode)
 // visit_profile → find_latest_post → like_post → (generate comment server-side)
 // → comment_ready → post_comment → engagement_done (waits 7 days, then repeats)
+// Growth opens ONE profile page per contact per cycle: the activity page, where the extension
+// finds the post and likes it in the same visit (action_data.like). A second page is opened only
+// to post a comment the user approved. There is no profile visit: for someone who is already a
+// connection it adds nothing, and it was the largest share of the profile pages that led to
+// LinkedIn's warning on 2026-11-10 (3 to 4 pages per contact per cycle).
 const GROWTH_STATUS_TO_ACTION: Record<string, string> = {
-  ready: "visit_profile",
-  visiting_profile: "find_latest_post",
-  post_found: "like_post",
-  post_liked: "post_comment",          // comment_text must be generated first
-  engagement_done: "visit_profile",    // Weekly repeat — revisit and engage again
+  ready: "find_latest_post",
+  visiting_profile: "find_latest_post", // contacts visited under the old flow
+  post_found: "like_post",              // only when the like could not be given in the same visit
+  post_liked: "post_comment",           // comment_text must be generated first
+  engagement_done: "find_latest_post",  // weekly repeat: look for a newer post
 };
 
 // Actions that involve sending a message — restricted to business hours
@@ -806,8 +811,10 @@ Deno.serve(async (req) => {
           // Schedule from NOW with short gaps, ignoring business hours
           const now = new Date();
           const initialDelayMs = (2 + Math.floor(Math.random() * 3)) * 60 * 1000;
-          const gapMin = WARMUP_ACTIONS.has(actionType) ? 8 : 3;
-          const gapRange = WARMUP_ACTIONS.has(actionType) ? 8 : 5;
+          // Actions that open a contact's page are spaced 8 to 16 minutes apart.
+          const opensPage = WARMUP_ACTIONS.has(actionType) || actionType === "find_latest_post";
+          const gapMin = opensPage ? 8 : 3;
+          const gapRange = opensPage ? 8 : 5;
           const perSlotGapMs = slotIndex * (gapMin + Math.floor(Math.random() * gapRange)) * 60 * 1000;
           const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);
           const scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
@@ -837,6 +844,8 @@ Deno.serve(async (req) => {
             linkedin_url: actionUrl,
             message_text: messageText,
             scheduled_for: scheduledFor,
+            // Growth: like the post in the same visit that finds it (one page per contact).
+            ...(actionType === "find_latest_post" ? { action_data: { like: true } } : {}),
             // Priority ordering (lower = higher priority, picked first by extension):
             //   1 = send_dm / send_followup  → revenue-generating, must not be starved
             //   2 = send_connection_request  → pipeline advancement

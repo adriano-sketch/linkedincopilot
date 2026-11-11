@@ -794,10 +794,19 @@ serve(async (req) => {
       // ── Growth Mode Actions ──
       case "find_latest_post": {
         if (result?.found === true) {
-          leadUpdate.status = "post_found";
           leadUpdate.post_url = result.post_url || null;
           leadUpdate.post_content = result.post_content ? String(result.post_content).slice(0, 2000) : null;
-          leadUpdate.next_action_at = rbt(0); // Like immediately
+          leadUpdate.error_message = null;
+          // Since extension 0.4.7 the post is liked in the same visit that finds it. Then the lead
+          // goes straight to drafting; otherwise (older extension, like not possible) a separate
+          // like_post is scheduled as before.
+          if (result.liked === true || result.like_note === "already_reacted") {
+            leadUpdate.status = "post_liked";
+            leadUpdate.post_liked_at = now;
+          } else {
+            leadUpdate.status = "post_found";
+          }
+          leadUpdate.next_action_at = rbt(0);
         } else {
           // No usable post (none at all, none of their own, or none in the last 30 days):
           // skip this engagement cycle, try again in 7 days
@@ -842,7 +851,11 @@ serve(async (req) => {
     const currentOrder = STATUS_ORDER[currentLead?.status || ''] ?? -1;
     const newOrder = STATUS_ORDER[leadUpdate.status || ''] ?? -1;
 
-    if (leadUpdate.status && currentOrder > newOrder) {
+    // A Growth contact starts a new cycle from engagement_done every 7 days: finding a post
+    // legitimately moves it back to post_found / post_liked. Without this exception the second
+    // cycle of every contact was blocked here and retried forever.
+    const newGrowthCycle = action.action_type === "find_latest_post" && currentLead?.status === "engagement_done";
+    if (leadUpdate.status && currentOrder > newOrder && !newGrowthCycle) {
       console.warn(
         `BLOCKED status regression for lead ${action.campaign_lead_id}: ` +
         `current="${currentLead?.status}" (${currentOrder}) → attempted="${leadUpdate.status}" (${newOrder}). ` +

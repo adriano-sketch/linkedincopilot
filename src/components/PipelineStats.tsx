@@ -79,8 +79,8 @@ const PIPELINE_STAGES = [
 // Growth campaigns (existing contacts): no enrichment, invites or DMs. A contact is visited, their
 // latest own post is found and liked, a comment is drafted for approval, then they rest for 7 days.
 const GROWTH_STAGES = [
-  { key: 'g_waiting', label: 'Waiting', color: 'text-blue-600', statuses: ['new', 'ready', 'imported'], emoji: '🕒' },
-  { key: 'g_visited', label: 'Profile visited', color: 'text-amber-500', statuses: ['visiting_profile'], emoji: '👀' },
+  // visiting_profile: contacts visited under the old flow; they wait for the post check like the rest.
+  { key: 'g_waiting', label: 'Waiting', color: 'text-blue-600', statuses: ['new', 'ready', 'imported', 'visiting_profile'], emoji: '🕒' },
   { key: 'g_post_found', label: 'Post found', color: 'text-indigo-600', statuses: ['post_found'], emoji: '📰' },
   { key: 'g_drafting', label: 'Liked, drafting', color: 'text-purple-600', statuses: ['post_liked'], emoji: '👍' },
   { key: 'g_review', label: 'To approve', color: 'text-orange-500', statuses: ['comment_review'], highlight: true, emoji: '📬' },
@@ -94,7 +94,7 @@ export default function PipelineStats({ counts, onStageClick, activeFilter, qual
   const stages = mode === 'growth' ? GROWTH_STAGES : PIPELINE_STAGES;
 
   return (
-    <div className={mode === 'growth' ? 'grid grid-cols-4 sm:grid-cols-7 gap-2' : 'grid grid-cols-4 sm:grid-cols-8 gap-2'}>
+    <div className={mode === 'growth' ? 'grid grid-cols-3 sm:grid-cols-6 gap-2' : 'grid grid-cols-4 sm:grid-cols-8 gap-2'}>
       {stages.map(stage => {
         const count = stage.statuses.reduce((sum, s) => sum + (counts[s as keyof typeof counts] || 0), 0);
         const isActive = activeFilter === stage.key;
@@ -134,8 +134,7 @@ export const STAGE_STATUS_MAP: Record<string, string[]> = {
   dm_sent: ['dm_queued', 'dm_sent', 'waiting_reply', 'follow_up_due', 'follow_up_sent', 'followup_sent'],
   replied: ['replied'],
   ghost: ['ghost'],
-  g_waiting: ['new', 'ready', 'imported'],
-  g_visited: ['visiting_profile'],
+  g_waiting: ['new', 'ready', 'imported', 'visiting_profile'],
   g_post_found: ['post_found'],
   g_drafting: ['post_liked'],
   g_review: ['comment_review'],
