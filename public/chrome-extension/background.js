@@ -617,6 +617,8 @@ async function sendHeartbeat() {
       if (ext.daily_limit_messages) LIMITS.messages = ext.daily_limit_messages;
       if (ext.daily_limit_visits) LIMITS.profile_visits = ext.daily_limit_visits;
       if (ext.is_paused !== undefined) queueProcessor.isPaused = ext.is_paused;
+      // The server's answer is in: the queue may run (or stay paused) from here on.
+      queueProcessor.pauseSynced = true;
       if (CONFIG.DEBUG) console.log('[Heartbeat] Schedule synced:', {
         days: LIMITS.active_days, hours: `${LIMITS.active_hours_start}-${LIMITS.active_hours_end}`, tz: LIMITS.timezone
       });
@@ -630,9 +632,15 @@ async function sendHeartbeat() {
 const queueProcessor = {
   isProcessing: false,
   isPaused: false,
+  // False until the first heartbeat of this service-worker life has read is_paused from the
+  // server. Chrome restarts the worker often and isPaused starts as false every time: on
+  // 2026-11-10 two actions ran (13:27 and 14:40) while the account was paused on the server,
+  // in the gap between a restart and the next heartbeat.
+  pauseSynced: false,
 
   async poll() {
     if (!supabase.accessToken || !supabase.userId) return;
+    if (!this.pauseSynced) return;
     if (this.isPaused) return;
     if (this.isProcessing) return;
     try {
@@ -1037,6 +1045,10 @@ const queueProcessor = {
         `id=eq.${action.id}`
       );
       await safetyManager.incrementCounter(action.action_type);
+      // A like given inside find_latest_post counts toward the daily like limit too.
+      if (action.action_type === 'find_latest_post' && result && result.liked === true) {
+        await safetyManager.incrementCounter('like_post');
+      }
       await this.reportCompletion(action, true, result);
       console.log(`[QueueProcessor] ${action.action_type} completed`);
 
@@ -1432,15 +1444,35 @@ const queueProcessor = {
     }
 
     // post_comment must open the post page first (it was missing from this list)
-    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'like_post', 'post_comment', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
+    // find_latest_post was missing too: the tab stayed wherever the previous action left it
+    // (invitation manager, a search page) and the page script answered WRONG_PAGE.
+    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'find_latest_post', 'like_post', 'post_comment', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
     if (actionTypes.includes(action.action_type)) {
       let targetUrl = action.action_data?.linkedin_url || action.linkedin_url;
       if (targetUrl) {
+        const rawTargetUrl = String(targetUrl);
         const normalized = normalizeLinkedInUrl(targetUrl);
         if (!normalized) {
           throw new Error(`Invalid LinkedIn URL: ${targetUrl}`);
         }
         targetUrl = normalized;
+
+        if (action.action_type === 'find_latest_post') {
+          // Open the person's activity page directly. The page script must not navigate by itself:
+          // a page load kills it before it can answer.
+          const slug = normalized.match(/\/in\/([^/?#]+)/)?.[1];
+          if (!slug) throw new Error(`Invalid profile URL for find_latest_post: ${rawTargetUrl}`);
+          targetUrl = `https://www.linkedin.com/in/${slug}/recent-activity/all/`;
+          action._expectedName = await this.lookupLeadName(action);
+          // Like in the same visit only while the daily like limit allows it.
+          action._likeInVisit = action.action_data?.like === true &&
+            ((await safetyManager.getDailyCounters()).likes || 0) < LIMITS.post_likes;
+        } else if (action.action_type === 'like_post' || action.action_type === 'post_comment') {
+          // The target card is identified by "#lcpost=<fingerprint>"; normalizeLinkedInUrl drops it.
+          const fp = rawTargetUrl.match(/#lcpost=[^#\s]+/);
+          action._postUrl = fp ? `${normalized}/${fp[0]}` : normalized;
+          if (fp) targetUrl = action._postUrl;
+        }
 
         // ── CLEANUP: Dismiss any open composer/overlay to prevent "Leave site?" dialog ──
         try {
@@ -1482,11 +1514,19 @@ const queueProcessor = {
         // Cross-contamination root cause: LinkedIn SPA sometimes doesn't complete
         // the navigation, leaving the tab on a /messaging/thread/ page from a
         // previous action. We must verify before injecting the content script.
-        const messagingActions = ['send_dm', 'send_followup', 'send_connection_request', 'visit_profile', 'follow_profile', 'like_post'];
+        const messagingActions = ['send_dm', 'send_followup', 'send_connection_request', 'visit_profile', 'follow_profile', 'find_latest_post', 'like_post', 'post_comment'];
         if (messagingActions.includes(action.action_type)) {
           const postNavTab = await chrome.tabs.get(tab.id);
           const postNavUrl = postNavTab.url || '';
           console.log('[QueueProcessor] Post-navigation URL:', postNavUrl);
+
+          // LinkedIn sent us to a security checkpoint, a restriction notice or the login page.
+          // Stop everything at once: on 2026-11-10 the queue kept opening pages into the
+          // "unusual activity" checkpoint six more times after the first redirect.
+          if (/linkedin\.com\/(checkpoint|uas\/|authwall|login|m\/login)/i.test(postNavUrl)) {
+            await this.pauseForLinkedInWarning(postNavUrl);
+            throw new Error(`LINKEDIN_CHECKPOINT: paused everything, LinkedIn redirected to ${postNavUrl.slice(0, 80)}`);
+          }
 
           // For profile-based actions, the URL must contain /in/
           const expectedSlug = targetUrl.match(/\/in\/([^/?]+)/)?.[1];
@@ -1764,6 +1804,18 @@ const queueProcessor = {
     }
   },
 
+  // The lead's name as stored, so the activity page can tell the person's own posts from reposts.
+  async lookupLeadName(action) {
+    if (!action.campaign_lead_id) return null;
+    try {
+      const { data } = await supabase.select('campaign_leads', `id=eq.${action.campaign_lead_id}&select=full_name`, { limit: 1 });
+      return (data && data[0] && data[0].full_name) || null;
+    } catch (err) {
+      console.warn('[QueueProcessor] Lead name lookup failed (non-fatal):', err.message);
+      return null;
+    }
+  },
+
   sendMessageToTab(tabId, action) {
     return new Promise((resolve, reject) => {
       // send_dm/compose needs longer: 25s compose input retry + typing/verification/sending
@@ -1775,7 +1827,10 @@ const queueProcessor = {
           action_type: action.action_type,
           linkedin_url: action.action_data?.linkedin_url || action.linkedin_url,
           message_text: action.action_data?.message_text || action.message_text,
-          expected_name: action.action_data?.expected_name || null,
+          expected_name: action.action_data?.expected_name || action._expectedName || null,
+          post_url: action._postUrl || action.action_data?.post_url || null,
+          // Growth: like the chosen post in the same visit that finds it.
+          like: action.action_type === 'find_latest_post' && action._likeInVisit === true,
         }
       }, (response) => {
         clearTimeout(timeout);
@@ -1840,6 +1895,25 @@ const queueProcessor = {
   pause() {
     this.isPaused = true;
     console.log('[QueueProcessor] Paused');
+  },
+
+  // Pause here and on the server, so the schedulers stop queueing too. Only the user resumes.
+  async pauseForLinkedInWarning(url) {
+    this.pause();
+    if (!supabase.accessToken || !supabase.userId) return;
+    try {
+      await fetch(`${supabase.url}/rest/v1/extension_status?user_id=eq.${supabase.userId}`, {
+        method: 'PATCH',
+        headers: { ...supabase.getHeaders(), 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          is_paused: true,
+          auto_paused_at: new Date().toISOString(),
+          auto_paused_reason: `LinkedIn showed a security checkpoint or logged the account out (${String(url).slice(0, 120)}). Paused automatically.`,
+        }),
+      });
+    } catch (e) {
+      console.error('[LC] Failed to store the automatic pause:', e);
+    }
   },
 
   resume() {
@@ -1934,6 +2008,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (authenticated) {
     console.log('[LC:Auth] Session restored for user:', supabase.userId);
     await sendHeartbeat();
+    try { await lcMaybeDetectTier(true); } catch (_) { /* retried by the heartbeat alarm */ }
   }
 });
 
@@ -1951,7 +2026,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const hasAuth = await ensureAuth();
 
   if (alarm.name === 'heartbeat') {
-    if (hasAuth) await sendHeartbeat();
+    if (hasAuth) {
+      await sendHeartbeat();
+      // LinkedIn plan (free / premium / Sales Navigator), checked every 12h
+      try { await lcMaybeDetectTier(false); } catch (e) { console.warn('[LC:Tier]', e.message); }
+    }
   }
   if (alarm.name === 'pollQueue') {
     if (hasAuth) await queueProcessor.poll();

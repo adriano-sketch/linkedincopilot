@@ -90,7 +90,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col gap-6 px-3.5 py-5">
       <Link to="/today" onClick={onNavigate} className="flex items-center gap-2.5 px-2 text-white">
-        <BrandMark className="w-7 h-7" />
+        <BrandMark className="w-8 h-8" />
         <span className="font-display font-bold text-lg tracking-[0.06em]">Copilot</span>
       </Link>
       <nav aria-label="Main" className="flex flex-col gap-0.5">

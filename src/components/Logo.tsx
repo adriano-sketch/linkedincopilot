@@ -1,7 +1,7 @@
 import BrandMark from '@/components/BrandMark';
 import { cn } from '@/lib/utils';
 
-/** Brand lockup: radar mark + wordmark. `tone="dark"` for navy backgrounds, `"light"` for paper/white. */
+/** Brand lockup: Orbit mark + wordmark. `tone="dark"` for navy backgrounds, `"light"` for paper/white. */
 export default function Logo({
   tone = 'light', short = false, className = '', markClassName = 'w-8 h-8',
 }: { tone?: 'light' | 'dark'; short?: boolean; className?: string; markClassName?: string }) {
@@ -11,7 +11,7 @@ export default function Logo({
       <span
         aria-hidden="true"
         className={cn(
-          'font-display font-bold tracking-[0.06em] whitespace-nowrap leading-none',
+          'font-display font-bold tracking-tight whitespace-nowrap leading-none',
           tone === 'dark' ? 'text-white' : 'text-foreground',
         )}
         style={{ fontSize: '1.2em' }}

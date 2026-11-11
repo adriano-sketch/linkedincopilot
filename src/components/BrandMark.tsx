@@ -1,10 +1,11 @@
+/** Orbit mark: the letter C as an open ring with one point in orbit, on an ink tile. Same drawing as public/favicon.svg. */
 export default function BrandMark({ className = '' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 34 34" fill="none" stroke="hsl(var(--gold))" strokeWidth="1.7" className={className} aria-hidden="true">
-      <circle cx="17" cy="17" r="15" />
-      <circle cx="17" cy="17" r="9" strokeOpacity="0.5" />
-      <path d="M17 2v6M17 26v6M2 17h6M26 17h6" />
-      <path d="M10 19l7-9 7 9-7-3z" fill="hsl(var(--gold))" stroke="none" />
+    <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+      <rect width="64" height="64" rx="15" fill="#15111F" />
+      <circle cx="32" cy="32" r="16" fill="none" stroke="#A78BFF" strokeWidth="9" strokeLinecap="round"
+        strokeDasharray="66.53 34" transform="rotate(60.88 32 32)" />
+      <circle cx="48" cy="32" r="5.5" fill="#FF4FB0" />
     </svg>
   );
 }
