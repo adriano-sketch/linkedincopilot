@@ -58,7 +58,7 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
         <Stat icon={Sparkles} label="Qualified, ready to invite" value={stats?.qualified_waiting ?? 0} />
         <Stat icon={Search} label="People searches this month" value={stats?.people_searches_this_month ?? 0}
           hint={searchBudget ? `Budget ${searchBudget}` : undefined} />
-        <Stat icon={MessageSquareText} label="Comments to approve" value={stats?.comments_pending_approval ?? 0} />
+        <Stat icon={MessageSquareText} label="Comments to post" value={stats?.comments_pending_approval ?? 0} />
         <Stat icon={MessageSquareText} label="Comments posted" value={stats?.comments_posted ?? 0} />
         <Stat icon={Sparkles} label="Open business signals" value={stats?.opportunities_open ?? 0} />
       </div>

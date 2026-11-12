@@ -83,7 +83,7 @@ const GROWTH_STAGES = [
   { key: 'g_waiting', label: 'Waiting', color: 'text-blue-600', statuses: ['new', 'ready', 'imported', 'visiting_profile'], emoji: '🕒' },
   { key: 'g_post_found', label: 'Post found', color: 'text-indigo-600', statuses: ['post_found'], emoji: '📰' },
   { key: 'g_drafting', label: 'Liked, drafting', color: 'text-purple-600', statuses: ['post_liked'], emoji: '👍' },
-  { key: 'g_review', label: 'To approve', color: 'text-attention', statuses: ['comment_review'], highlight: true, emoji: '📬' },
+  { key: 'g_review', label: 'To post', color: 'text-attention', statuses: ['comment_review'], highlight: true, emoji: '📬' },
   { key: 'g_done', label: 'Resting', color: 'text-emerald-700', statuses: ['engagement_done'], emoji: '✅' },
   { key: 'excluded', label: 'Excluded', color: 'text-red-500', statuses: ['skipped', 'do_not_contact', 'error'], emoji: '🚫' },
 ];

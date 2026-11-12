@@ -28,7 +28,7 @@ const PLAN_LABEL: Record<string, string> = {
   send_connection_request: 'Send connection requests',
   send_dm: 'Send approved first messages',
   send_followup: 'Send follow-ups',
-  post_comment: 'Post approved comments',
+  post_comment: 'Comments (posted by you)',
   like_post: 'Like posts',
   find_latest_post: 'Check people for new posts',
   visit_profile: 'Visit profiles',

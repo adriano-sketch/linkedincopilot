@@ -550,7 +550,7 @@ export default function Dashboard() {
             {isGrowth ? (
               <>
                 <TabsTrigger value="approval" className="relative">
-                  Comments to approve
+                  Comments to post
                   {growthCounts.toApprove > 0 && (
                     <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 text-[10px] px-1.5">{growthCounts.toApprove}</Badge>
                   )}

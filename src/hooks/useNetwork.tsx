@@ -152,7 +152,9 @@ export function useMonitoredPosts(filter: PostFilter, campaignId?: string) {
 
   const approve = useMutation({
     mutationFn: async ({ ids, edits }: { ids: string[]; edits: Record<string, string> }) => {
-      const { data, error } = await supabase.rpc('approve_post_comments', { p_ids: ids, p_edits: edits });
+      // The person already posted the comment on LinkedIn; this records it (see lib/commentHandoff).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('mark_post_comments_posted', { p_ids: ids, p_edits: edits });
       if (error) throw error;
       return data as number;
     },

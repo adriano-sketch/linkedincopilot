@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/hooks/useAuth';
 import { useInbox, type InboxItem, type InboxKind } from '@/hooks/useInbox';
 import { cn } from '@/lib/utils';
+import { cleanPostUrl, isActivityUrl, openPostWithDraft } from '@/lib/commentHandoff';
 
 type Filter = 'all' | InboxKind | 'signal';
 const FILTERS: { key: Filter; label: string }[] = [
@@ -18,9 +19,9 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'signal', label: 'Business signals' },
 ];
 const KIND_LABEL: Record<InboxKind, string> = { reply: 'Reply', comment: 'Comment', message: 'Message' };
-const APPROVE_LABEL: Record<InboxKind, string> = { reply: 'Mark as handled', comment: 'Approve comment', message: 'Approve message' };
+const APPROVE_LABEL: Record<InboxKind, string> = { reply: 'Mark as handled', comment: 'Copy and open post', message: 'Approve message' };
 const SECONDARY_LABEL: Record<InboxKind, string | null> = { reply: null, comment: 'Skip', message: 'Write a new draft' };
-const EDITOR_LABEL: Record<InboxKind, string> = { reply: '', comment: 'Suggested comment', message: 'Suggested first message' };
+const EDITOR_LABEL: Record<InboxKind, string> = { reply: '', comment: 'Draft comment (edit it freely)', message: 'Suggested first message' };
 
 const ago = (iso: string | null) => {
   if (!iso) return '';
@@ -46,6 +47,8 @@ export default function InboxPage() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [handled, setHandled] = useState<Set<string>>(new Set());
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  // Comments whose post was already opened: the next step is to confirm it was posted.
+  const [opened, setOpened] = useState<Set<string>>(new Set());
   const [mobileDetail, setMobileDetail] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
@@ -72,14 +75,24 @@ export default function InboxPage() {
   const hide = (keys: string[]) => setHandled(prev => { const n = new Set(prev); keys.forEach(k => n.add(k)); return n; });
   const unhide = (keys: string[]) => setHandled(prev => { const n = new Set(prev); keys.forEach(k => n.delete(k)); return n; });
 
+  // Comments are posted by the person on LinkedIn. Copilot copies the draft and opens the post.
+  const doOpenPost = async (item: InboxItem) => {
+    if (!textOf(item).trim()) { toast.error('The text is empty'); return; }
+    const { copied } = await openPostWithDraft(item.postUrl, textOf(item));
+    setOpened(prev => new Set(prev).add(item.key));
+    if (copied) toast.success('Comment copied. Paste it on the post, click Comment on LinkedIn, then confirm here.');
+    else toast.error('Could not copy automatically. Select the draft and copy it, then paste it on the post.');
+  };
+
   const doApprove = async (item: InboxItem) => {
     if (item.kind === 'reply') return doSecondary(item);
     if (!textOf(item).trim()) { toast.error('The text is empty'); return; }
+    if (item.kind === 'comment' && !opened.has(item.key)) return doOpenPost(item);
     advanceFrom(item.key);
     hide([item.key]);
     try {
       await approve.mutateAsync({ items: [item], edits });
-      toast.success(item.kind === 'comment' ? 'Approved. It will be posted during your active hours.' : 'Approved. The message goes out in the next business hour.');
+      toast.success(item.kind === 'comment' ? 'Recorded as posted.' : 'Approved. The message goes out in the next business hour.');
     } catch (e) {
       unhide([item.key]);
       toast.error(e instanceof Error ? e.message : 'Could not approve');
@@ -98,7 +111,8 @@ export default function InboxPage() {
     }
   };
 
-  const bulkItems = visible.filter(i => checked.has(i.key) && i.kind !== 'reply');
+  // Only first messages can be approved in bulk: each comment is posted by hand, one at a time.
+  const bulkItems = visible.filter(i => checked.has(i.key) && i.kind === 'message');
   const doBulkApprove = async () => {
     const empty = bulkItems.filter(i => !textOf(i).trim());
     if (empty.length) { toast.error('Some selected drafts are empty'); return; }
@@ -107,13 +121,13 @@ export default function InboxPage() {
     setChecked(new Set());
     try {
       const n = await approve.mutateAsync({ items: bulkItems, edits });
-      toast.success(`${n} approved. They go out spaced through your active hours.`);
+      toast.success(`${n} approved. The messages go out spaced through your active hours.`);
     } catch (e) {
       unhide(keys);
       toast.error(e instanceof Error ? e.message : 'Could not approve');
     }
   };
-  const selectable = visible.filter(i => i.kind !== 'reply');
+  const selectable = visible.filter(i => i.kind === 'message');
   const allChecked = selectable.length > 0 && selectable.every(i => checked.has(i.key));
   const toggleAll = () => setChecked(allChecked ? new Set() : new Set(selectable.map(i => i.key)));
 
@@ -236,7 +250,7 @@ export default function InboxPage() {
                   </div>
                   {current.campaign && <span className="text-xs font-medium bg-background border border-border rounded-full px-2.5 py-1">{current.campaign}</span>}
                   <div className="flex gap-3 text-sm">
-                    {current.postUrl && <a href={current.postUrl} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Post<ExternalLink className="w-3.5 h-3.5" /></a>}
+                    {current.postUrl && <a href={cleanPostUrl(current.postUrl)} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Post<ExternalLink className="w-3.5 h-3.5" /></a>}
                     {current.profileUrl && <a href={current.profileUrl} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Profile<ExternalLink className="w-3.5 h-3.5" /></a>}
                   </div>
                 </div>
@@ -272,9 +286,15 @@ export default function InboxPage() {
                     className={cn('h-12 px-5 rounded-full font-semibold inline-flex items-center gap-2.5 disabled:opacity-60',
                       current.kind === 'reply' ? 'border border-border bg-card' : 'bg-primary text-primary-foreground hover:bg-gold-dark')}>
                     {current.kind === 'reply' && <CheckCircle2 className="w-4 h-4" />}
-                    {APPROVE_LABEL[current.kind]}
+                    {current.kind === 'comment' && opened.has(current.key) ? 'I posted it' : APPROVE_LABEL[current.kind]}
                     <kbd className={cn('font-mono text-[11px] rounded px-1.5 py-0.5', current.kind === 'reply' ? 'bg-secondary' : 'bg-white/20 text-white')}>A</kbd>
                   </button>
+                  {current.kind === 'comment' && opened.has(current.key) && (
+                    <button onClick={() => doOpenPost(current)} disabled={busy}
+                      className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2 disabled:opacity-60">
+                      Copy and open again<ExternalLink className="w-4 h-4" />
+                    </button>
+                  )}
                   {SECONDARY_LABEL[current.kind] && (
                     <button onClick={() => doSecondary(current)} disabled={busy}
                       className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2.5 disabled:opacity-60">
@@ -283,8 +303,16 @@ export default function InboxPage() {
                       {current.kind === 'comment' && <kbd className="font-mono text-[11px] bg-secondary rounded px-1.5 py-0.5">S</kbd>}
                     </button>
                   )}
-                  <span className="ml-auto hidden md:inline text-xs text-muted-foreground">J / K to move · E to edit · ⌘↵ to approve</span>
+                  <span className="ml-auto hidden md:inline text-xs text-muted-foreground">J / K to move · E to edit · A for the main action</span>
                 </div>
+                {current.kind === 'comment' && (
+                  <p className="m-0 text-[13px] text-muted-foreground">
+                    {opened.has(current.key)
+                      ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here with "I posted it".'
+                      : 'You post every comment yourself: Copilot copies the draft and opens the post, you paste it and click Comment on LinkedIn.'}
+                    {isActivityUrl(current.postUrl) && ` The link opens ${current.name.split(' ')[0]}'s recent activity; the post is the one shown above.`}
+                  </p>
+                )}
               </>
             ) : (
               <div className="m-auto text-center text-muted-foreground max-w-sm">
@@ -294,7 +322,7 @@ export default function InboxPage() {
           </section>
         </div>
         <p className="text-xs text-muted-foreground m-0">
-          Nothing goes out without your approval. Approved comments and messages are sent spaced through your active hours, within your daily limits.
+          Nothing goes out without your approval. You post each comment yourself on LinkedIn; approved messages are sent spaced through your active hours, within your daily limits.
         </p>
       </div>
     </AppShell>
