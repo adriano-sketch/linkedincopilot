@@ -37,7 +37,7 @@ const GROWTH_STATUS_TO_ACTION: Record<string, string> = {
   ready: "find_latest_post",
   visiting_profile: "find_latest_post", // contacts visited under the old flow
   post_found: "like_post",              // only when the like could not be given in the same visit
-  post_liked: "post_comment",           // comment_text must be generated first
+  post_liked: "post_comment",           // never queued: triggers the draft, the person posts it
   engagement_done: "find_latest_post",  // weekly repeat: look for a newer post
 };
 
@@ -580,6 +580,10 @@ Deno.serve(async (req) => {
             continue;
           }
         }
+
+        // Comments are posted by the person, never by the extension (LinkedIn, 13 Mar 2026: a comment
+        // needs the member to click "comment"). The draft waits in the Inbox; nothing is queued.
+        if (actionType === "post_comment") { addSkip("comment_posted_by_person"); continue; }
 
         // Cap: separate limits for lightweight checks vs other actions
         if (LIGHTWEIGHT_ACTIONS.has(actionType)) {

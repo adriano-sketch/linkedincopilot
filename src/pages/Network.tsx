@@ -55,7 +55,7 @@ export default function Network() {
           </div>
           {pending > 0 && (
             <Link to="/inbox?type=comment" className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 h-10 text-sm font-medium hover:border-foreground/30">
-              <InboxIcon className="w-4 h-4" />{pending} comment{pending === 1 ? '' : 's'} to approve
+              <InboxIcon className="w-4 h-4" />{pending} comment{pending === 1 ? '' : 's'} to post
             </Link>
           )}
         </div>
@@ -72,7 +72,7 @@ export default function Network() {
 
         {tab === 'connections' && <NewConnections searchBudget={settings?.monthly_people_search_budget} />}
         {tab === 'icps' && <IcpManager />}
-        {tab === 'history' && <CommentQueue initialFilter="scheduled" hidePending />}
+        {tab === 'history' && <CommentQueue initialFilter="posted" hidePending />}
         {tab === 'limits' && <NetworkSettingsCard />}
       </div>
     </AppShell>

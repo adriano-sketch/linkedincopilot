@@ -1443,10 +1443,9 @@ const queueProcessor = {
       return networkResult;
     }
 
-    // post_comment must open the post page first (it was missing from this list)
     // find_latest_post was missing too: the tab stayed wherever the previous action left it
     // (invitation manager, a search page) and the page script answered WRONG_PAGE.
-    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'find_latest_post', 'like_post', 'post_comment', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
+    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'find_latest_post', 'like_post', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
     if (actionTypes.includes(action.action_type)) {
       let targetUrl = action.action_data?.linkedin_url || action.linkedin_url;
       if (targetUrl) {
@@ -1467,7 +1466,7 @@ const queueProcessor = {
           // Like in the same visit only while the daily like limit allows it.
           action._likeInVisit = action.action_data?.like === true &&
             ((await safetyManager.getDailyCounters()).likes || 0) < LIMITS.post_likes;
-        } else if (action.action_type === 'like_post' || action.action_type === 'post_comment') {
+        } else if (action.action_type === 'like_post') {
           // The target card is identified by "#lcpost=<fingerprint>"; normalizeLinkedInUrl drops it.
           const fp = rawTargetUrl.match(/#lcpost=[^#\s]+/);
           action._postUrl = fp ? `${normalized}/${fp[0]}` : normalized;

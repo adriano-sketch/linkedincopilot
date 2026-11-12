@@ -31,7 +31,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; bg: 
   ready:                  { label: 'Ready',             icon: <Zap className="w-3 h-3" />,            bg: 'bg-slate-100',    text: 'text-slate-600',   dot: 'bg-slate-400' },
   post_found:             { label: 'Post Found',        icon: <Eye className="w-3 h-3" />,            bg: 'bg-amber-50',     text: 'text-amber-700',   dot: 'bg-amber-400' },
   post_liked:             { label: 'Post Liked',        icon: <CheckCircle2 className="w-3 h-3" />,   bg: 'bg-amber-50',     text: 'text-amber-700',   dot: 'bg-amber-400' },
-  comment_review:         { label: 'To approve', icon: <MessageSquare className="w-3 h-3" />, bg: 'bg-orange-50',    text: 'text-orange-700',  dot: 'bg-orange-400' },
+  comment_review:         { label: 'To post', icon: <MessageSquare className="w-3 h-3" />, bg: 'bg-orange-50',    text: 'text-orange-700',  dot: 'bg-orange-400' },
   engagement_done:        { label: 'Engaged',           icon: <CheckCircle2 className="w-3 h-3" />,   bg: 'bg-emerald-50',   text: 'text-emerald-700', dot: 'bg-emerald-500' },
   error:                  { label: 'Error',             icon: <AlertTriangle className="w-3 h-3" />,  bg: 'bg-red-50',       text: 'text-red-700',     dot: 'bg-red-500' },
 };

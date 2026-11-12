@@ -279,42 +279,8 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
       }
     }
 
-    const dailyComments = ext.daily_comment_limit ?? 20;
-    const dayAgo = new Date(now - 24 * HOUR).toISOString();
-    const { count: postedDay } = await supabase.from("monitored_posts").select("id", { count: "exact", head: true })
-      .eq("user_id", userId).gte("commented_at", dayAgo);
-    const queuedComments = pendingOf("post_comment").length;
-    const allowance = Math.max(0, dailyComments - (postedDay || 0) - queuedComments);
-    if (allowance > 0) {
-      const { data: approved } = await supabase.from("monitored_posts")
-        .select("id, icp_id, post_url, final_comment, suggested_comment, author_name")
-        .eq("user_id", userId).eq("status", "approved").is("campaign_lead_id", null)
-        .order("priority", { ascending: false }).order("approved_at", { ascending: true })
-        .limit(Math.min(allowance, 4)); // a few per run, the rest in later runs
-      let at = now + rand(4, 12) * 60 * 1000;
-      let commentsNow = 0;
-      for (const p of approved || []) {
-        if (!fits(at)) break;
-        const text = (p.final_comment || p.suggested_comment || "").trim();
-        if (!text || !p.post_url) {
-          await supabase.from("monitored_posts").update({ status: "failed", last_error: "missing comment text or post url" }).eq("id", p.id);
-          continue;
-        }
-        await queueAction(supabase, {
-          user_id: userId,
-          action_type: "post_comment",
-          linkedin_url: p.post_url,
-          message_text: text,
-          priority: 2,
-          scheduled_for: new Date(at).toISOString(),
-          action_data: { module: "network", post_id: p.id, icp_id: p.icp_id, post_url: p.post_url },
-        });
-        await supabase.from("monitored_posts").update({ status: "queued" }).eq("id", p.id);
-        at += rand(20, 45) * 60 * 1000;
-        commentsNow++;
-      }
-      out.comments_queued = commentsNow;
-    }
+    // Comments are no longer queued for the extension: the person posts each one on LinkedIn
+    // from the Inbox (LinkedIn, 13 Mar 2026: a comment needs the member to click "comment").
   }
   return out;
 }

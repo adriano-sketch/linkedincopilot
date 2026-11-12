@@ -5,9 +5,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Check, X, ExternalLink, Loader2, MessageSquareText, Undo2 } from 'lucide-react';
+import { Check, X, ExternalLink, MessageSquareText, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMonitoredPosts, type MonitoredPost, type PostFilter } from '@/hooks/useNetwork';
+import { cleanPostUrl, isActivityUrl, openPostWithDraft } from '@/lib/commentHandoff';
 
 const SIGNALS: Record<string, { label: string; className: string }> = {
   business_opportunity: { label: 'Business signal', className: 'bg-gold-bg text-[#A01268] border-transparent' },
@@ -19,14 +20,18 @@ const SIGNALS: Record<string, { label: string; className: string }> = {
 };
 
 export function PostCard({
-  post, selected, onToggle, text, onText, onApprove, onDismiss, busy, mode, onUnschedule,
+  post, selected, onToggle, text, onText, onApprove, onOpen, opened, onDismiss, busy, mode, onUnschedule,
 }: {
   post: MonitoredPost;
   selected: boolean;
   onToggle: () => void;
   text: string;
   onText: (t: string) => void;
+  /** Records that the person posted the comment on LinkedIn. */
   onApprove: () => void;
+  /** Copies the draft and opens the post. */
+  onOpen: () => void;
+  opened: boolean;
   onDismiss: () => void;
   onUnschedule: () => void;
   busy: boolean;
@@ -58,7 +63,7 @@ export function PostCard({
               </div>
             </div>
             {post.post_url && (
-              <a href={post.post_url} target="_blank" rel="noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary" aria-label="Open post on LinkedIn">
+              <a href={cleanPostUrl(post.post_url)} target="_blank" rel="noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary" aria-label="Open post on LinkedIn">
                 <ExternalLink className="w-4 h-4" />
               </a>
             )}
@@ -86,16 +91,29 @@ export function PostCard({
           {mode === 'pending' ? (
             <>
               <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted-foreground">
-                Suggested comment
+                Draft comment (edit it freely)
                 <Textarea rows={6} value={text} onChange={e => onText(e.target.value)} className="text-[15px] leading-relaxed text-foreground rounded-xl border-[1.5px] bg-card resize-y" />
               </label>
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-xs text-muted-foreground tabular-nums">{text.length} characters</span>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
                   <Button variant="outline" className="h-11" onClick={onDismiss} disabled={busy}><X className="w-4 h-4 mr-1" /> Skip</Button>
-                  <Button className="h-11" onClick={onApprove} disabled={busy || !text.trim()}><Check className="w-4 h-4 mr-1" /> Approve</Button>
+                  {opened ? (
+                    <>
+                      <Button variant="outline" className="h-11" onClick={onOpen} disabled={busy || !text.trim()}>Copy and open again</Button>
+                      <Button className="h-11" onClick={onApprove} disabled={busy || !text.trim()}><Check className="w-4 h-4 mr-1" /> I posted it</Button>
+                    </>
+                  ) : (
+                    <Button className="h-11" onClick={onOpen} disabled={busy || !text.trim()}>Copy and open post <ExternalLink className="w-4 h-4 ml-1" /></Button>
+                  )}
                 </div>
               </div>
+              <p className="m-0 text-xs text-muted-foreground">
+                {opened
+                  ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here.'
+                  : 'Copilot copies the draft and opens the post. You paste it and click Comment on LinkedIn.'}
+                {isActivityUrl(post.post_url) && ' The link opens their recent activity; the post is the one shown here.'}
+              </p>
             </>
           ) : (
             <>
@@ -104,8 +122,8 @@ export function PostCard({
               <div className="flex items-center justify-between gap-2 text-[13px] text-muted-foreground">
                 <span className={post.status === 'failed' ? 'text-destructive' : post.status === 'posted' ? 'text-success font-medium' : ''}>
                   {post.status === 'posted' && post.commented_at && `Commented ${new Date(post.commented_at).toLocaleString()}`}
-                  {post.status === 'approved' && 'Approved, waiting for a slot in your active hours'}
-                  {post.status === 'queued' && 'Scheduled in the extension queue'}
+                  {post.status === 'approved' && 'Approved earlier, not posted. Send it back to review to post it yourself.'}
+                  {post.status === 'queued' && 'Was scheduled before comments became manual'}
                   {post.status === 'failed' && `Failed: ${post.last_error || 'unknown error'}`}
                   {post.status === 'dismissed' && 'Skipped'}
                 </span>
@@ -126,6 +144,7 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
   const { posts, isLoading, approve, dismiss, saveDraft, unschedule } = useMonitoredPosts(filter, campaignId);
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [opened, setOpened] = useState<Set<string>>(new Set());
   const [onlyOpportunities, setOnlyOpportunities] = useState(false);
 
   useEffect(() => {
@@ -160,11 +179,21 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
     if (empties.length) { toast.error('Some selected comments are empty'); return; }
     try {
       const n = await approve.mutateAsync({ ids, edits: editsFor(ids) });
-      toast.success(`${n} comment${n === 1 ? '' : 's'} approved. They will be posted spaced out during your active hours.`);
+      toast.success(n === 1 ? 'Recorded as posted.' : `${n} comments recorded as posted.`);
       setSelected(new Set());
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not approve');
+      toast.error(e instanceof Error ? e.message : 'Could not record it');
     }
+  };
+
+  const openPost = async (p: MonitoredPost) => {
+    const t = (texts[p.id] || '').trim();
+    if (!t) { toast.error('The comment is empty'); return; }
+    if (t !== (p.final_comment || p.suggested_comment || '').trim()) saveDraft.mutate({ id: p.id, text: t });
+    const { copied } = await openPostWithDraft(p.post_url, t);
+    setOpened(s => new Set(s).add(p.id));
+    if (copied) toast.success('Comment copied. Paste it on the post, click Comment on LinkedIn, then confirm here.');
+    else toast.error('Could not copy automatically. Select the draft and copy it, then paste it on the post.');
   };
 
   const dismissIds = async (ids: string[]) => {
@@ -184,8 +213,7 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <Tabs value={filter} onValueChange={v => setFilter(v as PostFilter)}>
           <TabsList>
-            {!hidePending && <TabsTrigger value="pending">To approve</TabsTrigger>}
-            <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
+            {!hidePending && <TabsTrigger value="pending">To post</TabsTrigger>}
             <TabsTrigger value="posted">Posted</TabsTrigger>
             <TabsTrigger value="dismissed">Skipped</TabsTrigger>
           </TabsList>
@@ -210,10 +238,6 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
           <div className="flex gap-2">
             <Button size="sm" variant="ghost" disabled={selected.size === 0 || busy} onClick={() => dismissIds(Array.from(selected))}>
               Skip selected
-            </Button>
-            <Button size="sm" className="h-10 font-semibold" disabled={selected.size === 0 || busy} onClick={() => approveIds(Array.from(selected))}>
-              {approve.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-              {selected.size > 0 ? `Approve ${selected.size} selected` : 'Approve selected'}
             </Button>
           </div>
         </div>
@@ -248,6 +272,8 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
                 setTexts(s => ({ ...s, [p.id]: t }));
               }}
               onApprove={() => approveIds([p.id])}
+              onOpen={() => openPost(p)}
+              opened={opened.has(p.id)}
               onDismiss={() => dismissIds([p.id])}
               onUnschedule={() => unschedule.mutate(p.id)}
               busy={busy}
@@ -257,7 +283,7 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
       )}
       {filter === 'pending' && (
         <p className="text-xs text-muted-foreground">
-          Nothing is posted without your approval. Approved comments go out spaced through your active hours, within your daily limit.
+          You post every comment yourself. Copilot drafts it, copies it and opens the post; you click Comment on LinkedIn.
           {saveDraft.isPending ? ' Saving…' : ''}
         </p>
       )}

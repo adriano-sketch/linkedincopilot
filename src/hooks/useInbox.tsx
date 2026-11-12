@@ -169,7 +169,7 @@ export function useInbox() {
     qc.invalidateQueries({ queryKey: ['inbox-count'] });
   };
 
-  /** Approves items of one or more kinds. `edits` maps item key → edited text. */
+  /** Approves messages and records comments the person posted. `edits` maps item key → edited text. */
   const approve = useMutation({
     mutationFn: async ({ items: list, edits }: { items: InboxItem[]; edits: Record<string, string> }) => {
       const commentIds = list.filter(i => i.kind === 'comment').map(i => i.id);
@@ -178,7 +178,8 @@ export function useInbox() {
       if (commentIds.length) {
         const p_edits: Record<string, string> = {};
         for (const i of list) if (i.kind === 'comment' && edits[i.key] != null && edits[i.key].trim() !== i.draft.trim()) p_edits[i.id] = edits[i.key].trim();
-        const { data, error } = await supabase.rpc('approve_post_comments', { p_ids: commentIds, p_edits });
+        // Comments: the person posted it on LinkedIn; this only records it.
+        const { data, error } = await db.rpc('mark_post_comments_posted', { p_ids: commentIds, p_edits });
         if (error) throw error;
         done += Number(data) || 0;
       }
