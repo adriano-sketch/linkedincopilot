@@ -807,6 +807,35 @@ serve(async (req) => {
             leadUpdate.status = "post_found";
           }
           leadUpdate.next_action_at = rbt(0);
+        } else if (result?.note === "cards_not_recognized" || result?.note === "page_not_visible") {
+          // The page could not be read (LinkedIn tab hidden, or a layout the reader does not know).
+          // That says nothing about the person: do not rest the contact, try again tomorrow.
+          leadUpdate.next_action_at = rbt(1);
+          leadUpdate.error_message = result.note === "page_not_visible"
+            ? "LinkedIn tab was not visible, posts did not load"
+            : "Activity page not recognized by the reader";
+          // Three unreadable pages in a row: stop spending profile pages and tell the owner.
+          try {
+            const { data: recent } = await supabase.from("activity_log")
+              .select("details").eq("user_id", action.user_id).eq("action", "find_latest_post_completed")
+              .order("created_at", { ascending: false }).limit(2);
+            const unreadable = (recent || []).filter((r: any) =>
+              ["cards_not_recognized", "page_not_visible"].includes(r?.details?.result?.note)).length;
+            if (unreadable >= 2) {
+              await supabase.from("extension_status").update({
+                is_paused: true,
+                auto_paused_at: now,
+                auto_paused_reason: result.note === "page_not_visible"
+                  ? "Paused: the LinkedIn tab was not visible three times in a row, so posts did not load. Keep the LinkedIn window visible and resume."
+                  : "Paused: the activity page was not recognized three times in a row.",
+              }).eq("user_id", action.user_id);
+              await supabase.from("action_queue").update({ status: "cancelled", error_message: "Cancelled: activity pages unreadable" })
+                .eq("user_id", action.user_id).eq("status", "pending").eq("action_type", "find_latest_post");
+              console.warn(`Auto-paused user ${action.user_id}: ${result.note} three times in a row`);
+            }
+          } catch (e) {
+            console.error("unreadable-page pause check failed:", e);
+          }
         } else {
           // No usable post (none at all, none of their own, or none in the last 30 days):
           // skip this engagement cycle, try again in 7 days
