@@ -33,6 +33,11 @@ const STATUS_TO_ACTION: Record<string, string> = {
 // to post a comment the user approved. There is no profile visit: for someone who is already a
 // connection it adds nothing, and it was the largest share of the profile pages that led to
 // LinkedIn's warning on 2026-11-10 (3 to 4 pages per contact per cycle).
+// Likes are given by the person, not by the extension. LinkedIn's User Agreement lists automated
+// reactions next to automated comments. With this off, the extension only finds the post; the
+// person likes it when opening the post to comment. Set to true to restore the in-visit like.
+const AUTO_LIKE = false;
+
 const GROWTH_STATUS_TO_ACTION: Record<string, string> = {
   ready: "find_latest_post",
   visiting_profile: "find_latest_post", // contacts visited under the old flow
@@ -561,6 +566,13 @@ Deno.serve(async (req) => {
         // Growth mode: skip outreach-specific gates (connection/DM/followup approval)
         // Growth leads need comment generation before post_comment
         if (campaignMode === "growth") {
+          // Without automatic likes, a found post goes straight to the draft step ("post_liked" is
+          // the historic name of that step; nothing was liked).
+          if (!AUTO_LIKE && lead.status === "post_found") {
+            await supabase.from("campaign_leads").update({ status: "post_liked", updated_at: new Date().toISOString() })
+              .eq("id", lead.id).eq("status", "post_found");
+            lead.status = "post_liked";
+          }
           // If status is post_liked but no comment_text yet, trigger generation
           if (lead.status === "post_liked" && !(lead as any).comment_text) {
             const generateUrl = `${supabaseUrl}/functions/v1/generate-comment`;
@@ -584,6 +596,7 @@ Deno.serve(async (req) => {
         // Comments are posted by the person, never by the extension (LinkedIn, 13 Mar 2026: a comment
         // needs the member to click "comment"). The draft waits in the Inbox; nothing is queued.
         if (actionType === "post_comment") { addSkip("comment_posted_by_person"); continue; }
+        if (!AUTO_LIKE && actionType === "like_post") { addSkip("like_given_by_person"); continue; }
 
         // Cap: separate limits for lightweight checks vs other actions
         if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
@@ -849,7 +862,7 @@ Deno.serve(async (req) => {
             message_text: messageText,
             scheduled_for: scheduledFor,
             // Growth: like the post in the same visit that finds it (one page per contact).
-            ...(actionType === "find_latest_post" ? { action_data: { like: true } } : {}),
+            ...(actionType === "find_latest_post" && AUTO_LIKE ? { action_data: { like: true } } : {}),
             // Priority ordering (lower = higher priority, picked first by extension):
             //   1 = send_dm / send_followup  → revenue-generating, must not be starved
             //   2 = send_connection_request  → pipeline advancement
