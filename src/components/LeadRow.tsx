@@ -30,7 +30,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; bg: 
   skipped:                { label: 'Skipped',           icon: <XCircle className="w-3 h-3" />,        bg: 'bg-slate-100',    text: 'text-slate-500',   dot: 'bg-slate-400' },
   ready:                  { label: 'Ready',             icon: <Zap className="w-3 h-3" />,            bg: 'bg-slate-100',    text: 'text-slate-600',   dot: 'bg-slate-400' },
   post_found:             { label: 'Post Found',        icon: <Eye className="w-3 h-3" />,            bg: 'bg-amber-50',     text: 'text-amber-700',   dot: 'bg-amber-400' },
-  post_liked:             { label: 'Post Liked',        icon: <CheckCircle2 className="w-3 h-3" />,   bg: 'bg-amber-50',     text: 'text-amber-700',   dot: 'bg-amber-400' },
+  post_liked:             { label: 'Drafting',        icon: <CheckCircle2 className="w-3 h-3" />,   bg: 'bg-amber-50',     text: 'text-amber-700',   dot: 'bg-amber-400' },
   comment_review:         { label: 'To post', icon: <MessageSquare className="w-3 h-3" />, bg: 'bg-orange-50',    text: 'text-orange-700',  dot: 'bg-orange-400' },
   engagement_done:        { label: 'Engaged',           icon: <CheckCircle2 className="w-3 h-3" />,   bg: 'bg-emerald-50',   text: 'text-emerald-700', dot: 'bg-emerald-500' },
   error:                  { label: 'Error',             icon: <AlertTriangle className="w-3 h-3" />,  bg: 'bg-red-50',       text: 'text-red-700',     dot: 'bg-red-500' },
@@ -91,7 +91,7 @@ const GROWTH_NOTES: Record<string, string> = {
 export default function LeadRow({ lead, onUpdateStatus, isUpdating, isSelected, onToggleSelect, showVerification, mode = 'outreach', onReview }: LeadRowProps) {
   const isGrowth = mode === 'growth';
   // The same statuses read differently for a contact you already know.
-  const growthLabel = isGrowth ? ({ ready: 'Waiting', new: 'Waiting', imported: 'Waiting', visiting_profile: 'Waiting', post_liked: 'Liked, drafting', engagement_done: 'Resting' } as Record<string, string>)[lead.status] : undefined;
+  const growthLabel = isGrowth ? ({ ready: 'Waiting', new: 'Waiting', imported: 'Waiting', visiting_profile: 'Waiting', post_liked: 'Drafting comment', engagement_done: 'Resting' } as Record<string, string>)[lead.status] : undefined;
   // Growth fields are not on the CampaignLead type.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const g = lead as any;
