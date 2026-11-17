@@ -1727,7 +1727,20 @@ function parsePostAgeDays(label, pageLang) {
 // previous selectors. Each card yields: element, actor name, repost flag, age label, body text,
 // permalink (only an own-post /feed/update/urn:li:activity: link counts; ugcPost links inside a
 // card belong to embedded/shared media) and a text fingerprint used to find the card again later.
-const LC_AGE_LABEL_RE = /^(\d+)\s?(min|h|d|w|mo|yr|m|sem|a)(\s*[•·]\s*(edited|editado|modifié|editado))?$/i;
+// Since Nov 2026 the label span also holds a visibility icon and ends with a bullet ("1w • Edited •"),
+// so the label is read from the span's own text nodes and a trailing bullet is allowed.
+const LC_AGE_LABEL_RE = /^(\d+)\s?(min|h|d|w|mo|yr|m|sem|a)(\s*[•·]\s*(edited|editado|modifié|editada))?\s*[•·]?$/i;
+function lcOwnText(el) {
+  let t = '';
+  for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
+  return t.replace(/\s+/g, ' ').trim();
+}
+// A span is an age label when its own text is one and no child span carries text of its own.
+function lcIsAgeSpan(s) {
+  if (!LC_AGE_LABEL_RE.test(lcOwnText(s))) return false;
+  for (const c of s.querySelectorAll('span')) if (c.textContent.trim()) return false;
+  return true;
+}
 const LC_CARD_HEADER_RE = /^(feed post|publicação( do| no)? feed|post)$/i;
 const LC_REPOST_RE = /reposted|republicou|compartilhou (isso|esta|este)|shared this|ha compartido|a republié|a partagé/i;
 const LC_ACTION_LINE_RE = /^(like|comment|repost|send|share|gostei|comentar|compartilhar|enviar|reagir|…\s*more|…\s*ver mais|\d[\d,.]*\s*(reactions?|comments?|reposts?|reações|comentários|compartilhamentos)|.*\band \d+ others?$|.*\be mais \d+ (outras? )?pessoas?$|activate to view larger image|play video|video player is loading\.?)$/i;
@@ -1739,7 +1752,7 @@ function lcFingerprint(text) {
 function lcCollectActivityCards() {
   const main = document.querySelector('main') || document.body;
   const cards = [];
-  const leafSpans = (root) => Array.from(root.querySelectorAll('span')).filter((s) => s.children.length === 0);
+  const ageSpansIn = (root) => Array.from(root.querySelectorAll('span')).filter(lcIsAgeSpan);
 
   // Old layout
   const oldSel = '.feed-shared-update-v2, [data-urn*="activity"], .profile-creator-shared-feed-update__container, .occludable-update';
@@ -1768,13 +1781,13 @@ function lcCollectActivityCards() {
   }
 
   // 2026 layout
-  const ageSpans = leafSpans(main).filter((s) => LC_AGE_LABEL_RE.test(s.textContent.trim()));
+  const ageSpans = ageSpansIn(main);
   const seenEls = new Set();
   for (const span of ageSpans) {
     let el = span;
     let card = span;
     while (el && el !== main) {
-      const n = leafSpans(el).filter((s) => LC_AGE_LABEL_RE.test(s.textContent.trim())).length;
+      const n = ageSpansIn(el).length;
       if (n > 1) break;
       card = el;
       el = el.parentElement;
@@ -1784,8 +1797,9 @@ function lcCollectActivityCards() {
     const lines = card.innerText.replace(/[ \t]+/g, ' ').split(/\n+/).map((l) => l.trim()).filter(Boolean);
     const hIdx = lines.findIndex((l) => LC_CARD_HEADER_RE.test(l));
     const before = lines.slice(0, Math.max(hIdx, 0)).join(' ');
-    const ageLabel = span.textContent.trim();
-    const ageIdx = lines.findIndex((l) => l === ageLabel);
+    const ageLabel = lcOwnText(span).replace(/\s*[•·]\s*$/, '');
+    // The rendered line can carry the trailing bullet or the "Follow" button next to the label.
+    const ageIdx = lines.findIndex((l) => l === ageLabel || l.startsWith(ageLabel + ' •') || l.startsWith(ageLabel + ' ·'));
     // "<Name> reposted this" can sit above the header or right below it, as the first line of the
     // actor block: look at everything before the age label, not only at what precedes the header.
     const headEnd = ageIdx >= 0 ? ageIdx : Math.max(hIdx, 0) + 3;
@@ -1866,23 +1880,33 @@ async function findLatestPost(expectedName, opts = {}) {
   await sleep(1000 + Math.random() * 1500);
   await waitForLinkedInReady();
 
-  // Now we should be on the activity page — read the cards (newest first)
-  await sleep(1500);
-  let cards = lcCollectActivityCards();
-  if (cards.length === 0) {
-    window.scrollBy(0, 400);
+  // Now we should be on the activity page — read the cards (newest first). The list can load
+  // late, so wait for it instead of reading once.
+  let cards = [];
+  for (let i = 0; i < 10 && cards.length === 0; i++) {
     await sleep(1500);
     cards = lcCollectActivityCards();
+    if (cards.length === 0 && i === 2) window.scrollBy(0, 400);
   }
 
   if (cards.length === 0) {
-    const emptyPage = /nothing to see for now|no posts yet|nada para ver|ainda não publicou/i.test((document.querySelector('main') || document.body).innerText || '');
+    const mainEl = document.querySelector('main') || document.body;
+    const emptyPage = /nothing to see for now|no posts yet|nada para ver|ainda não publicou|hasn.t posted|não publicou/i.test(mainEl.innerText || '');
+    const hidden = document.visibilityState !== 'visible';
     return {
       success: true,
       action: 'find_latest_post',
       found: false,
-      note: emptyPage ? 'no_posts_found' : 'cards_not_recognized',
+      note: emptyPage ? 'no_posts_found' : hidden ? 'page_not_visible' : 'cards_not_recognized',
       url: window.location.href,
+      // What the page looked like, so an unreadable page can be told apart from an empty one.
+      diag: {
+        visibility: document.visibilityState,
+        focused: document.hasFocus(),
+        main_chars: (mainEl.innerText || '').length,
+        feed_nodes: mainEl.querySelectorAll('[class*="feed-shared"], [class*="update-components"]').length,
+        placeholders: mainEl.querySelectorAll('[class*="skeleton"], [class*="ghost"], [class*="loader"]').length,
+      },
     };
   }
 
