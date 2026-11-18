@@ -10,7 +10,11 @@
   <div class="container">
     <!-- Header -->
     <div class="header">
-      <img src="icon48.png" alt="LinkedIn Copilot" class="header-logo">
+      <svg class="header-logo" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="15" fill="#15111F"/>
+        <circle cx="32" cy="32" r="16" fill="none" stroke="#A78BFF" stroke-width="9" stroke-linecap="round" stroke-dasharray="66.53 34" transform="rotate(60.88 32 32)"/>
+        <circle cx="48" cy="32" r="5.5" fill="#FF4FB0"/>
+      </svg>
       <span class="header-title">LinkedIn Copilot</span>
     </div>
 
@@ -41,43 +45,23 @@
         <span id="status-text" class="status-text">Connected</span>
       </div>
       <div class="content-area">
-        <!-- 24/7 Passive Actions -->
-        <div class="section-label">
-          Passive Actions <span class="label-badge">24/7</span>
-        </div>
+        <!-- What the extension did today -->
+        <div class="section-label">Today</div>
         <div class="stats-section">
           <div class="stat-row">
-            <span class="stat-label"><span class="stat-icon">👁</span> Profile visits</span>
+            <span class="stat-label">Profile pages opened</span>
             <span id="stat-visits" class="stat-value">0</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label"><span class="stat-icon">➕</span> Follows</span>
-            <span id="stat-follows" class="stat-value">0</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label"><span class="stat-icon">👍</span> Post likes</span>
-            <span id="stat-likes" class="stat-value">0</span>
-          </div>
-        </div>
-
-        <!-- Business Hours Messaging -->
-        <div class="section-label">
-          Messaging <span class="label-badge-blue label-badge">Business Hours</span>
-        </div>
-        <div class="stats-section">
-          <div class="stat-row">
-            <span class="stat-label"><span class="stat-icon">🤝</span> Connection requests</span>
+            <span class="stat-label">Invitations sent</span>
             <span id="stat-connections" class="stat-value">0 / 40</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label"><span class="stat-icon">💬</span> DMs sent</span>
+            <span class="stat-label">Messages sent</span>
             <span id="stat-messages" class="stat-value">0 / 100</span>
           </div>
-          <div class="stat-row">
-            <span class="stat-label"><span class="stat-icon">📨</span> Follow-ups</span>
-            <span id="stat-followups" class="stat-value">0</span>
-          </div>
         </div>
+        <p class="note">Comments and likes are yours. Copilot drafts the comment; you post it on LinkedIn.</p>
 
         <!-- Queue -->
         <div class="queue-info">
@@ -91,12 +75,12 @@
           </div>
         </div>
 
-        <button id="pause-btn" class="btn btn-secondary">Pause Automation</button>
+        <button id="pause-btn" class="btn btn-secondary">Pause</button>
 
         <!-- Schedule Editor -->
         <div class="schedule-section">
           <button id="schedule-toggle" class="schedule-toggle" type="button">
-            <span>⏰ Messaging schedule</span>
+            <span>Active hours</span>
             <span id="schedule-summary" class="schedule-summary">—</span>
             <span id="schedule-caret" class="schedule-caret">▾</span>
           </button>
@@ -123,7 +107,7 @@
         </div>
       </div>
       <div class="popup-footer">
-        <a id="dashboard-link" href="#" class="dashboard-link">Open Dashboard →</a>
+        <a id="dashboard-link" href="#" class="dashboard-link">Open dashboard</a>
         <a id="logout-link" href="#" class="logout-link">Disconnect</a>
       </div>
     </div>
@@ -139,7 +123,7 @@
         <button id="open-linkedin-btn" class="btn btn-primary">Open LinkedIn</button>
       </div>
       <div class="popup-footer">
-        <a id="dashboard-link-2" href="#" class="dashboard-link">Open Dashboard →</a>
+        <a id="dashboard-link-2" href="#" class="dashboard-link">Open dashboard</a>
         <a id="logout-link-2" href="#" class="logout-link">Disconnect</a>
       </div>
     </div>
