@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  buildPeopleSearchUrl, buildPostSearchUrl, buildSalesNavPeopleSearchUrl, fireAndForget, salesNavEnabled, type Icp,
+  buildMyNetworkPostSearchUrl, buildPeopleSearchUrl, buildPostSearchUrl, buildSalesNavPeopleSearchUrl, fireAndForget, salesNavEnabled, type Icp,
 } from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -23,6 +23,9 @@ const MIN_GAP_BETWEEN_PEOPLE_SEARCHES_MS = 30 * 60 * 1000;
 const WITHDRAW_AFTER_DAYS = 21;
 const SYNC_EVERY_MS = 12 * HOUR;
 const MAX_PENDING_APPROVAL = 50; // don't flood the approval queue
+// Posts of the user's own connections about the subjects they comment on (no profile page opened).
+const MY_NETWORK_SEARCHES_PER_DAY = 5;
+const MY_NETWORK_SEARCH_GAP_MS = 75 * 60 * 1000;
 const STALE_QUEUED_MS = 36 * HOUR;
 
 function rand(min: number, max: number) {
@@ -282,6 +285,40 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     // Comments are no longer queued for the extension: the person posts each one on LinkedIn
     // from the Inbox (LinkedIn, 13 Mar 2026: a comment needs the member to click "comment").
   }
+
+  // ── 6. My network: recent posts of 1st-degree connections about the user's own subjects.
+  // One search page per subject, a few per day. It finds who posted without opening any profile.
+  const terms: string[] = (ext.comment_search_terms || []).map((t: string) => String(t).trim()).filter(Boolean);
+  if (terms.length && pendingOf("network_search_posts").length === 0) {
+    const { count: waiting } = await supabase.from("monitored_posts").select("id", { count: "exact", head: true })
+      .eq("user_id", userId).eq("status", "pending");
+    const since = new Date(now - 24 * HOUR).toISOString();
+    const { data: runs } = await supabase.from("network_search_runs").select("created_at, query")
+      .eq("user_id", userId).eq("kind", "posts").contains("query", { source: "my_network" })
+      .order("created_at", { ascending: false }).limit(40);
+    const lastRun = (runs || [])[0];
+    const today = (runs || []).filter((r: any) => r.created_at >= since).length;
+    const gapOk = !lastRun || now - new Date(lastRun.created_at).getTime() > MY_NETWORK_SEARCH_GAP_MS;
+    if ((waiting || 0) < MAX_PENDING_APPROVAL && today < MY_NETWORK_SEARCHES_PER_DAY && gapOk) {
+      const lastIdx = lastRun ? terms.indexOf(String((lastRun as any).query?.term || "")) : -1;
+      const term = terms[(lastIdx + 1) % terms.length];
+      const url = buildMyNetworkPostSearchUrl(term);
+      const { data: run, error: runErr } = await supabase.from("network_search_runs").insert({
+        user_id: userId, kind: "posts", page: 1, search_url: url, status: "queued",
+        query: { source: "my_network", term },
+      }).select("id").single();
+      if (runErr) throw runErr;
+      await queueAction(supabase, {
+        user_id: userId,
+        action_type: "network_search_posts",
+        linkedin_url: url,
+        priority: 4,
+        scheduled_for: new Date(now + rand(2, 12) * 60 * 1000).toISOString(),
+        action_data: { module: "network", source: "my_network", term, search_run_id: run.id, search_url: url },
+      });
+      out.my_network_search_queued = term;
+    }
+  }
   return out;
 }
 
@@ -300,6 +337,17 @@ Deno.serve(async (req) => {
       l.push(i);
       byUser.set(i.user_id, l);
     }
+    // People who set subjects to follow in their own network run even without an active ICP.
+    const { data: kbRows, error: kbErr } = await supabase.from("profiles")
+      .select("user_id, comment_search_terms").not("comment_search_terms", "is", null);
+    if (kbErr) throw kbErr;
+    const termsByUser = new Map<string, string[]>();
+    for (const r of (kbRows || []) as any[]) {
+      if (Array.isArray(r.comment_search_terms) && r.comment_search_terms.length) {
+        termsByUser.set(r.user_id, r.comment_search_terms);
+        if (!byUser.has(r.user_id)) byUser.set(r.user_id, []);
+      }
+    }
     if (byUser.size === 0) return json({ ok: true, users: 0 });
 
     const { data: exts, error: extErr } = await supabase.from("extension_status")
@@ -312,7 +360,7 @@ Deno.serve(async (req) => {
     for (const ext of exts || []) {
       if (!ext.is_connected || ext.is_paused) { skipped++; continue; }
       try {
-        results.push(await runForUser(supabase, ext, byUser.get(ext.user_id) || []));
+        results.push(await runForUser(supabase, { ...ext, comment_search_terms: termsByUser.get(ext.user_id) || [] }, byUser.get(ext.user_id) || []));
       } catch (e) {
         console.error(`network-scheduler user ${String(ext.user_id).slice(0, 8)} failed:`, e);
         results.push({ user: String(ext.user_id).slice(0, 8), error: true });

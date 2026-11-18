@@ -6,7 +6,9 @@
 // Nothing is published here: drafted comments wait for human approval in the dashboard.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
-import { commentRules, detectLang, isSkip, LANG_NAME, reviewComments, type SenderFacts } from "../_shared/comment-quality.ts";
+import {
+  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, reviewComments, triagePost, type PostKind, type SenderFacts,
+} from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray,
 } from "../_shared/network.ts";
@@ -109,6 +111,8 @@ async function writeComments(
   batch: { post: any; signal: string; reason: string }[],
   facts: SenderFacts,
   retry: { previous: string; feedback: string }[] | null,
+  kind: PostKind = "on_topic",
+  topic = "",
 ): Promise<{ comment: string; skip: string | null }[]> {
   const items = batch.map((d, idx) => [
     `[${idx}] Author: ${d.post.author_name || "Unknown"}`,
@@ -118,7 +122,7 @@ async function writeComments(
     `Post:\n${String(d.post.post_text).slice(0, 2000)}`,
     retry ? `Your previous draft was REJECTED: "${retry[idx].previous}"\nWhy: ${retry[idx].feedback}\nWrite a better one or skip.` : "",
   ].filter(Boolean).join("\n")).join("\n=====\n");
-  const system = `${commentRules(facts)}
+  const system = `${commentRules(facts, kind, topic)}
 
 Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "comment": "..."}] or
 [{"index": n, "skip": true, "skip_reason": "<max 12 words>"}]`;
@@ -136,7 +140,7 @@ Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "
 async function processPosts(supabase: Supa, userId: string, icps: Map<string, Icp>) {
   const { data: posts, error } = await supabase
     .from("monitored_posts")
-    .select("id, icp_id, author_name, author_headline, author_degree, post_text, reactions_count, comments_count, icp_fit, signal_type, signal_reason")
+    .select("id, icp_id, campaign_lead_id, post_urn, author_name, author_headline, author_degree, post_text, reactions_count, comments_count, icp_fit, signal_type, signal_reason")
     .eq("user_id", userId)
     .eq("status", "new")
     .order("created_at", { ascending: true })
@@ -153,8 +157,66 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
   let classified = 0;
   const toDraft: { post: any; icp: Icp; signal: string; reason: string }[] = [];
 
+  // The user's comment knowledge base: subjects, what to stay out of, and their own voice.
+  const facts: SenderFacts = {
+    name: me?.sender_name, title: me?.sender_title, company: me?.company_name,
+    about: [me?.company_description, me?.proof_points].filter(Boolean).join(" "), tone: me?.dm_tone,
+    // deno-lint-ignore no-explicit-any
+    topics: (me as any)?.comment_topics, avoid: (me as any)?.comment_avoid, examples: (me as any)?.comment_examples,
+  };
+
+  // Posts found in the user's own network (post_urn "lc:…", no ICP, no campaign contact) are judged
+  // against the knowledge base, exactly like the Growth flow: off-topic posts get no comment.
+  const isMyNetwork = (p: any) => !p.icp_id && !p.campaign_lead_id && String(p.post_urn || "").startsWith("lc:");
+  let kbDrafted = 0;
+  let kbSkipped = 0;
+  for (const p of posts.filter(isMyNetwork)) {
+    classified++;
+    const ignore = (why: string) => supabase.from("monitored_posts").update({
+      status: "ignored", signal_type: "ignore", fit_reason: why.slice(0, 200),
+    }).eq("id", p.id).eq("status", "new");
+    if (!hasKnowledgeBase(facts)) { await ignore("No comment subjects set"); kbSkipped++; continue; }
+    if (!p.post_text || p.post_text.trim().length < 40) { await ignore("Post too short to comment meaningfully"); kbSkipped++; continue; }
+    try {
+      const triage = await triagePost(String(p.post_text), { name: p.author_name, title: p.author_headline }, facts);
+      if (triage.kind === "off_topic") { await ignore(`Off topic: ${triage.reason}`); kbSkipped++; continue; }
+      const item = [{ post: p, signal: triage.kind, reason: triage.topic || "" }];
+      const topic = triage.topic || "one of the subjects listed above";
+      let [draft] = await writeComments(item, facts, null, triage.kind, topic);
+      let rev = { ok: false, reason: draft.skip || "" };
+      if (!draft.skip) {
+        [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: draft.comment }], facts, triage.kind);
+        if (!rev.ok) {
+          const [second] = await writeComments(item, facts, [{ previous: draft.comment, feedback: rev.reason }], triage.kind, topic);
+          draft = second;
+          rev = second.skip
+            ? { ok: false, reason: second.skip }
+            : (await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: second.comment }], facts, triage.kind))[0];
+        }
+      }
+      if (!draft.skip && rev.ok && !isSkip(draft.comment)) {
+        await supabase.from("monitored_posts").update({
+          suggested_comment: draft.comment, status: "pending", last_error: null,
+          signal_type: triage.kind === "milestone" ? "milestone" : "relationship",
+          fit_reason: triage.kind === "milestone" ? "Milestone of a contact" : `Your subject: ${triage.topic || "one of your subjects"}`.slice(0, 200),
+        }).eq("id", p.id).eq("status", "new");
+        kbDrafted++;
+      } else {
+        await supabase.from("monitored_posts").update({
+          status: "ignored", last_error: `quality skip: ${(draft.skip || rev.reason || "nothing specific to add").slice(0, 200)}`,
+          fit_reason: triage.kind === "milestone" ? "Milestone of a contact" : `Your subject: ${triage.topic || ""}`.slice(0, 200),
+        }).eq("id", p.id).eq("status", "new");
+        kbSkipped++;
+      }
+    } catch (e) {
+      // Stays 'new': the next run tries again.
+      console.error("my-network post failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
   const byIcp = new Map<string, any[]>();
   for (const p of posts) {
+    if (isMyNetwork(p)) continue;
     const icp = p.icp_id ? icps.get(p.icp_id) : undefined;
     // Already classified in a previous run (drafting failed): go straight to drafting.
     if (icp && p.signal_type && p.icp_fit === true && p.signal_type !== "ignore") {
@@ -237,15 +299,8 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
 
   // Drafting goes through the quality guard (_shared/comment-quality.ts): writer → local checks →
   // strict reviewer → one rewrite with feedback → otherwise the post is skipped (status 'ignored').
-  const facts: SenderFacts = {
-    name: me?.sender_name, title: me?.sender_title, company: me?.company_name,
-    about: [me?.company_description, me?.proof_points].filter(Boolean).join(" "), tone: me?.dm_tone,
-    // The user's comment knowledge base: subjects, what to stay out of, and their own voice.
-    // deno-lint-ignore no-explicit-any
-    topics: (me as any)?.comment_topics, avoid: (me as any)?.comment_avoid, examples: (me as any)?.comment_examples,
-  };
-  let drafted = 0;
-  let skipped = 0;
+  let drafted = kbDrafted;
+  let skipped = kbSkipped;
   for (let i = 0; i < toDraft.length; i += DRAFT_BATCH) {
     const batch = toDraft.slice(i, i + DRAFT_BATCH);
     let drafts: { comment: string; skip: string | null }[];
