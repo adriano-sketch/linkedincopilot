@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
   pauseBtn.addEventListener('click', () => {
     chrome.runtime.sendMessage({ type: 'TOGGLE_PAUSE' }, (response) => {
       if (response && response.success) {
-        pauseBtn.textContent = response.paused ? 'Resume Automation' : 'Pause Automation';
+        pauseBtn.textContent = response.paused ? 'Resume' : 'Pause';
       }
     });
   });
@@ -253,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (status.isPaused) {
         statusDot.className = 'dot dot-yellow';
         statusText.textContent = 'Paused';
-        pauseBtn.textContent = 'Resume Automation';
+        pauseBtn.textContent = 'Resume';
       } else if (status.cooldown) {
         statusDot.className = 'dot dot-red';
         statusText.textContent = 'Cooldown active';
@@ -270,11 +270,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           statusText.textContent = 'Warmup running · Messaging paused';
         }
-        pauseBtn.textContent = 'Pause Automation';
+        pauseBtn.textContent = 'Pause';
       } else {
         statusDot.className = 'dot dot-green';
-        statusText.textContent = 'Active · All actions running';
-        pauseBtn.textContent = 'Pause Automation';
+        statusText.textContent = 'Active';
+        pauseBtn.textContent = 'Pause';
       }
 
       // Passive action counters
@@ -294,12 +294,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (status.lastAction) {
         const ago = getTimeAgo(new Date(status.lastAction.completedAt));
         const actionLabels = {
-          visit_profile: '👁 Visit',
-          follow_profile: '➕ Follow',
-          like_post: '👍 Like',
-          send_connection_request: '🤝 Connect',
-          send_dm: '💬 DM',
-          send_followup: '📨 Follow-up',
+          visit_profile: 'Profile visit',
+          find_latest_post: 'Looked for a post',
+          network_search_posts: 'Post search',
+          network_search_people: 'People search',
+          network_sync_connections: 'Checked connections',
+          network_withdraw_invites: 'Withdrew old invitations',
+          follow_profile: 'Follow',
+          like_post: 'Like',
+          send_connection_request: 'Invitation',
+          send_dm: 'Message',
+          send_followup: 'Follow-up',
         };
         const label = actionLabels[status.lastAction.type] || status.lastAction.type;
         statLastAction.textContent = `${label} (${ago})`;
@@ -309,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Warm-up banner
       if (safety.isWarmup && warmupBanner) {
-        warmupBanner.textContent = `⚡ Warm-up: ${safety.warmupDaysLeft} days left (30% capacity)`;
+        warmupBanner.textContent = `Warm-up: ${safety.warmupDaysLeft} days left (30% capacity)`;
         warmupBanner.classList.remove('hidden');
       } else if (warmupBanner) {
         warmupBanner.classList.add('hidden');
@@ -317,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Cooldown banner
       if (status.cooldown && cooldownBanner) {
-        cooldownBanner.textContent = `⛔ Paused: ${status.cooldown.reason}`;
+        cooldownBanner.textContent = `Paused: ${status.cooldown.reason}`;
         cooldownBanner.classList.remove('hidden');
       } else if (cooldownBanner) {
         cooldownBanner.classList.add('hidden');

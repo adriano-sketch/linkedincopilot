@@ -456,7 +456,8 @@ const safetyManager = {
     switch (actionType) {
       case 'send_connection_request': counters.connections++; break;
       case 'send_dm': case 'send_followup': counters.messages++; break;
-      case 'visit_profile': counters.visits++; break;
+      // Every page of a person's profile counts, including the activity page read for posts.
+      case 'visit_profile': case 'find_latest_post': counters.visits++; break;
       case 'follow_profile': counters.follows++; break;
       case 'like_post': counters.likes++; break;
     }
