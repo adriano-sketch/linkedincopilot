@@ -13,7 +13,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 import {
-  buildConnectionsSearchUrl, buildSalesNavConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, startOfNextMonthUtc,
+  buildConnectionsSearchUrl, buildSalesNavConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, postFingerprint, startOfNextMonthUtc,
 } from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -254,19 +254,54 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
   }
   const ownUrl = normalizeProfileUrl(result?.own_profile_url);
   const posts: any[] = Array.isArray(result?.posts) ? result.posts.slice(0, 40) : [];
+  const myNetwork = data.source === "my_network";
+
+  // One touch per person per week: skip authors who already have a draft waiting or a comment
+  // recorded in the last 7 days (whatever found the post: this search or the contact-by-contact check).
+  const busyAuthors = new Set<string>();
+  if (myNetwork) {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    const { data: recent } = await supabase.from("monitored_posts").select("author_profile_url, status, commented_at")
+      .eq("user_id", userId).in("status", ["pending", "approved", "queued", "posted"])
+      .order("created_at", { ascending: false }).limit(500);
+    for (const r of recent || []) {
+      if (r.status === "posted" && !(r.commented_at && r.commented_at >= weekAgo)) continue;
+      const u = normalizeProfileUrl(r.author_profile_url);
+      if (u) busyAuthors.add(u);
+    }
+    const { data: leadsBusy } = await supabase.from("campaign_leads").select("linkedin_url")
+      .eq("user_id", userId).eq("status", "comment_review").limit(500);
+    for (const r of leadsBusy || []) { const u = normalizeProfileUrl(r.linkedin_url); if (u) busyAuthors.add(u); }
+  }
+
   const rows = [];
   for (const p of posts) {
-    const urn = typeof p.urn === "string" ? p.urn.trim() : "";
-    if (!/^urn:li:(activity|share|ugcPost):/i.test(urn)) continue;
+    let urn = typeof p.urn === "string" ? p.urn.trim() : "";
     const authorUrl = normalizeProfileUrl(p.author_profile_url);
     if (ownUrl && authorUrl === ownUrl) continue; // never comment on our own posts
     if (!authorUrl) continue; // company pages / unknown authors: skip
     if (!p.text || String(p.text).trim().length < 40) continue;
+    let postUrl = `https://www.linkedin.com/feed/update/${urn}/`;
+    if (!/^urn:li:(activity|share|ugcPost):/i.test(urn)) {
+      // The 2026 search page carries no post id. The post is identified by its author and its
+      // opening words, and opened through the author's activity page (same as the Growth flow).
+      if (!myNetwork) continue;
+      const fp = postFingerprint(String(p.text));
+      const slug = authorUrl.split("/in/")[1] || "";
+      if (!fp || !slug) continue;
+      urn = `lc:${slug}:${fp.slice(0, 60)}`;
+      postUrl = `${authorUrl}/recent-activity/all/#lcpost=${encodeURIComponent(fp.slice(0, 40))}`;
+    }
+    if (myNetwork) {
+      if (p.author_degree && !/^1/.test(String(p.author_degree))) continue; // connections only
+      if (busyAuthors.has(authorUrl)) continue;
+      busyAuthors.add(authorUrl); // at most one post per author per search
+    }
     rows.push({
       user_id: userId,
       icp_id: icpId,
       post_urn: urn,
-      post_url: `https://www.linkedin.com/feed/update/${urn}/`,
+      post_url: postUrl,
       author_name: p.author_name ? String(p.author_name).slice(0, 200) : null,
       author_headline: p.author_headline ? String(p.author_headline).slice(0, 500) : null,
       author_profile_url: authorUrl,

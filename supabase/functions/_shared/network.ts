@@ -231,6 +231,25 @@ export function salesNavEnabled(ext: { linkedin_account_tier?: string | null; sa
   return true;
 }
 
+/**
+ * Post search among the user's own 1st-degree connections, last week, for one of the subjects
+ * they comment on. Parameter names and value format were taken from the address LinkedIn itself
+ * builds when these filters are picked by hand (Nov 2026).
+ */
+export function buildMyNetworkPostSearchUrl(term: string): string {
+  const params = new URLSearchParams();
+  params.set("keywords", quoteTerm(term).slice(0, 200));
+  params.set("origin", "FACETED_SEARCH");
+  params.set("datePosted", JSON.stringify(["past-week"]));
+  params.set("postedBy", JSON.stringify(["first"]));
+  return `https://www.linkedin.com/search/results/content/?${params.toString()}`;
+}
+
+/** Same reduction the extension uses to recognize a post by its opening words. */
+export function postFingerprint(text: string): string {
+  return (text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 80);
+}
+
 /** LinkedIn post (content) search URL: last 24h, newest first. */
 export function buildPostSearchUrl(icp: Icp): string {
   const topics = (icp.post_topics && icp.post_topics.length ? icp.post_topics : icp.keywords || [])
@@ -240,7 +259,7 @@ export function buildPostSearchUrl(icp: Icp): string {
   const kw = terms.length > 1 ? terms.join(" OR ") : (terms[0] || icp.name);
   const params = new URLSearchParams();
   params.set("keywords", kw.slice(0, 300));
-  params.set("datePosted", JSON.stringify("past-24h"));
+  params.set("datePosted", JSON.stringify(["past-24h"])); // list format, as LinkedIn writes it
   params.set("sortBy", JSON.stringify("date_posted"));
   params.set("origin", "FACETED_SEARCH");
   return `https://www.linkedin.com/search/results/content/?${params.toString()}`;

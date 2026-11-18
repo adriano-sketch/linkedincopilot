@@ -417,84 +417,117 @@ async function lcDetectLinkedInTier() {
 }
 
 // ── Page reader: post (content) search results ─────────────────────────────
+// Self-contained (it is injected into the page). The 2026 search page has no data-urn and no
+// stable class names: a post card is found from its relative-time label ("1d •", "2w • Edited •"),
+// the same way the activity page is read in content.js. The old data-urn layout is kept as a
+// fallback. No call to LinkedIn's internal services is made here: only what is on the page is read.
 async function lcReadPostSearch() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
+  const AGE_RE = /^(\d+)\s?(min|h|d|w|mo|yr|m|sem|a)(\s*[•·]\s*(edited|editado|modifié|editada))?\s*[•·]?$/i;
+  const HEADER_RE = /^(feed post|publicação( do| no)? feed|post)$/i;
+  const REPOST_RE = /reposted|republicou|compartilhou (isso|esta|este)|shared this|ha compartido|a republié|a partagé/i;
+  const END_RE = /^(like|comment|repost|send|share|gostei|comentar|compartilhar|enviar|reagir|show translation|see translation|ver tradução|mostrar tradução|\d[\d,.]*\s*(reactions?|comments?|reposts?|reações|comentários|compartilhamentos))$/i;
+  const ownText = (el) => {
+    let t = '';
+    for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
+    return norm(t);
+  };
+  const isAgeSpan = (s) => {
+    if (!AGE_RE.test(ownText(s))) return false;
+    for (const c of s.querySelectorAll('span')) if (c.textContent.trim()) return false;
+    return true;
+  };
+  const main = document.querySelector('main') || document.body;
+  const ageSpansIn = (root) => Array.from(root.querySelectorAll('span')).filter(isAgeSpan);
 
-  const findPosts = () => {
+  const findCards = () => {
+    const cards = [];
+    const seen = new Set();
+    for (const span of ageSpansIn(main)) {
+      let el = span;
+      let card = span;
+      while (el && el !== main) {
+        if (ageSpansIn(el).length > 1) break;
+        card = el;
+        el = el.parentElement;
+      }
+      if (card === span || seen.has(card)) continue;
+      seen.add(card);
+      cards.push({ card, span });
+    }
+    return cards;
+  };
+  const findOld = () => {
     const els = Array.from(document.querySelectorAll(
       '[data-urn^="urn:li:activity"], [data-id^="urn:li:activity"], [data-urn^="urn:li:ugcPost"], [data-urn^="urn:li:share"]'
     ));
-    // keep outermost
     return els.filter((el) => !els.some((o) => o !== el && o.contains(el)));
   };
 
-  for (let i = 0; i < 20 && findPosts().length === 0; i++) await sleep(500);
+  for (let i = 0; i < 24 && findCards().length === 0 && findOld().length === 0; i++) await sleep(500);
   for (let i = 0; i < 6; i++) {
     window.scrollBy(0, 700 + Math.random() * 400);
     await sleep(900 + Math.random() * 900);
   }
 
   const posts = [];
-  for (const el of findPosts().slice(0, 25)) {
-    const urn = el.getAttribute('data-urn') || el.getAttribute('data-id') || '';
-    if (!urn) continue;
-
-    // Expand "...more" so we read the whole text
-    const more = Array.from(el.querySelectorAll('button')).find((b) =>
-      /…\s*(more|mais)|see more|ver mais/i.test(`${b.textContent || ''} ${b.getAttribute('aria-label') || ''}`));
-    if (more) { try { more.click(); await sleep(300); } catch (_) { /* ignore */ } }
-
-    const textEl = el.querySelector('.update-components-text, .feed-shared-inline-show-more-text, .feed-shared-update-v2__description, [data-test-id="main-feed-activity-card__commentary"]');
-    let text = norm(textEl && textEl.innerText);
-    if (!text) {
-      // fallback: longest text block inside the post
-      const blocks = Array.from(el.querySelectorAll('span[dir="ltr"], div[dir="ltr"]')).map((b) => norm(b.innerText));
-      text = blocks.sort((a, b) => b.length - a.length)[0] || '';
-    }
-    text = text.replace(/…\s*(more|mais)$/i, '').trim();
-
-    const actor = el.querySelector('.update-components-actor, .feed-shared-actor') || el;
-    const authorA = actor.querySelector('a[href*="/in/"]') || el.querySelector('a[href*="/in/"]');
-    const authorName = norm((actor.querySelector('.update-components-actor__title span[aria-hidden="true"], .update-components-actor__name span[aria-hidden="true"]') || {}).textContent)
-      || norm(authorA && authorA.innerText).split('\n')[0];
-    const headline = norm((actor.querySelector('.update-components-actor__description, .feed-shared-actor__description') || {}).textContent) || null;
-    const sub = norm((actor.querySelector('.update-components-actor__sub-description, .feed-shared-actor__sub-description') || {}).textContent);
-    const actorText = norm(actor.innerText);
-    const degreeM = actorText.match(/•\s*(1st|2nd|3rd\+?|1º|2º|3º\+?)/i);
-
-    const social = norm((el.querySelector('.social-details-social-counts, .social-details-social-counts__reactions') || {}).innerText);
-    const reactions = (social.match(/^([\d.,]+)/) || [])[1] || null;
-    const commentsM = social.match(/([\d.,]+)\s+(comments?|comentários?)/i);
-
+  for (const { card, span } of findCards().slice(0, 25)) {
+    const lines = card.innerText.replace(/[ \t]+/g, ' ').split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    const hIdx = lines.findIndex((l) => HEADER_RE.test(l));
+    const ageLabel = ownText(span).replace(/\s*[•·]\s*$/, '');
+    const ageIdx = lines.findIndex((l) => l === ageLabel || l.startsWith(`${ageLabel} •`) || l.startsWith(`${ageLabel} ·`));
+    const headEnd = ageIdx >= 0 ? ageIdx : Math.max(hIdx, 0) + 3;
+    const head = lines.slice(0, headEnd);
+    if (REPOST_RE.test(head.join(' '))) continue; // only the author's own posts
+    const authorName = (hIdx >= 0 ? (lines[hIdx + 1] || '') : (lines[0] || '')).split(/\s[•·]\s/)[0].trim();
+    const degreeM = head.join(' ').match(/[•·]\s*(1st|2nd|3rd\+?|1º|2º|3º\+?)/i);
+    // Headline: the line between the name/degree lines and the age label.
+    const headline = head.slice(Math.max(hIdx, 0) + 1)
+      .filter((l) => l !== authorName && !/^[•·]\s*(1st|2nd|3rd\+?|1º|2º|3º\+?)$/i.test(l) && !/^(follow|following|seguir|seguindo)$/i.test(l))
+      .slice(-1)[0] || null;
+    let body = lines.slice(ageIdx + 1).filter((l) => !/^(follow|following|seguir|seguindo|\+ ?follow)$/i.test(l));
+    const cut = body.findIndex((l) => END_RE.test(l));
+    if (cut >= 0) body = body.slice(0, cut);
+    const text = body.join('\n').replace(/\s*(…\s*more|…\s*ver mais|\.\.\.\s*more)$/i, '').trim();
+    const authorA = card.querySelector('a[href*="/in/"]');
+    const reactM = card.innerText.match(/([\d.,]+)\s+(reactions?|reações)/i);
+    const commM = card.innerText.match(/([\d.,]+)\s+(comments?|comentários?)/i);
     posts.push({
-      urn,
+      urn: null,
       text: text.slice(0, 5000),
       author_name: authorName || null,
       author_headline: headline,
       author_profile_url: authorA ? authorA.href.split('?')[0] : null,
       author_degree: degreeM ? degreeM[1] : null,
-      posted_label: sub ? sub.split('•')[0].trim().slice(0, 40) : null,
-      reactions,
-      comments: commentsM ? commentsM[1] : null,
+      posted_label: ageLabel.slice(0, 40) || null,
+      reactions: reactM ? reactM[1] : null,
+      comments: commM ? commM[1] : null,
     });
   }
 
-  let ownProfileUrl = null;
-  try {
-    const csrf = (document.cookie.match(/JSESSIONID=["']?([^;"']+)/) || [])[1];
-    const r = await fetch('/voyager/api/me', {
-      headers: { 'csrf-token': (csrf || '').replace(/"/g, ''), accept: 'application/vnd.linkedin.normalized+json+2.1' },
-      credentials: 'include',
-    });
-    if (r.ok) {
-      const j = await r.json();
-      const mini = (j.included || []).find((i) => i.publicIdentifier);
-      if (mini) ownProfileUrl = `https://www.linkedin.com/in/${mini.publicIdentifier}`;
+  // Old layout (kept as a fallback)
+  if (posts.length === 0) {
+    for (const el of findOld().slice(0, 25)) {
+      const urn = el.getAttribute('data-urn') || el.getAttribute('data-id') || '';
+      if (!urn) continue;
+      const textEl = el.querySelector('.update-components-text, .feed-shared-inline-show-more-text, .feed-shared-update-v2__description');
+      const actor = el.querySelector('.update-components-actor, .feed-shared-actor') || el;
+      const authorA = actor.querySelector('a[href*="/in/"]') || el.querySelector('a[href*="/in/"]');
+      const degreeM = norm(actor.innerText).match(/•\s*(1st|2nd|3rd\+?|1º|2º|3º\+?)/i);
+      posts.push({
+        urn,
+        text: norm(textEl && textEl.innerText).slice(0, 5000),
+        author_name: norm(authorA && authorA.innerText).split('\n')[0] || null,
+        author_headline: norm((actor.querySelector('.update-components-actor__description, .feed-shared-actor__description') || {}).textContent) || null,
+        author_profile_url: authorA ? authorA.href.split('?')[0] : null,
+        author_degree: degreeM ? degreeM[1] : null,
+        posted_label: null, reactions: null, comments: null,
+      });
     }
-  } catch (_) { /* optional */ }
+  }
 
-  const result = { success: true, posts, own_profile_url: ownProfileUrl };
+  const result = { success: true, posts, own_profile_url: null };
   if (posts.length === 0) {
     result.debug = { sample: (document.querySelector('main') || document.body).innerText.slice(0, 400) };
   }
