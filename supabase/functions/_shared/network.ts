@@ -238,7 +238,9 @@ export function salesNavEnabled(ext: { linkedin_account_tier?: string | null; sa
  */
 export function buildMyNetworkPostSearchUrl(term: string): string {
   const params = new URLSearchParams();
-  params.set("keywords", quoteTerm(term).slice(0, 200));
+  // Not quoted: an exact phrase ("perdas de água") returned no post in a whole week; the words
+  // together are enough, and the triage discards what is off topic.
+  params.set("keywords", term.replace(/"/g, "").trim().slice(0, 200));
   params.set("origin", "FACETED_SEARCH");
   params.set("datePosted", JSON.stringify(["past-week"]));
   params.set("postedBy", JSON.stringify(["first"]));

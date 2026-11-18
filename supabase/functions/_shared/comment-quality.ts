@@ -203,6 +203,9 @@ Hard rules:
 - NEVER invent personal experience, projects, clients, numbers, studies or anecdotes. Only use the facts above. When
   the facts include what the sender thinks or has seen on the subject, build the comment on that, in their words.
   Otherwise add a precise consideration that follows from the post itself and that any practitioner would accept.
+- No made-up magnitudes. Do not state that something "doubles", "halves", takes "twice as long", happens "in most
+  cases" or "80% of the time" unless that figure is in the post or in the facts above. Describe the effect without
+  quantifying it.
 - STATE, do not ask. The default comment is an observation or a point of view, written as a statement. A question is
   the exception: at most one, short, at the end, and only when it is real curiosity that the statement before it
   raises. Never write a comment that is only a question, and never ask the author to explain how they do something
@@ -251,7 +254,8 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
 1. is generic: it would make sense under a different post on the same topic (the "swap test");
 2. does not reference a concrete detail of THIS post (number, result, method, claim, place);
 3. paraphrases or summarizes the post instead of adding a consideration or a perspective;
-4. claims experience, projects, clients, numbers or anecdotes not supported by these facts about the sender:
+4. claims experience, projects, clients, numbers or anecdotes not supported by these facts about the sender, or
+   states a magnitude ("doubles", "twice as long", "most", a percentage) that is neither in the post nor in the facts:
 ${factsBlock(f)}
 5. sells, pitches, hints at the sender's services, or asks for a call or DM;
 6. opens with praise or flattery, or sounds like AI or marketing copy;
