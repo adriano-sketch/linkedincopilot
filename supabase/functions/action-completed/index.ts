@@ -806,7 +806,9 @@ serve(async (req) => {
           } else {
             leadUpdate.status = "post_found";
           }
-          leadUpdate.next_action_at = rbt(0);
+          // Without an automatic like there is nothing to space out: the draft step (no LinkedIn
+          // action) can run on the next scheduler pass.
+          leadUpdate.next_action_at = result?.liked ? rbt(0) : now;
         } else if (result?.note === "cards_not_recognized" || result?.note === "page_not_visible") {
           // The page could not be read (LinkedIn tab hidden, or a layout the reader does not know).
           // That says nothing about the person: do not rest the contact, try again tomorrow.

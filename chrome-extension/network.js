@@ -466,9 +466,15 @@ async function lcReadPostSearch() {
   };
 
   for (let i = 0; i < 24 && findCards().length === 0 && findOld().length === 0; i++) await sleep(500);
-  for (let i = 0; i < 6; i++) {
+  // Results load as the page scrolls: keep going while new posts appear (at most 12 steps).
+  let lastCount = -1;
+  let still = 0;
+  for (let i = 0; i < 12 && still < 3; i++) {
     window.scrollBy(0, 700 + Math.random() * 400);
     await sleep(900 + Math.random() * 900);
+    const n = findCards().length;
+    still = n === lastCount ? still + 1 : 0;
+    lastCount = n;
   }
 
   const posts = [];
