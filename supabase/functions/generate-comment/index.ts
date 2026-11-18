@@ -95,7 +95,7 @@ serve(async (req) => {
         .select("icp_description, dm_tone, proof_points")
         .eq("id", lead.campaign_profile_id).eq("user_id", lead.user_id).maybeSingle(),
       supabase.from("profiles")
-        .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone, comment_topics, comment_avoid, comment_examples")
+        .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone, comment_topics, comment_avoid, comment_examples, comment_views")
         .eq("user_id", lead.user_id).maybeSingle(),
     ]);
     if (!Deno.env.get("ANTHROPIC_API_KEY")) {
@@ -110,7 +110,7 @@ serve(async (req) => {
       name: me?.sender_name, title: me?.sender_title, company: me?.company_name,
       about: [me?.company_description, campaign?.proof_points || me?.proof_points].filter(Boolean).join(" "),
       tone: campaign?.dm_tone || me?.dm_tone,
-      topics: kb.comment_topics, avoid: kb.comment_avoid, examples: kb.comment_examples,
+      topics: kb.comment_topics, avoid: kb.comment_avoid, examples: kb.comment_examples, views: kb.comment_views,
     };
     const author = lead.full_name || null;
     const authorTitle = String(lead.title || lead.profile_current_title || "");

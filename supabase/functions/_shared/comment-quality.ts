@@ -57,6 +57,11 @@ export function localIssues(comment: string, post: string, kind: PostKind = "on_
   const opener = PRAISE_OPENERS.find((p) => head.startsWith(p));
   // A congratulation is the point of a milestone comment.
   if (opener && kind !== "milestone") issues.push(`opens with generic praise ("${opener}")`);
+  if (kind !== "milestone") {
+    // A comment has to say something: reject it when every sentence is a question.
+    const sentences = c.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+    if (sentences.length && sentences.every((x) => x.endsWith("?"))) issues.push("is only a question: state a point of view, a question may only close it");
+  }
   if (/https?:\/\/|www\./i.test(c)) issues.push("contains a link");
   if (/#\w/.test(c)) issues.push("contains a hashtag");
   if (/[—–]/.test(c)) issues.push("contains a dash typical of AI text");
@@ -78,6 +83,7 @@ export type SenderFacts = {
   topics?: string | null;   // subjects where they have something to say
   avoid?: string | null;    // subjects they stay out of
   examples?: string | null; // comments they wrote themselves, as a voice reference
+  views?: string | null;    // what they think and have seen on their subjects (profiles.comment_views)
 };
 
 /** What a post is, seen from the sender's business. Decides whether and how to comment. */
@@ -136,6 +142,7 @@ function factsBlock(f: SenderFacts): string {
     f.about ? `What they do (written by them): ${String(f.about).slice(0, 700)}` : "",
     f.topics ? `Subjects they have something to say about: ${String(f.topics).slice(0, 600)}` : "",
     f.avoid ? `Subjects they stay out of: ${String(f.avoid).slice(0, 400)}` : "",
+    f.views ? `What they think and have seen on these subjects (written by them, the only source for opinions and experience):\n${String(f.views).slice(0, 2500)}` : "",
   ].filter(Boolean);
   return lines.length ? lines.join("\n") : "(no facts provided)";
 }
@@ -174,7 +181,7 @@ export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic 
   // Only when a triage picked this post for a subject (Growth). Network posts are chosen by who wrote them.
   const lens = hasKnowledgeBase(f) && topic
     ? `\nThis post was chosen because it touches a subject the sender works on${topic ? ` (${topic})` : ""}. Write from that
-knowledge: the question or consideration must be one that someone who works on that subject would raise. Do not drift
+knowledge: the observation must be one that someone who works on that subject would make. Do not drift
 to parts of the post that are outside the sender's subjects (contracts, finance, politics, institutional news).
 The comment must stay on what the post actually describes. If connecting the post to the sender's subject needs a
 stretch, or you are not sure what a technical term in the post means, SKIP: a forced link is worse than no comment.\n`
@@ -182,7 +189,8 @@ stretch, or you are not sure what a technical term in the post means, SKIP: a fo
   return `You write LinkedIn comments for this person. These are the ONLY facts you know about them:
 ${factsBlock(f)}
 ${voiceBlock(f)}${lens}
-The comment exists to start a real conversation with the author, the way a respected peer would. LinkedIn is full of
+The comment exists to add something to the author's post, the way a respected peer would: a point of view, a
+consequence, a practical consideration. It is a contribution, not an interview. LinkedIn is full of
 generic comments ("Impressive results!", "Incredible to see how technology...") written by people who want to sell
 something. Those comments are worthless and hurt the sender's reputation. Never write one.
 
@@ -192,8 +200,13 @@ Hard rules:
   be able to tell which post it answers. Test: if the comment would still make sense under a different post, it fails.
 - Do not summarize, restate or paraphrase the post back to the author.
 - Do not open with praise or agreement ("Great post", "Impressive", "Incrível", "Parabéns pelo post", "Concordo").
-- NEVER invent personal experience, projects, clients, numbers, studies or anecdotes. Only use the facts above. If you
-  have no real experience to share, ask a sharp question or add a precise technical consideration instead.
+- NEVER invent personal experience, projects, clients, numbers, studies or anecdotes. Only use the facts above. When
+  the facts include what the sender thinks or has seen on the subject, build the comment on that, in their words.
+  Otherwise add a precise consideration that follows from the post itself and that any practitioner would accept.
+- STATE, do not ask. The default comment is an observation or a point of view, written as a statement. A question is
+  the exception: at most one, short, at the end, and only when it is real curiosity that the statement before it
+  raises. Never write a comment that is only a question, and never ask the author to explain how they do something
+  ("how do you prioritize...", "what criteria do you use...", "como vocês estão...").
 - Never sell, never mention the sender's company, products or services, no links, no hashtags, no @mentions.
 - 1 to 3 short sentences, ideally under 250 characters. Sounds like a busy expert typing on a phone.
 - No em dashes or en dashes. No emojis unless the post is casual, and then at most one.
@@ -237,7 +250,7 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
   const topicSystem = `You are a strict editor protecting a professional's reputation on LinkedIn. Reject any draft comment that:
 1. is generic: it would make sense under a different post on the same topic (the "swap test");
 2. does not reference a concrete detail of THIS post (number, result, method, claim, place);
-3. paraphrases or summarizes the post instead of adding a question, a consideration or a perspective;
+3. paraphrases or summarizes the post instead of adding a consideration or a perspective;
 4. claims experience, projects, clients, numbers or anecdotes not supported by these facts about the sender:
 ${factsBlock(f)}
 5. sells, pitches, hints at the sender's services, or asks for a call or DM;
@@ -245,7 +258,9 @@ ${factsBlock(f)}
 7. is not in the same language as the post;
 8. questions the author's competence or decisions, or reads like an auditor or an interviewer rather than a peer;
 9. is about a part of the post unrelated to the subjects the sender works on, when those subjects are listed above;
-10. changes the topic: it asks about something the post does not describe, or uses a technical term from the post in a way that does not fit what the post says.
+10. is only a question, or is mainly a request for the author to explain how they do something: the comment must
+   contribute a statement of its own (a short closing question after a real statement is fine);
+11. changes the topic: it asks about something the post does not describe, or uses a technical term from the post in a way that does not fit what the post says.
 Approve only comments a respected peer would be glad to have written.
 Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rejected: max 20 words, what to fix>"}]`;
 
