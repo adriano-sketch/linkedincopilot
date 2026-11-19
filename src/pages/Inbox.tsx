@@ -36,6 +36,12 @@ function Avatar({ text, size = 40 }: { text: string; size?: number }) {
   );
 }
 
+// Database errors are plain objects, not Error instances: show a readable line either way.
+const errText = (e: unknown, fallback: string) => {
+  const m = e instanceof Error ? e.message : (e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : '');
+  return m && !/permission denied|violates|JWT/i.test(m) ? m : fallback;
+};
+
 export default function InboxPage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -95,7 +101,7 @@ export default function InboxPage() {
       toast.success(item.kind === 'comment' ? 'Recorded as posted.' : 'Approved. The message goes out in the next business hour.');
     } catch (e) {
       unhide([item.key]);
-      toast.error(e instanceof Error ? e.message : 'Could not approve');
+      toast.error(errText(e, 'Could not record it. Try again.'));
     }
   };
 
@@ -107,7 +113,7 @@ export default function InboxPage() {
       toast.success(item.kind === 'comment' ? 'Skipped' : item.kind === 'message' ? 'A new draft is being written' : 'Marked as handled');
     } catch (e) {
       unhide([item.key]);
-      toast.error(e instanceof Error ? e.message : 'Something went wrong');
+      toast.error(errText(e, 'Something went wrong. Try again.'));
     }
   };
 
@@ -124,7 +130,7 @@ export default function InboxPage() {
       toast.success(`${n} approved. The messages go out spaced through your active hours.`);
     } catch (e) {
       unhide(keys);
-      toast.error(e instanceof Error ? e.message : 'Could not approve');
+      toast.error(errText(e, 'Could not approve. Try again.'));
     }
   };
   const selectable = visible.filter(i => i.kind === 'message');
