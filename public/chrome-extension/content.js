@@ -152,7 +152,7 @@ async function sendConnectionRequest(noteText) {
         return { success: true, action: 'send_connection_request', note: 'already_pending' };
       }
 
-      throw new Error('Connect button not found on profile page');
+      throw new Error('Connect button not found on profile page ' + lcConnectDiag());
     }
 
     // If it's a <a> link (new LinkedIn 2026 layout), signal background.js to navigate
@@ -2156,12 +2156,65 @@ async function simulateProfileBrowsing() {
 
 // ── CONNECTION REQUEST BUTTON FINDERS ──
 
+// ── Whose button is it? ──────────────────────────────────────────────────────
+// A profile page also lists other people ("People you may know"), each with its own
+// "Invite <name> to connect" button. Only the control of the profile being visited counts.
+function lcProfileSlug() {
+  const m = window.location.pathname.match(/\/in\/([^/?#]+)/);
+  if (!m) return '';
+  try { return decodeURIComponent(m[1]).toLowerCase(); } catch (_) { return m[1].toLowerCase(); }
+}
+function lcNormName(t) {
+  return String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function lcProfileName() {
+  const t = (document.title || '').replace(/^\(\d+\+?\)\s*/, '').replace(/\s*\|\s*LinkedIn\s*$/i, '');
+  return lcNormName(t);
+}
+function lcIsOtherPersonsControl(el) {
+  if (!el) return false;
+  const holder = el.closest ? (el.closest('[aria-label*="to connect" i]') || el) : el;
+  const label = (holder.getAttribute && holder.getAttribute('aria-label')) || '';
+  const m = label.match(/^Invite\s+(.+?)\s+to connect$/i);
+  if (!m) return false;
+  const me = lcProfileName();
+  return !!me && lcNormName(m[1]) !== me;
+}
+/** The invite link of the visited profile (href carries its own vanityName). Visibility is not
+ *  required: the link is only used for its address. */
+function lcOwnInviteLink() {
+  const slug = lcProfileSlug();
+  const links = Array.from(document.querySelectorAll('a[href*="custom-invite"]'));
+  if (!slug) return links.find(a => a.offsetParent !== null) || null;
+  return links.find(a => {
+    try {
+      const v = new URL(a.href, window.location.origin).searchParams.get('vanityName');
+      return !!v && decodeURIComponent(v).toLowerCase() === slug;
+    } catch (_) { return false; }
+  }) || null;
+}
+function lcConnectDiag() {
+  const q = sel => document.querySelectorAll(sel).length;
+  return `[links=${q('a[href*="custom-invite"]')} own=${lcOwnInviteLink() ? 1 : 0} name=${lcProfileName() ? 1 : 0} ` +
+    `buttons=${q('main button')} hidden=${document.hidden ? 1 : 0} ready=${document.readyState}]`;
+}
+
 async function findConnectButton() {
-  // New LinkedIn layout (2026): "Connect" is an <a> link already present in the DOM
-  // with href containing "custom-invite". Works for both "Follow first" profiles
-  // (where Connect is in the More dropdown) and standard profiles.
-  const connectMenuItem = document.querySelector('a[href*="custom-invite"]');
-  if (connectMenuItem && connectMenuItem.offsetParent !== null) return connectMenuItem;
+  // LinkedIn 2026: "Connect" is an <a> link whose address contains "custom-invite" and the
+  // vanityName of the profile. The page is drawn after load (slower in a background tab), so wait
+  // for it: up to 15 s, or 4 s after the top of the profile is on screen with no such link.
+  const started = Date.now();
+  let topSeenAt = 0;
+  while (Date.now() - started < 15000) {
+    const own = lcOwnInviteLink();
+    if (own) return own;
+    const name = lcProfileName();
+    const topReady = !!name && Array.from(document.querySelectorAll('h1, h2')).some(h => lcNormName(h.textContent) === name) &&
+      document.querySelectorAll('main button, main a[aria-label]').length > 3;
+    if (topReady && !topSeenAt) topSeenAt = Date.now();
+    if (topSeenAt && Date.now() - topSeenAt > 4000) break;
+    await sleep(500);
+  }
 
   const selectors = [
     'main button[aria-label*="connect" i]:not([aria-label*="disconnect" i])',
@@ -2173,8 +2226,9 @@ async function findConnectButton() {
   ];
 
   for (const selector of selectors) {
-    const btn = document.querySelector(selector);
-    if (btn && btn.offsetParent !== null) return btn;
+    const btn = Array.from(document.querySelectorAll(selector))
+      .find(b => b.offsetParent !== null && !lcIsOtherPersonsControl(b));
+    if (btn) return btn;
   }
 
   // Fallback: look in "More actions" / "More" dropdown
@@ -2207,7 +2261,7 @@ async function findConnectButton() {
       await sleep(800 + Math.random() * 400);
 
       // Re-check for custom-invite link (may only appear in DOM after More dropdown opens)
-      const customInviteAfterMore = document.querySelector('a[href*="custom-invite"]');
+      const customInviteAfterMore = lcOwnInviteLink();
       if (customInviteAfterMore) return customInviteAfterMore;
 
       // Search in all visible dropdown containers (legacy + new layout)
@@ -2215,7 +2269,8 @@ async function findConnectButton() {
       for (const dropdown of dropdowns) {
         if (!dropdown.offsetParent) continue;
         // Try aria-label match first
-        const connectByLabel = dropdown.querySelector('[aria-label*="connect" i]:not([aria-label*="disconnect" i])');
+        const connectByLabel = Array.from(dropdown.querySelectorAll('[aria-label*="connect" i]:not([aria-label*="disconnect" i])'))
+          .find(el => !lcIsOtherPersonsControl(el));
         if (connectByLabel) return connectByLabel;
         // Try text content match — search ALL descendants (div, span, li, etc.)
         const allItems = dropdown.querySelectorAll('li, li span, div[role="button"], div[role="menuitem"], span.display-flex, div.artdeco-dropdown__item, div, span');
@@ -2235,8 +2290,9 @@ async function findConnectButton() {
       // New LinkedIn layout (2026): dropdown items use <a role="menuitem"> with
       // inner <div aria-label="Invite ... to connect"> and <p>Connect</p>
       // Search broadly after clicking More
-      const connectLink = document.querySelector('a[role="menuitem"] div[aria-label*="connect" i]:not([aria-label*="disconnect" i])');
-      if (connectLink && connectLink.offsetParent !== null) {
+      const connectLink = Array.from(document.querySelectorAll('a[role="menuitem"] div[aria-label*="connect" i]:not([aria-label*="disconnect" i])'))
+        .find(el => el.offsetParent !== null && !lcIsOtherPersonsControl(el));
+      if (connectLink) {
         const clickTarget = connectLink.closest('a[role="menuitem"]') || connectLink;
         return clickTarget;
       }
@@ -2248,7 +2304,7 @@ async function findConnectButton() {
         if ((txt === 'Connect' || txt === 'Conectar') && el.children.length === 0 && el.offsetParent !== null) {
           // Skip main page buttons (Follow/Connect in top card)
           const isMainButton = el.closest('button[aria-label*="Follow" i], button[aria-label*="connect" i]');
-          if (!isMainButton) {
+          if (!isMainButton && !lcIsOtherPersonsControl(el)) {
             const clickTarget = el.closest('a[role="menuitem"], div[role="menuitem"], li, div[role="button"]') || el;
             return clickTarget;
           }
@@ -2263,7 +2319,7 @@ async function findConnectButton() {
   // Last resort: find by text
   const allButtons = document.querySelectorAll('main button, .pvs-profile-actions button, .pv-top-card-v2-ctas button');
   for (const btn of allButtons) {
-    if (btn.textContent.trim().toLowerCase() === 'connect' && btn.offsetParent !== null) {
+    if (btn.textContent.trim().toLowerCase() === 'connect' && btn.offsetParent !== null && !lcIsOtherPersonsControl(btn)) {
       return btn;
     }
   }
