@@ -365,6 +365,22 @@ Deno.serve(async (req) => {
         // If the budget cannot be read, do not queue profile pages: the guard is the backstop anyway.
         b = budgetErr || !row ? { limit: 0, used: 0 } : { limit: Number(row.day_limit) || 0, used: Number(row.used) || 0 };
         if (budgetErr) console.error("profile_page_budget failed:", budgetErr.message);
+        // Invitations of the network module open a profile page too. Keep room for the ones still to go
+        // out today, so campaign pages plus invitations stay inside the same daily ceiling.
+        if (b.limit > 0) {
+          const [{ data: es }, { count: waiting }, { count: invitedDay }] = await Promise.all([
+            supabase.from("extension_status").select("invites_paused_until, weekly_invite_limit").eq("user_id", userId).maybeSingle(),
+            supabase.from("network_prospects").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "qualified"),
+            supabase.from("network_prospects").select("id", { count: "exact", head: true }).eq("user_id", userId)
+              .gte("invited_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
+          ]);
+          const paused = es?.invites_paused_until && new Date(es.invites_paused_until).getTime() > Date.now();
+          if (!paused) {
+            const perDay = Math.ceil((es?.weekly_invite_limit ?? 100) / 7);
+            const reserve = Math.max(0, Math.min(waiting || 0, perDay - (invitedDay || 0)));
+            b.limit = Math.max(0, b.limit - reserve);
+          }
+        }
         profilePageBudget.set(userId, b);
       }
       return b;
