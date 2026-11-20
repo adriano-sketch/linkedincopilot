@@ -24,6 +24,7 @@ export type Icp = {
   people_search_exhausted_at: string | null;
   last_people_search_at: string | null;
   last_post_search_at: string | null;
+  invite_note?: string | null;
   recently_posted?: boolean;
   changed_jobs?: boolean;
 };
@@ -364,4 +365,18 @@ export function fireAndForget(path: string, body: unknown): void {
   // Keep the isolate alive until the request is sent (Supabase Edge Runtime).
   const rt = (globalThis as any).EdgeRuntime;
   if (rt?.waitUntil) rt.waitUntil(p);
+}
+
+/** Invite note for one person. {first_name} becomes the first name; without a usable name the greeting
+ *  placeholder is dropped. Returns null when there is no note or it would pass LinkedIn's 300 characters. */
+export function renderInviteNote(template: string | null | undefined, fullName: string | null | undefined): string | null {
+  const t = (template || "").trim();
+  if (!t) return null;
+  const first = (fullName || "").trim().split(/\s+/)[0] || "";
+  const usable = /^[\p{L}][\p{L}'’-]{1,24}$/u.test(first) ? first : "";
+  let out = usable
+    ? t.replace(/\{first_name\}/gi, usable)
+    : t.replace(/\s*\{first_name\}\s*([,!:])?/gi, (_m, punct) => punct || "");
+  out = out.replace(/\s+/g, " ").trim();
+  return out && out.length <= 300 ? out : null;
 }
