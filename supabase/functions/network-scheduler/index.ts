@@ -18,7 +18,9 @@ type Supa = any;
 
 const HOUR = 3600 * 1000;
 const POST_SEARCH_EVERY_MS = 6 * HOUR;
-const MIN_GAP_BETWEEN_PEOPLE_SEARCHES_MS = 30 * 60 * 1000;
+// A people search reads up to 25 profiles at once: a few a day, hours apart.
+const MIN_GAP_BETWEEN_PEOPLE_SEARCHES_MS = 3 * HOUR;
+const MAX_PEOPLE_SEARCHES_PER_DAY = 2;
 const WITHDRAW_AFTER_DAYS = 21;
 const SYNC_EVERY_MS = 12 * HOUR;
 const MAX_PENDING_APPROVAL = 50; // don't flood the approval queue
@@ -187,9 +189,12 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     const { data: lastRun } = await supabase.from("network_search_runs").select("created_at")
       .eq("user_id", userId).eq("kind", "people").order("created_at", { ascending: false }).limit(1).maybeSingle();
     const gapOk = !lastRun || now - new Date(lastRun.created_at).getTime() > MIN_GAP_BETWEEN_PEOPLE_SEARCHES_MS;
-    out.search = { qualifiedPool, searchesThisMonth, budget, paused: !!searchesPaused };
+    const { count: searchesToday } = await supabase.from("network_search_runs").select("id", { count: "exact", head: true })
+      .eq("user_id", userId).eq("kind", "people").gte("created_at", dayAgo);
+    const dayOk = (searchesToday || 0) < MAX_PEOPLE_SEARCHES_PER_DAY;
+    out.search = { qualifiedPool, searchesThisMonth, searchesToday, budget, paused: !!searchesPaused };
 
-    if (needMore && noPendingSearch && gapOk && !searchesPaused && (searchesThisMonth || 0) < budget) {
+    if (needMore && noPendingSearch && gapOk && dayOk && !searchesPaused && (searchesThisMonth || 0) < budget) {
       const fortnight = 14 * 24 * HOUR;
       const eligible = prospectingIcps
         .filter((i) => !i.people_search_exhausted_at || now - new Date(i.people_search_exhausted_at).getTime() > fortnight)
