@@ -25,6 +25,7 @@ export type Icp = {
   last_people_search_at: string | null;
   last_post_search_at: string | null;
   invite_note?: string | null;
+  include_third_degree?: boolean;
   recently_posted?: boolean;
   changed_jobs?: boolean;
 };
@@ -65,7 +66,7 @@ export function buildPeopleSearchUrl(icp: Icp, page: number): string {
   const params = new URLSearchParams();
   const kw = buildPeopleKeywords(icp);
   if (kw) params.set("keywords", kw);
-  params.set("network", JSON.stringify(["S"]));
+  params.set("network", JSON.stringify(icp.include_third_degree ? ["S", "O"] : ["S"]));
   if (icp.location_geo_ids && icp.location_geo_ids.length) {
     params.set("geoUrn", JSON.stringify(icp.location_geo_ids.slice(0, 10)));
   }
@@ -212,7 +213,8 @@ export function buildSalesNavPeopleSearchUrl(icp: Icp & IcpSearchExtras, page: n
     geoIds: icp.location_geo_ids || [],
     companySizeMin: icp.company_size_min,
     companySizeMax: icp.company_size_max,
-    relationship: ["S"],
+    // 2nd degree by default; 3rd degree too when the audience asks for it (people with no mutual connection).
+    relationship: icp.include_third_degree ? ["S", "O"] : ["S"],
     postedRecently: !!icp.recently_posted,
     changedJobs: !!icp.changed_jobs,
     page,

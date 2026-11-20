@@ -43,6 +43,7 @@ type Form = {
   company_size_max: string;
   recently_posted: boolean;
   changed_jobs: boolean;
+  include_third_degree: boolean;
   prospecting_enabled: boolean;
   engagement_enabled: boolean;
   is_active: boolean;
@@ -51,7 +52,7 @@ type Form = {
 const empty: Form = {
   name: '', description: '', titles: '', keywords: '', exclude_keywords: '', locations: '', location_geo_ids: '',
   industries: '', post_topics: '', invite_note: '', min_fit_score: 70, seniorities: [], company_size_min: '', company_size_max: '',
-  recently_posted: false, changed_jobs: false, prospecting_enabled: true, engagement_enabled: true, is_active: true,
+  recently_posted: false, changed_jobs: false, include_third_degree: false, prospecting_enabled: true, engagement_enabled: true, is_active: true,
 };
 
 function toForm(i: Icp): Form {
@@ -62,6 +63,7 @@ function toForm(i: Icp): Form {
     seniorities: i.seniorities || [], company_size_min: i.company_size_min ? String(i.company_size_min) : '',
     company_size_max: i.company_size_max ? String(i.company_size_max) : '',
     recently_posted: !!i.recently_posted, changed_jobs: !!i.changed_jobs,
+    include_third_degree: !!(i as { include_third_degree?: boolean }).include_third_degree,
     prospecting_enabled: i.prospecting_enabled, engagement_enabled: i.engagement_enabled, is_active: i.is_active,
   };
 }
@@ -105,6 +107,7 @@ export default function IcpManager() {
         company_size_max: toSize(form.company_size_max),
         recently_posted: form.recently_posted,
         changed_jobs: form.changed_jobs,
+        include_third_degree: form.include_third_degree,
         prospecting_enabled: form.prospecting_enabled,
         engagement_enabled: form.engagement_enabled,
         is_active: form.is_active,
@@ -293,6 +296,13 @@ export default function IcpManager() {
                 <Label>Minimum fit score to send an invite: {form.min_fit_score}</Label>
                 <Slider value={[form.min_fit_score]} min={40} max={95} step={5} onValueChange={v => set('min_fit_score', v[0])} />
               </div>
+              <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                <span>
+                  Include people with no connection in common (3rd degree)
+                  <span className="block text-xs text-muted-foreground">Larger audience, usually lower acceptance. People with connections in common are still invited first.</span>
+                </span>
+                <Switch checked={form.include_third_degree} onCheckedChange={v => set('include_third_degree', v)} />
+              </label>
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="flex items-center justify-between gap-2 rounded-md border p-3 text-sm">
                   Grow my network
