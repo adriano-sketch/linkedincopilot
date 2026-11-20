@@ -736,6 +736,7 @@ export type Database = {
           locations: string[]
           min_fit_score: number
           name: string
+          include_third_degree: boolean
           invite_note: string | null
           people_search_exhausted_at: string | null
           people_search_page: number
@@ -765,6 +766,7 @@ export type Database = {
           locations?: string[]
           min_fit_score?: number
           name: string
+          include_third_degree?: boolean
           invite_note?: string | null
           people_search_exhausted_at?: string | null
           people_search_page?: number
@@ -794,6 +796,7 @@ export type Database = {
           locations?: string[]
           min_fit_score?: number
           name?: string
+          include_third_degree?: boolean
           invite_note?: string | null
           people_search_exhausted_at?: string | null
           people_search_page?: number
