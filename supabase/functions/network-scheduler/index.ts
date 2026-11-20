@@ -11,8 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  buildMyNetworkPostSearchUrl, buildPeopleSearchUrl, buildPostSearchUrl, buildSalesNavPeopleSearchUrl, fireAndForget, salesNavEnabled, type Icp,
-} from "../_shared/network.ts";
+  buildMyNetworkPostSearchUrl, buildPeopleSearchUrl, buildPostSearchUrl, buildSalesNavPeopleSearchUrl, fireAndForget, salesNavEnabled, type Icp, renderInviteNote } from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -154,6 +153,7 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
         .order("fit_score", { ascending: false })
         .order("mutual_connections", { ascending: false, nullsFirst: false })
         .limit(toQueue);
+      const icpById = new Map(prospectingIcps.map((i) => [i.id, i]));
       let at = now + rand(3, 8) * 60 * 1000;
       for (const p of candidates || []) {
         if (!fits(at)) break; // the rest goes tomorrow
@@ -161,7 +161,7 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
           user_id: userId,
           action_type: "send_connection_request",
           linkedin_url: p.linkedin_url,
-          message_text: null, // no note, by design
+          message_text: renderInviteNote(icpById.get(p.icp_id)?.invite_note, p.full_name), // note is optional, set per audience
           priority: 2,
           scheduled_for: new Date(at).toISOString(),
           action_data: { module: "network", prospect_id: p.id, icp_id: p.icp_id, expected_name: p.full_name },

@@ -36,6 +36,7 @@ type Form = {
   location_geo_ids: string;
   industries: string;
   post_topics: string;
+  invite_note: string;
   min_fit_score: number;
   seniorities: string[];
   company_size_min: string;
@@ -49,7 +50,7 @@ type Form = {
 
 const empty: Form = {
   name: '', description: '', titles: '', keywords: '', exclude_keywords: '', locations: '', location_geo_ids: '',
-  industries: '', post_topics: '', min_fit_score: 70, seniorities: [], company_size_min: '', company_size_max: '',
+  industries: '', post_topics: '', invite_note: '', min_fit_score: 70, seniorities: [], company_size_min: '', company_size_max: '',
   recently_posted: false, changed_jobs: false, prospecting_enabled: true, engagement_enabled: true, is_active: true,
 };
 
@@ -57,7 +58,7 @@ function toForm(i: Icp): Form {
   return {
     id: i.id, name: i.name, description: i.description || '', titles: fromList(i.titles), keywords: fromList(i.keywords),
     exclude_keywords: fromList(i.exclude_keywords), locations: fromList(i.locations), location_geo_ids: fromList(i.location_geo_ids),
-    industries: fromList(i.industries), post_topics: fromList(i.post_topics), min_fit_score: i.min_fit_score,
+    industries: fromList(i.industries), post_topics: fromList(i.post_topics), invite_note: (i as { invite_note?: string | null }).invite_note || '', min_fit_score: i.min_fit_score,
     seniorities: i.seniorities || [], company_size_min: i.company_size_min ? String(i.company_size_min) : '',
     company_size_max: i.company_size_max ? String(i.company_size_max) : '',
     recently_posted: !!i.recently_posted, changed_jobs: !!i.changed_jobs,
@@ -81,6 +82,10 @@ export default function IcpManager() {
       toast.error('Add at least one target title or a description');
       return;
     }
+    if (form.invite_note.trim().length > 300) {
+      toast.error('The invitation note has to fit in 300 characters');
+      return;
+    }
     try {
       await save.mutateAsync({
         id: form.id,
@@ -93,6 +98,7 @@ export default function IcpManager() {
         location_geo_ids: toList(form.location_geo_ids).filter(x => /^\d+$/.test(x)),
         industries: toList(form.industries),
         post_topics: toList(form.post_topics),
+        invite_note: form.invite_note.trim() || null,
         min_fit_score: form.min_fit_score,
         seniorities: form.seniorities,
         company_size_min: toSize(form.company_size_min),
@@ -269,6 +275,19 @@ export default function IcpManager() {
                 <Label>Post topics to watch</Label>
                 <Input value={form.post_topics} onChange={e => set('post_topics', e.target.value)} placeholder="cold outreach, lead generation, hiring SDR" />
                 <p className="text-xs text-muted-foreground">Used to find recent posts from people in this ICP. If empty, the keywords are used.</p>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Invitation note (optional)</Label>
+                  <span className={`text-xs ${form.invite_note.trim().length > 300 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    {form.invite_note.trim().length} / 300
+                  </span>
+                </div>
+                <Textarea rows={3} value={form.invite_note} onChange={e => set('invite_note', e.target.value)}
+                  placeholder="Hi {first_name}, ..." />
+                <p className="text-xs text-muted-foreground">
+                  Goes with every invitation to this audience. {'{first_name}'} becomes the person's first name. Leave empty to invite without a note.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Minimum fit score to send an invite: {form.min_fit_score}</Label>

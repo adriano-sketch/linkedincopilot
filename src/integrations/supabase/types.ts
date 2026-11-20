@@ -736,6 +736,7 @@ export type Database = {
           locations: string[]
           min_fit_score: number
           name: string
+          invite_note: string | null
           people_search_exhausted_at: string | null
           people_search_page: number
           post_topics: string[]
@@ -764,6 +765,7 @@ export type Database = {
           locations?: string[]
           min_fit_score?: number
           name: string
+          invite_note?: string | null
           people_search_exhausted_at?: string | null
           people_search_page?: number
           post_topics?: string[]
@@ -792,6 +794,7 @@ export type Database = {
           locations?: string[]
           min_fit_score?: number
           name?: string
+          invite_note?: string | null
           people_search_exhausted_at?: string | null
           people_search_page?: number
           post_topics?: string[]
