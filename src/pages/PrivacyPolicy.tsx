@@ -24,42 +24,67 @@ export default function PrivacyPolicy() {
       {/* Content */}
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold text-white mb-2">Privacy Policy</h1>
-        <p className="text-gray-500 mb-12 text-sm">Last updated: April 19, 2026</p>
+        <p className="text-gray-500 mb-12 text-sm">Last updated: November 21, 2026</p>
 
         <Section title="1. What LinkedIn Copilot Does">
-          <p>
-            LinkedIn Copilot is a browser extension that helps professionals automate their
-            LinkedIn outreach workflows. It assists with sending personalized connection
-            requests, direct messages, and follow-ups to leads you have selected in your
-            campaigns.
+          <p className="mb-4">
+            LinkedIn Copilot is a web app and a Chrome extension that help a professional stay in
+            touch with their LinkedIn network and reach new contacts.
           </p>
+          <ul className="list-disc list-inside space-y-2 text-gray-400">
+            <li>
+              The extension reads LinkedIn pages in your own browser session to find recent posts
+              by your connections and people who match an audience you define.
+            </li>
+            <li>
+              The app drafts comments, invitation notes and messages with AI, for you to review
+              and edit.
+            </li>
+            <li>
+              Comments are never posted by the extension. You open the post and publish the
+              comment yourself on LinkedIn.
+            </li>
+            <li>
+              Connection invitations to people who match an audience you set up, and messages you
+              approved, are sent by the extension from your browser, within daily limits you can see.
+            </li>
+          </ul>
         </Section>
 
         <Section title="2. Data We Collect">
           <p className="mb-4">
-            LinkedIn Copilot collects and processes only the data strictly necessary to
-            deliver its functionality:
+            LinkedIn Copilot collects and processes only the data needed to do what is described
+            above:
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>
-              <strong className="text-gray-300">LinkedIn profile data you interact with:</strong>{' '}
-              Names, profile URLs, and connection status of leads you add to your campaigns.
-              This data is sourced from pages you actively visit on LinkedIn.
+              <strong className="text-gray-300">Your account:</strong>{' '}
+              Email, name, plan and billing status.
             </li>
             <li>
-              <strong className="text-gray-300">Messages you compose:</strong>{' '}
-              The personalized connection notes, DMs, and follow-up messages that you create
-              or approve within the extension.
+              <strong className="text-gray-300">What you write in the app:</strong>{' '}
+              Your subjects, your views on them, audiences, invitation notes, comments and messages
+              you draft, edit or approve.
             </li>
             <li>
-              <strong className="text-gray-300">Campaign activity logs:</strong>{' '}
-              Timestamps and status of actions performed (e.g., "connection request sent",
-              "DM delivered") for your campaign tracking dashboard.
+              <strong className="text-gray-300">Data about other LinkedIn members, read from pages in your session:</strong>{' '}
+              Name, headline, company, location, profile address, connection degree and the text
+              of recent posts. It comes from your list of connections, from the posts of your
+              connections, from LinkedIn and Sales Navigator search results for the audiences you
+              define, and from the profiles of people in your campaigns.
+            </li>
+            <li>
+              <strong className="text-gray-300">Replies from people in your campaigns:</strong>{' '}
+              The text of a reply, so the app can stop the sequence and show it to you.
+            </li>
+            <li>
+              <strong className="text-gray-300">Activity logs:</strong>{' '}
+              What the extension did and when (for example "profile page opened", "invitation
+              sent"), for your dashboard and for the daily limits.
             </li>
             <li>
               <strong className="text-gray-300">Authentication tokens:</strong>{' '}
-              Your session token, stored locally in Chrome's secure storage, to authenticate
-              with our backend.
+              Your session token for our backend, stored locally in Chrome's storage.
             </li>
           </ul>
         </Section>
@@ -67,38 +92,64 @@ export default function PrivacyPolicy() {
         <Section title="3. Data We Do NOT Collect">
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>We do not read, store, or transmit your LinkedIn password or login credentials.</li>
-            <li>We do not scrape or collect data from profiles you have not added to your campaigns.</li>
             <li>
-              We do not access your LinkedIn inbox, connections list, or feed content beyond
-              what is necessary for campaign actions.
+              We do not read your LinkedIn messages in general. The extension only looks at the
+              conversation with a person who is in one of your campaigns, to detect a reply.
             </li>
             <li>
               We do not collect browsing history, cookies, or data from any website other
               than linkedin.com.
             </li>
             <li>
-              We do not sell, rent, or share your personal data with third parties for
-              advertising or marketing purposes.
+              We do not sell, rent, or share personal data with third parties for advertising or
+              marketing purposes, and we do not use it to train AI models.
             </li>
           </ul>
         </Section>
 
-        <Section title="4. How We Store Your Data">
-          <p>
-            Campaign data (lead profiles, messages, activity logs) is stored securely on
-            Supabase, a SOC 2 Type II compliant cloud platform hosted on AWS. Data is
-            encrypted in transit (TLS 1.2+) and at rest (AES-256). Each user's data is
-            isolated by user ID — you can only access your own campaigns and leads.
+        <Section title="4. How We Store Your Data and Who Processes It">
+          <p className="mb-4">
+            Your data is stored on Supabase, a SOC 2 Type II compliant cloud platform hosted on
+            AWS. Data is encrypted in transit (TLS 1.2+) and at rest (AES-256). Each user's data is
+            isolated by user ID: you can only access your own.
           </p>
+          <p className="mb-4">
+            To provide the service, some data is sent to these processors, and only for the
+            purpose stated:
+          </p>
+          <ul className="list-disc list-inside space-y-2 text-gray-400">
+            <li>
+              <strong className="text-gray-300">Anthropic (AI):</strong>{' '}
+              Post text, public profile information and what you wrote in the app, to write drafts
+              and to check whether a person matches your audience.
+            </li>
+            <li>
+              <strong className="text-gray-300">ScrapIn and Apollo (profile data):</strong>{' '}
+              The profile address of a lead you added to a campaign, to complete its public
+              professional information.
+            </li>
+            <li>
+              <strong className="text-gray-300">Stripe (payments):</strong>{' '}
+              Your email and subscription. We never see your card number.
+            </li>
+            <li>
+              <strong className="text-gray-300">Resend (email):</strong>{' '}
+              Your email address, to send you service notices.
+            </li>
+          </ul>
         </Section>
 
         <Section title="5. LinkedIn Interaction">
+          <p className="mb-4">
+            The extension works inside your own browser, using your existing LinkedIn session. It
+            opens LinkedIn pages, reads them, and sends the invitations and messages described in
+            section 1. It keeps to low daily limits, works only in the hours you choose, and pauses
+            by itself if LinkedIn shows a verification or warning page.
+          </p>
           <p>
-            The extension interacts with LinkedIn on your behalf by performing actions you
-            have explicitly configured and approved in your campaigns. All actions respect
-            LinkedIn's rate limits and usage guidelines. The extension operates within your
-            active browser tab and uses your existing LinkedIn session — it does not create
-            separate connections to LinkedIn's servers.
+            LinkedIn Copilot is not affiliated with or endorsed by LinkedIn. LinkedIn's User
+            Agreement restricts third-party tools that automate activity on its platform. Using
+            the extension is your decision and may lead LinkedIn to warn or restrict your account.
           </p>
         </Section>
 
@@ -106,31 +157,27 @@ export default function PrivacyPolicy() {
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>
               <strong className="text-gray-300">storage:</strong>{' '}
-              To save your campaign settings, preferences, and authentication state locally
-              in your browser.
+              To keep your sign-in state, your pause setting and today's counters in your browser.
             </li>
             <li>
               <strong className="text-gray-300">alarms:</strong>{' '}
-              To schedule periodic campaign processing (checking for pending actions, rate
-              limit cooldowns).
+              To check periodically whether there is something to do and to space actions out.
             </li>
             <li>
               <strong className="text-gray-300">tabs:</strong>{' '}
-              To navigate to LinkedIn profile pages where campaign actions are performed.
+              To open the LinkedIn page an action needs and close it afterwards.
             </li>
             <li>
               <strong className="text-gray-300">scripting:</strong>{' '}
-              To inject the content script that reads profile information and performs
-              actions on LinkedIn pages.
+              To read the LinkedIn page that was opened and to carry out the action on it.
             </li>
             <li>
               <strong className="text-gray-300">host_permissions (linkedin.com):</strong>{' '}
-              Required to interact with LinkedIn pages for campaign automation.
+              The extension only works on LinkedIn pages.
             </li>
             <li>
               <strong className="text-gray-300">host_permissions (supabase.co):</strong>{' '}
-              Required to communicate with our secure backend for campaign data storage and
-              synchronization.
+              To talk to our backend, where your data is stored.
             </li>
           </ul>
         </Section>

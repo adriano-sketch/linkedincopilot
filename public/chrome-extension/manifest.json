@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Copilot",
-  "version": "0.4.14",
-  "description": "AI-powered LinkedIn outreach — personalized connection notes, DMs, and follow-ups",
+  "version": "0.6.0",
+  "description": "Stay close to your LinkedIn network: see who posted, get comment drafts in your voice, and post them yourself.",
   "permissions": [
     "storage",
     "alarms",
