@@ -719,7 +719,10 @@ const queueProcessor = {
       // rhythm as a normal day. What does not fit before the queue's own expiry simply does not run.
       const lateMs = Date.now() - new Date(data[0].scheduled_for).getTime();
       if (lateMs > 10 * 60 * 1000) {
-        const lastActionAt = await getLocalData('last_action_time');
+        const lastActionAt = Math.max(
+          (await getLocalData('last_attempt_at')) || 0,
+          (await getLocalData('last_action_time')) || 0,
+        );
         let gap = await getLocalData('catchup_gap_ms');
         if (!gap) {
           gap = (6 + Math.random() * 6) * 60 * 1000;
@@ -770,6 +773,9 @@ const queueProcessor = {
         { status: 'in_progress', picked_up_at: new Date().toISOString() },
         `id=eq.${action.id}`
       );
+      // Every attempt counts for pacing, whatever its outcome: a skipped or failed action still
+      // opened a LinkedIn page. (last_action_time is only written when an action succeeds.)
+      await setLocalData('last_attempt_at', Date.now());
       const delay = safetyManager.getRandomDelay(action.action_type);
       console.log(`[QueueProcessor] Waiting ${Math.round(delay / 1000)}s before ${action.action_type}...`);
       await this.sleep(delay);
