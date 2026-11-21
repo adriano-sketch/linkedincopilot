@@ -649,6 +649,17 @@ const queueProcessor = {
       if (cooldownUntil && Date.now() < cooldownUntil) {
         return;
       }
+      // ── Coming back after the computer slept or Chrome was closed ──
+      // No poll for more than 10 minutes means the machine was away. Do not act the instant it
+      // wakes: wait a few minutes first, like someone who has just opened the laptop.
+      const lastPollAt = await getLocalData('last_poll_at');
+      await setLocalData('last_poll_at', Date.now());
+      if (lastPollAt && Date.now() - lastPollAt > 10 * 60 * 1000) {
+        await setLocalData('resume_after', Date.now() + (2 + Math.random() * 3) * 60 * 1000);
+        await setLocalData('catchup_gap_ms', null);
+      }
+      const resumeAfter = await getLocalData('resume_after');
+      if (resumeAfter && Date.now() < resumeAfter) return;
       const now = new Date().toISOString();
       
       // Build exclusion list for action types that hit daily limits
@@ -702,6 +713,24 @@ const queueProcessor = {
         { order: 'priority.asc,scheduled_for.asc', limit: 1 }
       );
       if (!data || data.length === 0) return;
+      // ── Backlog pacing ──
+      // An action more than 10 minutes late is backlog (the machine was away). Backlog does not run
+      // back to back: each late action waits 6 to 12 minutes after the previous action, the same
+      // rhythm as a normal day. What does not fit before the queue's own expiry simply does not run.
+      const lateMs = Date.now() - new Date(data[0].scheduled_for).getTime();
+      if (lateMs > 10 * 60 * 1000) {
+        const lastActionAt = Math.max(
+          (await getLocalData('last_attempt_at')) || 0,
+          (await getLocalData('last_action_time')) || 0,
+        );
+        let gap = await getLocalData('catchup_gap_ms');
+        if (!gap) {
+          gap = (6 + Math.random() * 6) * 60 * 1000;
+          await setLocalData('catchup_gap_ms', gap);
+        }
+        if (lastActionAt && Date.now() - lastActionAt < gap) return;
+        await setLocalData('catchup_gap_ms', null); // a new random gap for the next late action
+      }
       await this.executeAction(data[0]);
     } catch (error) {
       console.error('[QueueProcessor] Poll error:', error);
@@ -744,6 +773,9 @@ const queueProcessor = {
         { status: 'in_progress', picked_up_at: new Date().toISOString() },
         `id=eq.${action.id}`
       );
+      // Every attempt counts for pacing, whatever its outcome: a skipped or failed action still
+      // opened a LinkedIn page. (last_action_time is only written when an action succeeds.)
+      await setLocalData('last_attempt_at', Date.now());
       const delay = safetyManager.getRandomDelay(action.action_type);
       console.log(`[QueueProcessor] Waiting ${Math.round(delay / 1000)}s before ${action.action_type}...`);
       await this.sleep(delay);
