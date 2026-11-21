@@ -371,8 +371,9 @@ Deno.serve(async (req) => {
           const [{ data: es }, { count: waiting }, { count: invitedDay }] = await Promise.all([
             supabase.from("extension_status").select("invites_paused_until, weekly_invite_limit").eq("user_id", userId).maybeSingle(),
             supabase.from("network_prospects").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "qualified"),
+            // Counted from the user's local midnight, the same day the page budget and the invitations use.
             supabase.from("network_prospects").select("id", { count: "exact", head: true }).eq("user_id", userId)
-              .gte("invited_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
+              .gte("invited_at", row?.day_start || new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
           ]);
           const paused = es?.invites_paused_until && new Date(es.invites_paused_until).getTime() > Date.now();
           if (!paused) {

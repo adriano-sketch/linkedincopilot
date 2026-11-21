@@ -124,7 +124,11 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     const weeklyLimit = ext.weekly_invite_limit ?? 100;
     const invitesPaused = ext.invites_paused_until && new Date(ext.invites_paused_until).getTime() > now;
     const weekAgo = new Date(now - 7 * 24 * HOUR).toISOString();
-    const dayAgo = new Date(now - 24 * HOUR).toISOString();
+    // "Today" is the user's local day (same start the profile-page budget uses), not the last 24 hours:
+    // with a rolling window, yesterday's late-morning invitations blocked this morning's.
+    const { data: budgetRows } = await supabase.rpc("profile_page_budget", { p_user_id: userId });
+    const budgetRow = Array.isArray(budgetRows) ? budgetRows[0] : budgetRows;
+    const dayAgo = budgetRow?.day_start || new Date(now - 24 * HOUR).toISOString();
     // The weekly limit is one budget for the account: invites sent by campaigns (Outreach) count too.
     const campaignInvites = (since: string) => supabase.from("action_queue").select("id", { count: "exact", head: true })
       .eq("user_id", userId).eq("action_type", "send_connection_request").eq("status", "completed")
