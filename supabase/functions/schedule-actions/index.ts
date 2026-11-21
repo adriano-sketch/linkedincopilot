@@ -360,26 +360,42 @@ Deno.serve(async (req) => {
     const getProfilePageBudget = async (userId: string) => {
       let b = profilePageBudget.get(userId);
       if (!b) {
-        const { data, error: budgetErr } = await supabase.rpc("profile_page_budget", { p_user_id: userId });
-        const row = Array.isArray(data) ? data[0] : data;
+        const readBudget = async () => {
+          const { data, error } = await supabase.rpc("profile_page_budget", { p_user_id: userId });
+          return { row: Array.isArray(data) ? data[0] : data, error };
+        };
+        const first = await readBudget();
+        if (first.error) console.error("profile_page_budget failed:", first.error.message);
         // If the budget cannot be read, do not queue profile pages: the guard is the backstop anyway.
-        b = budgetErr || !row ? { limit: 0, used: 0 } : { limit: Number(row.day_limit) || 0, used: Number(row.used) || 0 };
-        if (budgetErr) console.error("profile_page_budget failed:", budgetErr.message);
+        b = first.error || !first.row ? { limit: 0, used: 0 } : { limit: Number(first.row.day_limit) || 0, used: Number(first.row.used) || 0 };
         // Invitations of the network module open a profile page too. Keep room for the ones still to go
         // out today, so campaign pages plus invitations stay inside the same daily ceiling.
         if (b.limit > 0) {
-          const [{ data: es }, { count: waiting }, { count: invitedDay }] = await Promise.all([
+          // Counted from the user's local midnight, the same day the page budget and the invitations use.
+          const dayStart = first.row.day_start || new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+          const prospects = (status: string) => supabase.from("network_prospects")
+            .select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", status);
+          const [{ data: es }, { count: waiting }, { count: queued }, { count: invitedDay }] = await Promise.all([
             supabase.from("extension_status").select("invites_paused_until, weekly_invite_limit").eq("user_id", userId).maybeSingle(),
-            supabase.from("network_prospects").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "qualified"),
-            // Counted from the user's local midnight, the same day the page budget and the invitations use.
-            supabase.from("network_prospects").select("id", { count: "exact", head: true }).eq("user_id", userId)
-              .gte("invited_at", row?.day_start || new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
+            prospects("qualified"),
+            prospects("queued"),
+            supabase.from("network_prospects").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("invited_at", dayStart),
           ]);
-          const paused = es?.invites_paused_until && new Date(es.invites_paused_until).getTime() > Date.now();
-          if (!paused) {
-            const perDay = Math.ceil((es?.weekly_invite_limit ?? 100) / 7);
-            const reserve = Math.max(0, Math.min(waiting || 0, perDay - (invitedDay || 0)));
-            b.limit = Math.max(0, b.limit - reserve);
+          // Pages used are read AFTER the counts. An invitation queued in between is then seen twice
+          // (still "waiting" in the count, already a page in "used"): the reserve errs on the safe side
+          // instead of missing it.
+          const second = await readBudget();
+          if (second.error || !second.row) {
+            b = { limit: 0, used: 0 };
+          } else {
+            b = { limit: Number(second.row.day_limit) || 0, used: Number(second.row.used) || 0 };
+            const paused = es?.invites_paused_until && new Date(es.invites_paused_until).getTime() > Date.now();
+            if (!paused) {
+              const perDay = Math.ceil((es?.weekly_invite_limit ?? 100) / 7);
+              // Invitations already queued are pages in "used"; reserve only the ones still to be queued today.
+              const reserve = Math.max(0, Math.min(waiting || 0, perDay - (invitedDay || 0) - (queued || 0)));
+              b.limit = Math.max(0, b.limit - reserve);
+            }
           }
         }
         profilePageBudget.set(userId, b);

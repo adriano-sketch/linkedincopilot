@@ -147,8 +147,12 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     const dailyTarget = Math.ceil(weeklyLimit / 7);
     const weeklyRemaining = weeklyLimit - (invitedWeek || 0) - queuedInvites;
     const todayRemaining = dailyTarget - (invitedDay || 0) - queuedInvites;
-    const toQueue = invitesPaused ? 0 : Math.max(0, Math.min(weeklyRemaining, todayRemaining));
-    out.invites = { weeklyLimit, invitedWeek, invitedDay, queuedInvites, toQueue, paused: !!invitesPaused };
+    // Each invitation opens a profile page: never queue past what is left of today's page ceiling.
+    // The queue guard refuses campaign pages over the ceiling but lets invitations through, so the
+    // stop has to be here. If the budget cannot be read, queue nothing.
+    const pagesLeft = budgetRow ? Math.max(0, (Number(budgetRow.day_limit) || 0) - (Number(budgetRow.used) || 0)) : 0;
+    const toQueue = invitesPaused ? 0 : Math.max(0, Math.min(weeklyRemaining, todayRemaining, pagesLeft));
+    out.invites = { weeklyLimit, invitedWeek, invitedDay, queuedInvites, toQueue, pagesLeft, paused: !!invitesPaused };
 
     let queuedNow = 0;
     if (toQueue > 0) {
