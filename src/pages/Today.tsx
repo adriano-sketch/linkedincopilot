@@ -255,7 +255,7 @@ export default function Today() {
               <h2 className="m-0 text-lg font-semibold">Last 7 days</h2>
               <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-4">
                 {[
-                  { label: 'New connections', value: s.week.new_connections, note: s.week.invites > 0 ? `${Math.round((s.week.new_connections / s.week.invites) * 100)}% of ${s.week.invites} invites` : 'from invites sent' },
+                  { label: 'New connections', value: s.week.new_connections, note: s.week.invites > 0 ? `${s.week.invites} invites sent this week` : 'from invites sent' },
                   { label: 'Replies', value: s.week.replies, note: s.week.positive_replies > 0 ? `${s.week.positive_replies} positive` : 'to your messages' },
                   { label: 'Comments posted', value: s.week.comments_posted, note: 'on posts of people you follow' },
                   { label: 'Opportunities spotted', value: s.week.opportunities, note: 'buying signals in posts' },

@@ -488,7 +488,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                       <TrendingUp className="w-5 h-5 text-emerald-600" />
                       <p className="font-semibold text-sm">Growth</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Build authority by engaging with thought leaders' posts — likes & AI comments on autopilot.</p>
+                    <p className="text-xs text-muted-foreground">Stay present with people you choose: Copilot finds their recent posts and drafts comments for you to post.</p>
                   </button>
                 </div>
               </div>
