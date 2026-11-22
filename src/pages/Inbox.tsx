@@ -21,7 +21,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 const KIND_LABEL: Record<InboxKind, string> = { reply: 'Reply', comment: 'Comment', message: 'Message' };
 const APPROVE_LABEL: Record<InboxKind, string> = { reply: 'Mark as handled', comment: 'Copy and open post', message: 'Approve message' };
 const SECONDARY_LABEL: Record<InboxKind, string | null> = { reply: null, comment: 'Skip', message: 'Write a new draft' };
-const EDITOR_LABEL: Record<InboxKind, string> = { reply: '', comment: 'Draft comment (edit it freely)', message: 'Suggested first message' };
+const EDITOR_LABEL: Record<InboxKind, string> = { reply: '', comment: 'Draft comment', message: 'Suggested first message' };
 
 const ago = (iso: string | null) => {
   if (!iso) return '';
@@ -289,6 +289,9 @@ export default function InboxPage() {
                     <textarea ref={editorRef} rows={5} value={textOf(current)}
                       onChange={e => setEdits(prev => ({ ...prev, [current.key]: e.target.value }))}
                       className="w-full rounded-xl border-2 border-primary bg-card px-4 py-3 text-base leading-relaxed text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-ring" />
+                    {current.kind === 'comment' && (
+                      <span className="font-normal">Change it here, before copying. Copilot learns from your edits; changes made on LinkedIn are not seen.</span>
+                    )}
                   </label>
                 )}
                 {current.why && <p className="text-[13px] text-muted-foreground m-0 flex gap-2"><Sparkles className="w-4 h-4 shrink-0 text-gold-dark" />{current.why}</p>}
