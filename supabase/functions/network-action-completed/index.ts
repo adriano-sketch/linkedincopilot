@@ -30,9 +30,14 @@ function toInt(v: unknown): number | null {
 
 /** A Sales Navigator page could not be used (no license, layout change, nothing readable).
  *  Fall back to the regular LinkedIn search for 24h so prospecting never stops. */
-function salesNavUnusable(action: any, success: boolean, result: any): boolean {
+const TRANSIENT_RE = /no tab with id|tab was closed|content script timeout|receiving end does not exist|message port closed|frame .* (removed|detached)|extension context invalidated/i;
+
+function salesNavUnusable(action: any, success: boolean, result: any, errorMessage: string | null = null): boolean {
   if (action?.action_data?.reader !== "sales_navigator") return false;
   if (result?.sales_nav_unavailable === true) return true;
+  // The tab closing or the computer going to sleep mid-search says nothing about Sales Navigator:
+  // the run just fails and the next one tries Sales Navigator again.
+  if (TRANSIENT_RE.test(errorMessage || "")) return false;
   return !success && result?.limit_reached !== true;
 }
 
@@ -50,7 +55,7 @@ async function handleSearchPeople(supabase: Supa, userId: string, action: any, s
   const now = new Date().toISOString();
   const limitHit = result?.limit_reached === true || SEARCH_LIMIT_RE.test(errorMessage || "");
 
-  if (salesNavUnusable(action, success, result)) {
+  if (salesNavUnusable(action, success, result, errorMessage)) {
     await markSalesNavFailed(supabase, userId, action, result, errorMessage);
     // Not counted against the monthly budget: the next scheduler run uses the regular search.
     if (runId) await supabase.from("network_search_runs").delete().eq("id", runId).eq("user_id", userId);
@@ -110,8 +115,16 @@ async function handleSearchPeople(supabase: Supa, userId: string, action: any, s
 
   const page = Number(data.page) || 1;
   const exhausted = result?.has_next === false || profiles.length === 0 || page >= 100;
+  // A regular search run only because Sales Navigator was set aside for a day is a stopgap: its pages do
+  // not line up with the Sales Navigator ones and it may read nothing. It must not close the ICP for two
+  // weeks or move the page counter; Sales Navigator decides that when it is back.
+  let stopgap = false;
+  if (!fromSalesNav) {
+    const { data: ext } = await supabase.from("extension_status").select("linkedin_account_tier").eq("user_id", userId).maybeSingle();
+    stopgap = ext?.linkedin_account_tier === "sales_navigator";
+  }
   if (icpId) {
-    await supabase.from("icps").update({
+    await supabase.from("icps").update(stopgap ? { last_people_search_at: now } : {
       people_search_page: exhausted ? 0 : page,
       people_search_exhausted_at: exhausted ? now : null,
       last_people_search_at: now,
@@ -134,7 +147,7 @@ async function handleConnectionsSearch(supabase: Supa, userId: string, action: a
   const now = new Date().toISOString();
   const limitHit = result?.limit_reached === true || SEARCH_LIMIT_RE.test(errorMessage || "");
 
-  if (salesNavUnusable(action, success, result)) {
+  if (salesNavUnusable(action, success, result, errorMessage)) {
     await markSalesNavFailed(supabase, userId, action, result, errorMessage);
     // Retry the same keyword and page right away with the regular LinkedIn search.
     const kw = Array.isArray(data.keywords) ? String(data.keywords[Number(data.kw_index) || 0] || "") : "";
