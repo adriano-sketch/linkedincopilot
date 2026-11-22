@@ -221,6 +221,14 @@ const supabase = {
   },
 
   async update(table, body, filters) {
+    // The action this copy holds can only change status with proof of the claim (see the trigger
+    // action_queue_guard_claim): the proof is added here so every write site carries it.
+    if (table === 'action_queue' && body && 'status' in body && body.status !== 'in_progress') {
+      const claim = this.currentClaim || await getLocalData('current_claim');
+      if (claim && claim.claimId && String(filters || '').split('&').includes(`id=eq.${claim.actionId}`)) {
+        body = { ...body, released_claim_id: claim.claimId };
+      }
+    }
     return this.query(table, { method: 'PATCH', body, filters });
   }
 };
@@ -691,9 +699,13 @@ const queueProcessor = {
         if (stuck && stuck.length > 0) {
           for (const s of stuck) {
             console.warn(`[QueueProcessor] Unsticking action ${s.id} (${s.action_type}) — in_progress since ${s.picked_up_at}`);
+            // Only if the row is still the claim we just read: another copy may have reset it and
+            // taken it again in the meantime, and that new claim must not be undone.
+            const sameClaim = `status=eq.in_progress&picked_up_at=eq.${encodeURIComponent(s.picked_up_at)}`
+              + (s.claim_id ? `&claim_id=eq.${encodeURIComponent(s.claim_id)}` : '&claim_id=is.null');
             await supabase.update('action_queue',
-              { status: 'pending', picked_up_at: null, claim_id: null, error_message: 'auto-reset: stuck in_progress >5min' },
-              `id=eq.${s.id}`
+              { status: 'pending', picked_up_at: null, error_message: 'auto-reset: stuck in_progress >5min' },
+              `id=eq.${s.id}&${sameClaim}`
             );
           }
         }
@@ -799,6 +811,8 @@ const queueProcessor = {
           return;
         }
       }
+      supabase.currentClaim = { actionId: action.id, claimId };
+      await setLocalData('current_claim', supabase.currentClaim);
       // Every attempt counts for pacing, whatever its outcome: a skipped or failed action still
       // opened a LinkedIn page. (last_action_time is only written when an action succeeds.)
       await setLocalData('last_attempt_at', Date.now());
