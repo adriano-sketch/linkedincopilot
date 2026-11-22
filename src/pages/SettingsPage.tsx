@@ -374,7 +374,7 @@ export default function SettingsPage() {
                     Chrome extension
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Install it from the Chrome Web Store. Chrome keeps it up to date on its own. Then click the extension icon and sign in with the same email and password you use here.
+                    Install it from the Chrome Web Store. Chrome keeps it up to date on its own. Then click the extension icon and sign in with the same email and password you use here. If you installed it from a .zip file before, remove that copy first: keep only one.
                   </p>
                   <Button size="sm" className="gap-1.5 mt-1" asChild>
                     <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">
