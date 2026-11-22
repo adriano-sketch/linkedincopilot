@@ -224,9 +224,12 @@ const supabase = {
     // The action this copy holds can only change status with proof of the claim (see the trigger
     // action_queue_guard_claim): the proof is added here so every write site carries it.
     if (table === 'action_queue' && body && 'status' in body && body.status !== 'in_progress') {
-      const claim = this.currentClaim || await getLocalData('current_claim');
-      if (claim && claim.claimId && String(filters || '').split('&').includes(`id=eq.${claim.actionId}`)) {
-        body = { ...body, released_claim_id: claim.claimId };
+      // Claims are kept per action id, so a proof can never be attached to a different action.
+      const m = String(filters || '').match(/(?:^|&)id=eq\.([0-9a-f-]{36})(?:&|$)/i);
+      if (m) {
+        const claims = this.claims || (this.claims = (await getLocalData('action_claims')) || {});
+        const claim = claims[m[1]];
+        if (claim && claim.claimId) body = { ...body, released_claim_id: claim.claimId };
       }
     }
     return this.query(table, { method: 'PATCH', body, filters });
@@ -640,6 +643,7 @@ async function sendHeartbeat() {
 // ── QUEUE PROCESSOR ──
 const queueProcessor = {
   isProcessing: false,
+  pollRunning: false, // one poll at a time, from its first check to the last status write
   isPaused: false,
   // False until the first heartbeat of this service-worker life has read is_paused from the
   // server. Chrome restarts the worker often and isPaused starts as false every time: on
@@ -651,7 +655,10 @@ const queueProcessor = {
     if (!supabase.accessToken || !supabase.userId) return;
     if (!this.pauseSynced) return;
     if (this.isPaused) return;
-    if (this.isProcessing) return;
+    if (this.isProcessing || this.pollRunning) return;
+    // Taken synchronously, before the first await: a second alarm-triggered poll that starts while
+    // this one is still reading storage must not get through and run a second action in parallel.
+    this.pollRunning = true;
     try {
       const cooldownUntil = await getLocalData('linkedin_cooldown_until');
       if (cooldownUntil && Date.now() < cooldownUntil) {
@@ -746,6 +753,8 @@ const queueProcessor = {
       await this.executeAction(data[0]);
     } catch (error) {
       console.error('[QueueProcessor] Poll error:', error);
+    } finally {
+      this.pollRunning = false;
     }
   },
 
@@ -811,8 +820,13 @@ const queueProcessor = {
           return;
         }
       }
-      supabase.currentClaim = { actionId: action.id, claimId };
-      await setLocalData('current_claim', supabase.currentClaim);
+      {
+        const claims = supabase.claims || (supabase.claims = (await getLocalData('action_claims')) || {});
+        claims[action.id] = { claimId, at: Date.now() };
+        // Proofs only matter while an action is fresh; keep a day of them.
+        for (const [id, c] of Object.entries(claims)) if (Date.now() - (c.at || 0) > 24 * 60 * 60 * 1000) delete claims[id];
+        await setLocalData('action_claims', claims);
+      }
       // Every attempt counts for pacing, whatever its outcome: a skipped or failed action still
       // opened a LinkedIn page. (last_action_time is only written when an action succeeds.)
       await setLocalData('last_attempt_at', Date.now());
