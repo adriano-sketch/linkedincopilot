@@ -170,7 +170,8 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
 function TrialBanner() {
   const { onTrial, trialDaysLeft, hasAccess, isLoading } = useUserPlan();
   const [open, setOpen] = useState(false);
-  if (isLoading || (hasAccess && !onTrial)) return null;
+  // Accounts extended by hand (owner, partners) have a far-away end date: no countdown for them.
+  if (isLoading || (hasAccess && (!onTrial || trialDaysLeft > 14))) return null;
   const ended = !hasAccess;
   return (
     <div role="status" className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-6 lg:px-10 py-2.5 text-sm border-b',
