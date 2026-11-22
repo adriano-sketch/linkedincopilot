@@ -34,10 +34,12 @@ const PLAN_LIMITS: Record<PlanKey, { max_leads_per_cycle: number; max_campaigns:
 function resolvePlan(priceId?: string | null, productId?: string | null): PlanKey | null {
   const pricePro = Deno.env.get("STRIPE_PRICE_PRO") || "";
   const priceAgency = Deno.env.get("STRIPE_PRICE_AGENCY") || "";
+  const priceProYearly = Deno.env.get("STRIPE_PRICE_PRO_YEARLY") || "";
   const productPro = Deno.env.get("STRIPE_PRODUCT_PRO") || "";
   const productAgency = Deno.env.get("STRIPE_PRODUCT_AGENCY") || "";
 
   if (priceId && pricePro && priceId === pricePro) return "pro";
+  if (priceId && priceProYearly && priceId === priceProYearly) return "pro";
   if (priceId && priceAgency && priceId === priceAgency) return "agency";
   if (productId && productPro && productId === productPro) return "pro";
   if (productId && productAgency && productId === productAgency) return "agency";
