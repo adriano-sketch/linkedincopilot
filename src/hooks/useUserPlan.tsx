@@ -45,6 +45,7 @@ export interface UserSettings {
   cycle_reset_date: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  trial_ends_at?: string | null;
 }
 
 export function useUserPlan() {
@@ -86,9 +87,21 @@ export function useUserPlan() {
     }
   }, [user, settings, queryClient]);
 
+  // Free trial: 14 days from sign-up, no card. Paid plans ignore it.
+  const isPaid = plan === 'pro' || plan === 'agency';
+  const trialEndsAt = settings?.trial_ends_at ? new Date(settings.trial_ends_at) : null;
+  const trialMsLeft = trialEndsAt ? trialEndsAt.getTime() - Date.now() : 0;
+  const trialDaysLeft = Math.max(0, Math.ceil(trialMsLeft / 86400000));
+  const onTrial = !isPaid && trialMsLeft > 0;
+  // While settings load we do not know yet: never flash "trial ended" at a paying customer.
+  const hasAccess = !settings || isPaid || onTrial;
+
   return {
     settings,
     isLoading,
+    onTrial,
+    trialDaysLeft,
+    hasAccess,
     plan,
     limits,
     leadsUsed,

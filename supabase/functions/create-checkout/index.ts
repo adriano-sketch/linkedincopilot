@@ -23,6 +23,7 @@ serve(async (req) => {
     const stripeSecret = Deno.env.get("STRIPE_SECRET_KEY") || "";
     const pricePro = Deno.env.get("STRIPE_PRICE_PRO") || "";
     const priceAgency = Deno.env.get("STRIPE_PRICE_AGENCY") || "";
+    const priceProYearly = Deno.env.get("STRIPE_PRICE_PRO_YEARLY") || "";
     const baseUrlRaw = Deno.env.get("APP_BASE_URL") || "";
     if (!stripeSecret.startsWith("sk_") || (!pricePro && !priceAgency) || !baseUrlRaw) {
       console.error("create-checkout: configuration error", {
@@ -39,6 +40,7 @@ serve(async (req) => {
     const PRICE_TO_PLAN: Record<string, "pro" | "agency"> = {};
     if (pricePro) PRICE_TO_PLAN[pricePro] = "pro";
     if (priceAgency) PRICE_TO_PLAN[priceAgency] = "agency";
+    if (priceProYearly) PRICE_TO_PLAN[priceProYearly] = "pro";
     const PLAN_TO_PRICE: Record<string, string> = { pro: pricePro, agency: priceAgency };
 
     const body = await req.json().catch(() => ({}));
@@ -54,7 +56,9 @@ serve(async (req) => {
         return json({ error: "plan does not match price", code: "invalid_price" }, 400);
       }
     } else if (planKey) {
-      resolvedPriceId = PLAN_TO_PRICE[planKey] || "";
+      // Yearly billing exists for Pro only, and only when its price is configured.
+      const yearly = body.interval === "year" && planKey === "pro";
+      resolvedPriceId = (yearly ? priceProYearly : PLAN_TO_PRICE[planKey]) || "";
       if (!resolvedPriceId) return json({ error: "Invalid plan", code: "invalid_price" }, 400);
     } else {
       return json({ error: "priceId or plan is required", code: "invalid_price" }, 400);

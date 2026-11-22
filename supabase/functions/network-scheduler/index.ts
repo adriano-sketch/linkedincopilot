@@ -11,7 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  buildMyNetworkPostSearchUrl, buildPeopleSearchUrl, buildPostSearchUrl, buildSalesNavPeopleSearchUrl, fireAndForget, salesNavEnabled, type Icp, renderInviteNote } from "../_shared/network.ts";
+  buildMyNetworkPostSearchUrl, buildPeopleSearchUrl, buildPostSearchUrl, buildSalesNavPeopleSearchUrl, fireAndForget, hasProductAccess, salesNavEnabled, type Icp, renderInviteNote } from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -370,8 +370,11 @@ Deno.serve(async (req) => {
 
     const results: unknown[] = [];
     let skipped = 0;
+    let noAccess = 0;
     for (const ext of exts || []) {
       if (!ext.is_connected || ext.is_paused) { skipped++; continue; }
+      // Trial over and no paid plan: nothing new is searched, drafted or invited.
+      if (!(await hasProductAccess(supabase, ext.user_id))) { noAccess++; continue; }
       try {
         results.push(await runForUser(supabase, { ...ext, comment_search_terms: termsByUser.get(ext.user_id) || [] }, byUser.get(ext.user_id) || []));
       } catch (e) {
@@ -379,7 +382,7 @@ Deno.serve(async (req) => {
         results.push({ user: String(ext.user_id).slice(0, 8), error: true });
       }
     }
-    return json({ ok: true, users: results.length, skipped_offline: skipped, results });
+    return json({ ok: true, users: results.length, skipped_offline: skipped, skipped_no_access: noAccess, results });
   } catch (e) {
     console.error("network-scheduler error:", e);
     return json({ error: "internal_error" }, 500);

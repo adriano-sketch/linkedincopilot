@@ -13,6 +13,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
 import { useInboxCount } from '@/hooks/useInbox';
 import { useCampaignProfiles } from '@/hooks/useCampaignProfiles';
+import { useUserPlan } from '@/hooks/useUserPlan';
+import { UpgradeModal } from '@/components/UpgradeModal';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -164,6 +166,28 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
   );
 }
 
+/** Free trial countdown, and the "paused" notice once it ends without a subscription. */
+function TrialBanner() {
+  const { onTrial, trialDaysLeft, hasAccess, isLoading } = useUserPlan();
+  const [open, setOpen] = useState(false);
+  if (isLoading || (hasAccess && !onTrial)) return null;
+  const ended = !hasAccess;
+  return (
+    <div role="status" className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-6 lg:px-10 py-2.5 text-sm border-b',
+      ended ? 'bg-attention/10 border-attention/30' : 'bg-gold-bg border-border')}>
+      <span className="flex-1 min-w-[220px]">
+        {ended
+          ? 'Your free trial ended. Copilot is paused: no new posts, drafts or invitations. What is in your Inbox is still here.'
+          : `Free trial: ${trialDaysLeft} ${trialDaysLeft === 1 ? 'day' : 'days'} left. No card on file, nothing is charged when it ends.`}
+      </span>
+      <button onClick={() => setOpen(true)} className="h-9 px-4 rounded-full bg-primary text-primary-foreground font-semibold hover:bg-gold-dark">
+        {ended ? 'Subscribe to resume' : 'Subscribe'}
+      </button>
+      <UpgradeModal open={open} onOpenChange={setOpen} />
+    </div>
+  );
+}
+
 /** Shared frame for every logged-in page: sidebar navigation, top bar, ⌘K palette. */
 export default function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -210,6 +234,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">New campaign</span>
           </button>
         </header>
+        <TrialBanner />
         <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8">{children}</main>
       </div>
 
