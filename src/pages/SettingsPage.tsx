@@ -1,4 +1,5 @@
 import CommentKnowledgeBase from '@/components/CommentKnowledgeBase';
+import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import AppShell from '@/components/app/AppShell';
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -69,33 +70,9 @@ export default function SettingsPage() {
   });
 
   const [editingCampaign, setEditingCampaign] = useState<CampaignProfile | null>(null);
-  const [downloading, setDownloading] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [syncingPlan, setSyncingPlan] = useState(false);
-
-  const handleDownloadExtension = async () => {
-    setDownloading(true);
-    try {
-      const directZip = '/linkedincopilot-extension.zip';
-      const res = await fetch(directZip);
-      if (!res.ok) {
-        throw new Error('zip_not_found');
-      }
-      const content = await res.blob();
-      const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'linkedin-copilot-extension.zip';
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Download started.');
-    } catch {
-      toast.error('Failed to download the ZIP.');
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -390,23 +367,19 @@ export default function SettingsPage() {
                   )}
                 </div>
 
-                {/* Download Extension */}
+                {/* Install the extension */}
                 <div className="border border-primary/20 bg-primary/5 rounded-lg p-4 space-y-2">
                   <p className="text-sm font-medium flex items-center gap-2">
                     <Chrome className="w-4 h-4 text-primary" />
-                    Download Chrome Extension
+                    Chrome extension
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Download the .zip file, extract it, then go to <code className="bg-muted px-1 py-0.5 rounded text-[11px]">chrome://extensions</code>, enable <strong>Developer Mode</strong>, and click <strong>"Load unpacked"</strong> to select the extracted folder.
+                    Install it from the Chrome Web Store. Chrome keeps it up to date on its own. Then click the extension icon and sign in with the same email and password you use here.
                   </p>
-                  <Button
-                    size="sm"
-                    className="gap-1.5 mt-1"
-                    disabled={downloading}
-                    onClick={handleDownloadExtension}
-                  >
-                    {downloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                    {downloading ? 'Generating ZIP...' : 'Download Extension (.zip)'}
+                  <Button size="sm" className="gap-1.5 mt-1" asChild>
+                    <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">
+                      <Chrome className="w-3 h-3" />Get it on the Chrome Web Store
+                    </a>
                   </Button>
                 </div>
 

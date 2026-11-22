@@ -4,7 +4,7 @@ import { HelpCircle, Chrome, MousePointerClick, Send, CheckCircle } from 'lucide
 
 export default function HowToCaptureDialog() {
   const steps = [
-    { icon: Chrome, title: 'Install Extension', desc: 'Load the Chrome extension from Settings → Extension Token → Download' },
+    { icon: Chrome, title: 'Install Extension', desc: 'Add LinkedIn Copilot from the Chrome Web Store (link in Settings)' },
     { icon: MousePointerClick, title: 'Open LinkedIn Profile', desc: 'Navigate to the connection\'s LinkedIn profile page' },
     { icon: Send, title: 'Click "Capture"', desc: 'Click the extension popup and hit "Capture this profile"' },
     { icon: CheckCircle, title: 'Done!', desc: 'The snapshot is sent. AI generates your DM in seconds.' },
