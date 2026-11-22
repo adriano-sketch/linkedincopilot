@@ -126,7 +126,8 @@ serve(async (req) => {
         ...sessionParams,
         branding_settings: {
           display_name: "LinkedIn Copilot",
-          icon: { type: "url", url: `${baseUrl}/favicon.png` },
+          // The www address answers directly; the bare domain redirects, which an image fetch may not follow.
+          icon: { type: "url", url: "https://www.linkedincopilot.io/favicon.png" },
         },
       // deno-lint-ignore no-explicit-any
       } as any, { apiVersion: "2025-09-30.clover" });
