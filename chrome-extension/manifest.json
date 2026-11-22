@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Copilot",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Stay close to your LinkedIn network: see who posted, get comment drafts in your voice, and post them yourself.",
   "permissions": [
     "storage",

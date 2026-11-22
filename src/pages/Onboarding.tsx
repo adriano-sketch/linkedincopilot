@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
@@ -122,7 +123,7 @@ export default function Onboarding() {
             <CardTitle>Step {step + 1} of 2 — {STEPS[step]}</CardTitle>
             <CardDescription>
               {step === 0 && "Tell us about you and your company."}
-              {step === 1 && "Install the Chrome Extension to automate LinkedIn actions."}
+              {step === 1 && "Install the Chrome extension. It reads LinkedIn for you; you approve and post everything yourself."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -173,10 +174,8 @@ export default function Onboarding() {
                     <div className="bg-muted/50 rounded-lg p-4 space-y-3">
                       <p className="text-sm font-medium">How to install:</p>
                       <ol className="text-sm text-muted-foreground space-y-2 list-decimal pl-4">
-                        <li>Download the extension files from your dashboard</li>
-                        <li>Open <code className="bg-muted px-1 rounded">chrome://extensions</code></li>
-                        <li>Enable "Developer mode" (top right)</li>
-                        <li>Click "Load unpacked" and select the extension folder</li>
+                        <li>Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">LinkedIn Copilot on the Chrome Web Store</a> and click "Add to Chrome"</li>
+                        <li>Click the extension icon in the Chrome toolbar and sign in with the same email and password you use here</li>
                         <li>Log in to LinkedIn in the same browser</li>
                       </ol>
                     </div>

@@ -769,10 +769,17 @@ const queueProcessor = {
         );
         return;
       }
-      await supabase.update('action_queue',
+      // Claim the action only while it is still pending. Two copies of the extension on one account
+      // (the old folder install next to the store one) both read the same pending row; without the
+      // status filter both would run it and an invitation or a message could go out twice.
+      const { data: claimed } = await supabase.update('action_queue',
         { status: 'in_progress', picked_up_at: new Date().toISOString() },
-        `id=eq.${action.id}`
+        `id=eq.${action.id}&status=eq.pending`
       );
+      if (!Array.isArray(claimed) || claimed.length === 0) {
+        console.log(`[QueueProcessor] Action ${action.id} was already taken by another copy; skipping`);
+        return;
+      }
       // Every attempt counts for pacing, whatever its outcome: a skipped or failed action still
       // opened a LinkedIn page. (last_action_time is only written when an action succeeds.)
       await setLocalData('last_attempt_at', Date.now());

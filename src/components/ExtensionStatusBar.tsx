@@ -1,4 +1,5 @@
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
+import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -18,7 +19,7 @@ export default function ExtensionStatusBar() {
         <WifiOff className="w-4 h-4 text-muted-foreground" />
         <span className="text-sm text-muted-foreground">Extension not connected</span>
         <a
-          href="https://chrome.google.com/webstore"
+          href={EXTENSION_STORE_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-primary hover:underline ml-auto"
