@@ -42,7 +42,9 @@ serve(async (req) => {
 
     const signature = req.headers.get("stripe-signature") || "";
     const body = await req.text();
-    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    // Deno's crypto is asynchronous: the synchronous constructEvent throws here, so every event was
+    // answered with 400 and the plan only changed when the app synced on its own.
+    const event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",

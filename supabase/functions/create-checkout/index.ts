@@ -96,7 +96,7 @@ serve(async (req) => {
       }
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams = {
       customer: customerId,
       line_items: [{ price: resolvedPriceId, quantity: 1 }],
       mode: "subscription",
@@ -114,7 +114,28 @@ serve(async (req) => {
       },
       success_url: `${baseUrl}/dashboard?checkout=success&plan=${finalPlan}`,
       cancel_url: `${baseUrl}/dashboard?checkout=cancel`,
-    });
+    };
+
+    // The Stripe account is shared with another product, so the page would open under that brand.
+    // Name and icon are set per session (needs API version 2025-09-30.clover or later). The business
+    // name in the legal line and on receipts still comes from the account. If Stripe refuses the
+    // branding, the checkout opens without it rather than not at all.
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        ...sessionParams,
+        branding_settings: {
+          display_name: "LinkedIn Copilot",
+          // The www address answers directly; the bare domain redirects, which an image fetch may not follow.
+          icon: { type: "url", url: "https://www.linkedincopilot.io/favicon.png" },
+        },
+      // deno-lint-ignore no-explicit-any
+      } as any, { apiVersion: "2025-09-30.clover" });
+    } catch (e) {
+      console.warn("create-checkout: branded session refused, retrying without branding:", e instanceof Error ? e.message : e);
+      // deno-lint-ignore no-explicit-any
+      session = await stripe.checkout.sessions.create(sessionParams as any);
+    }
 
     return json({ url: session.url });
   } catch (error) {
