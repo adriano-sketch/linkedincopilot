@@ -8,6 +8,15 @@ const db = supabase as any;
 
 export type InboxKind = 'reply' | 'comment' | 'message';
 
+/** Why a comment draft was skipped. Same keys as the check constraint on monitored_posts.dismiss_reason. */
+export type DismissReason = 'off_topic' | 'not_my_voice' | 'too_generic' | 'dont_know_person';
+export const DISMISS_REASONS: { key: DismissReason; label: string }[] = [
+  { key: 'off_topic', label: 'Not my subject' },
+  { key: 'not_my_voice', label: "I wouldn't say this" },
+  { key: 'too_generic', label: 'Too generic' },
+  { key: 'dont_know_person', label: "Don't know them well" },
+];
+
 export type InboxItem = {
   key: string;            // `${kind}:${id}`
   kind: InboxKind;
@@ -198,12 +207,16 @@ export function useInbox() {
     onSuccess: invalidate,
   });
 
-  /** Comment: skip it. Message: write a new draft. Reply: mark as handled. */
+  /** Comment: skip it (optionally saying why). Message: write a new draft. Reply: mark as handled. */
   const dismiss = useMutation({
-    mutationFn: async (item: InboxItem) => {
+    mutationFn: async (arg: InboxItem | { item: InboxItem; reason?: DismissReason | null }) => {
+      const item = 'item' in arg ? arg.item : arg;
+      const reason = 'item' in arg ? arg.reason || null : null;
       const now = new Date().toISOString();
       if (item.kind === 'comment') {
-        const { error } = await supabase.from('monitored_posts').update({ status: 'dismissed', updated_at: now }).eq('id', item.id).eq('status', 'pending');
+        const { error } = await db.from('monitored_posts')
+          .update({ status: 'dismissed', updated_at: now, ...(reason ? { dismiss_reason: reason } : {}) })
+          .eq('id', item.id).eq('status', 'pending');
         if (error) throw error;
       } else if (item.kind === 'message') {
         const { error } = await supabase.functions.invoke('approve-dms', { body: { lead_ids: [item.id], action: 'reject' } });

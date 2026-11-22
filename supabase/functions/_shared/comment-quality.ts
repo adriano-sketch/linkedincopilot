@@ -84,7 +84,82 @@ export type SenderFacts = {
   avoid?: string | null;    // subjects they stay out of
   examples?: string | null; // comments they wrote themselves, as a voice reference
   views?: string | null;    // what they think and have seen on their subjects (profiles.comment_views)
+  learned?: Learned | null; // what their own Inbox decisions show (loadLearned)
 };
+
+/**
+ * What the user's own decisions in the Inbox teach the writer.
+ *   posted   : comments they published, newest first. `edited` = they changed the draft before posting.
+ *   rejected : drafts they skipped saying the draft itself was wrong ("not my voice", "too generic").
+ * Skips for other reasons (off subject, do not know the person) are about the choice of post, not the
+ * wording, so they are stored but not shown to the writer.
+ */
+export type LearnedComment = { kind: "milestone" | "topic"; text: string; edited: boolean };
+export type Learned = { posted: LearnedComment[]; rejected: { kind: "milestone" | "topic"; text: string; reason: string }[] };
+
+/** Skip reasons the Inbox offers. Keep in sync with the check constraint on monitored_posts.dismiss_reason. */
+export const DISMISS_REASONS: Record<string, string> = {
+  off_topic: "outside my subjects",
+  not_my_voice: "I would not say this",
+  too_generic: "too generic",
+  dont_know_person: "I do not know this person well enough",
+};
+const DRAFT_REASONS = ["not_my_voice", "too_generic"];
+
+const kindOf = (signal: unknown): "milestone" | "topic" => (signal === "milestone" ? "milestone" : "topic");
+const norm = (t: unknown) => String(t || "").replace(/\s+/g, " ").trim();
+
+/**
+ * Reads the user's recent Inbox decisions. Never throws: learning is an improvement, not a dependency,
+ * so any failure returns an empty result and the comment is written as before.
+ */
+// deno-lint-ignore no-explicit-any
+export async function loadLearned(supabase: any, userId: string): Promise<Learned> {
+  const empty: Learned = { posted: [], rejected: [] };
+  try {
+    const [posted, rejected] = await Promise.all([
+      supabase.from("monitored_posts")
+        .select("signal_type, suggested_comment, final_comment, commented_at")
+        .eq("user_id", userId).eq("status", "posted")
+        .order("commented_at", { ascending: false, nullsFirst: false }).limit(40),
+      supabase.from("monitored_posts")
+        .select("signal_type, suggested_comment, final_comment, dismiss_reason, updated_at")
+        .eq("user_id", userId).eq("status", "dismissed").in("dismiss_reason", DRAFT_REASONS)
+        .order("updated_at", { ascending: false }).limit(12),
+    ]);
+    if (posted.error) console.error("loadLearned posted:", posted.error.message);
+    if (rejected.error) console.error("loadLearned rejected:", rejected.error.message);
+    // deno-lint-ignore no-explicit-any
+    const p = ((posted.data || []) as any[]).map((r) => {
+      const text = norm(r.final_comment || r.suggested_comment);
+      return { kind: kindOf(r.signal_type), text, edited: !!norm(r.suggested_comment) && text !== norm(r.suggested_comment) };
+    }).filter((r) => r.text.length >= 25);
+    // deno-lint-ignore no-explicit-any
+    const j = ((rejected.data || []) as any[]).map((r) => ({
+      kind: kindOf(r.signal_type), text: norm(r.final_comment || r.suggested_comment), reason: DISMISS_REASONS[r.dismiss_reason] || "",
+    })).filter((r) => r.text.length >= 25 && r.reason);
+    return { posted: p, rejected: j };
+  } catch (e) {
+    console.error("loadLearned failed:", e instanceof Error ? e.message : e);
+    return empty;
+  }
+}
+
+/** Picks what to show the writer for one kind of post: edited comments first, then the most recent. */
+export function learnedFor(l: Learned | null | undefined, kind: PostKind, maxPosted = 6, maxRejected = 4) {
+  const k = kind === "milestone" ? "milestone" : "topic";
+  const seen = new Set<string>();
+  const uniq = <T extends { text: string }>(list: T[]) => list.filter((r) => {
+    const key = r.text.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const same = uniq((l?.posted || []).filter((r) => r.kind === k));
+  const posted = [...same.filter((r) => r.edited), ...same.filter((r) => !r.edited)].slice(0, maxPosted);
+  const rejected = uniq((l?.rejected || []).filter((r) => r.kind === k)).slice(0, maxRejected);
+  return { posted, rejected };
+}
 
 /** What a post is, seen from the sender's business. Decides whether and how to comment. */
 export type PostKind = "on_topic" | "milestone" | "off_topic";
@@ -147,18 +222,30 @@ function factsBlock(f: SenderFacts): string {
   return lines.length ? lines.join("\n") : "(no facts provided)";
 }
 
-function voiceBlock(f: SenderFacts): string {
+function voiceBlock(f: SenderFacts, kind: PostKind = "on_topic"): string {
   const ex = String(f.examples || "").trim();
-  return ex
-    ? `\nComments this person wrote themselves. Match their voice, length and rhythm. Do not copy their content:\n"""\n${ex.slice(0, 1200)}\n"""\n`
-    : "";
+  const { posted, rejected } = learnedFor(f.learned, kind);
+  const parts: string[] = [];
+  if (ex) parts.push(`Comments this person wrote themselves. Match their voice, length and rhythm. Do not copy their content:\n"""\n${ex.slice(0, 1200)}\n"""`);
+  if (posted.length) {
+    const lines = posted.map((r) => `- ${r.edited ? "[rewritten by them] " : ""}${r.text.slice(0, 320)}`).join("\n");
+    parts.push(`Comments this person recently published on posts of this kind. They approved every one; the ones marked
+"rewritten by them" are in their own words and count the most. Use them for voice, length and the kind of point they
+make. They answered OTHER posts: never reuse their sentences, their opening or their structure, and never write a
+comment that could be one of these with a few words swapped:\n${lines}`);
+  }
+  if (rejected.length) {
+    const lines = rejected.map((r) => `- "${r.text.slice(0, 280)}" (their reason: ${r.reason})`).join("\n");
+    parts.push(`Drafts this person REJECTED, with their reason. Do not write anything that has the same problem:\n${lines}`);
+  }
+  return parts.length ? `\n${parts.join("\n\n")}\n` : "";
 }
 
 /** Rules for a milestone post: a short, specific congratulation. No question, no analysis. */
 function milestoneRules(f: SenderFacts): string {
   return `You write LinkedIn comments for this person. These are the ONLY facts you know about them:
 ${factsBlock(f)}
-${voiceBlock(f)}
+${voiceBlock(f, "milestone")}
 The post announces a milestone of its author (new role, anniversary, award). The comment is what a colleague from the
 same industry would write: a short, warm, specific congratulation.
 
@@ -188,7 +275,7 @@ stretch, or you are not sure what a technical term in the post means, SKIP: a fo
     : "";
   return `You write LinkedIn comments for this person. These are the ONLY facts you know about them:
 ${factsBlock(f)}
-${voiceBlock(f)}${lens}
+${voiceBlock(f, kind)}${lens}
 The comment exists to add something to the author's post, the way a respected peer would: a point of view, a
 consequence, a practical consideration. It is a contribution, not an interview. LinkedIn is full of
 generic comments ("Impressive results!", "Incredible to see how technology...") written by people who want to sell

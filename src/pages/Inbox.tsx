@@ -6,7 +6,7 @@ import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, RefreshCw, Sparkles } f
 import AppShell from '@/components/app/AppShell';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/hooks/useAuth';
-import { useInbox, type InboxItem, type InboxKind } from '@/hooks/useInbox';
+import { DISMISS_REASONS, useInbox, type DismissReason, type InboxItem, type InboxKind } from '@/hooks/useInbox';
 import { cn } from '@/lib/utils';
 import { cleanPostUrl, isActivityUrl, openPostWithDraft } from '@/lib/commentHandoff';
 
@@ -56,6 +56,8 @@ export default function InboxPage() {
   // Comments whose post was already opened: the next step is to confirm it was posted.
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const [mobileDetail, setMobileDetail] = useState(false);
+  // The comment whose skip reasons are showing. Skip opens them; a reason, or Skip again, closes the item.
+  const [reasonsFor, setReasonsFor] = useState<string | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { if (!authLoading && !user) navigate('/'); }, [user, authLoading, navigate]);
@@ -105,12 +107,19 @@ export default function InboxPage() {
     }
   };
 
-  const doSecondary = async (item: InboxItem) => {
+  // Skip on a comment first offers the reasons (one click each). Skip again skips without a reason.
+  const doSkip = (item: InboxItem) => {
+    if (item.kind === 'comment' && reasonsFor !== item.key) { setReasonsFor(item.key); return; }
+    return doSecondary(item);
+  };
+
+  const doSecondary = async (item: InboxItem, reason: DismissReason | null = null) => {
+    setReasonsFor(null);
     advanceFrom(item.key);
     hide([item.key]);
     try {
-      await dismiss.mutateAsync(item);
-      toast.success(item.kind === 'comment' ? 'Skipped' : item.kind === 'message' ? 'A new draft is being written' : 'Marked as handled');
+      await dismiss.mutateAsync({ item, reason });
+      toast.success(item.kind === 'comment' ? (reason ? 'Skipped. Copilot will take that into account.' : 'Skipped') : item.kind === 'message' ? 'A new draft is being written' : 'Marked as handled');
     } catch (e) {
       unhide([item.key]);
       toast.error(errText(e, 'Something went wrong. Try again.'));
@@ -148,11 +157,14 @@ export default function InboxPage() {
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const showing = reasonsFor === current.key;
+      if (showing && e.key === 'Escape') { e.preventDefault(); setReasonsFor(null); return; }
+      if (showing && !busy && /^[1-4]$/.test(e.key)) { e.preventDefault(); doSecondary(current, DISMISS_REASONS[Number(e.key) - 1].key); return; }
       const idx = visible.findIndex(i => i.key === current.key);
       if (e.key === 'j') { e.preventDefault(); const n = visible[idx + 1]; if (n) setSelectedKey(n.key); }
       else if (e.key === 'k') { e.preventDefault(); const p = visible[idx - 1]; if (p) setSelectedKey(p.key); }
       else if (e.key === 'a' && !busy) { e.preventDefault(); doApprove(current); }
-      else if (e.key === 's' && !busy && current.kind === 'comment') { e.preventDefault(); doSecondary(current); }
+      else if (e.key === 's' && !busy && current.kind === 'comment') { e.preventDefault(); doSkip(current); }
       else if (e.key === 'e' && current.kind !== 'reply') { e.preventDefault(); editorRef.current?.focus(); }
     };
     window.addEventListener('keydown', onKey);
@@ -302,15 +314,29 @@ export default function InboxPage() {
                     </button>
                   )}
                   {SECONDARY_LABEL[current.kind] && (
-                    <button onClick={() => doSecondary(current)} disabled={busy}
+                    <button onClick={() => doSkip(current)} disabled={busy}
+                      aria-expanded={current.kind === 'comment' ? reasonsFor === current.key : undefined}
                       className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2.5 disabled:opacity-60">
                       {current.kind === 'message' && <RefreshCw className="w-4 h-4" />}
-                      {SECONDARY_LABEL[current.kind]}
+                      {current.kind === 'comment' && reasonsFor === current.key ? 'Skip without a reason' : SECONDARY_LABEL[current.kind]}
                       {current.kind === 'comment' && <kbd className="font-mono text-[11px] bg-secondary rounded px-1.5 py-0.5">S</kbd>}
                     </button>
                   )}
                   <span className="ml-auto hidden md:inline text-xs text-muted-foreground">J / K to move · E to edit · A for the main action</span>
                 </div>
+                {current.kind === 'comment' && reasonsFor === current.key && (
+                  <div role="group" aria-label="Why are you skipping this draft?" className="rounded-xl border border-border bg-background/60 p-3.5 flex flex-col gap-2.5">
+                    <div className="text-[13px] font-medium">Why are you skipping it? One click, and Copilot writes fewer drafts like this.</div>
+                    <div className="flex flex-wrap gap-2">
+                      {DISMISS_REASONS.map((r, n) => (
+                        <button key={r.key} onClick={() => doSecondary(current, r.key)} disabled={busy}
+                          className="h-10 px-3.5 rounded-full border border-border bg-card text-sm font-medium inline-flex items-center gap-2 hover:border-foreground/40 disabled:opacity-60">
+                          {r.label}<kbd className="font-mono text-[11px] bg-secondary rounded px-1.5 py-0.5">{n + 1}</kbd>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {current.kind === 'comment' && (
                   <p className="m-0 text-[13px] text-muted-foreground">
                     {opened.has(current.key)
