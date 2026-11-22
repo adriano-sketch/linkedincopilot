@@ -221,6 +221,17 @@ const supabase = {
   },
 
   async update(table, body, filters) {
+    // The action this copy holds can only change status with proof of the claim (see the trigger
+    // action_queue_guard_claim): the proof is added here so every write site carries it.
+    if (table === 'action_queue' && body && 'status' in body && body.status !== 'in_progress') {
+      // Claims are kept per action id, so a proof can never be attached to a different action.
+      const m = String(filters || '').match(/(?:^|&)id=eq\.([0-9a-f-]{36})(?:&|$)/i);
+      if (m) {
+        const claims = this.claims || (this.claims = (await getLocalData('action_claims')) || {});
+        const claim = claims[m[1]];
+        if (claim && claim.claimId) body = { ...body, released_claim_id: claim.claimId };
+      }
+    }
     return this.query(table, { method: 'PATCH', body, filters });
   }
 };
@@ -632,6 +643,7 @@ async function sendHeartbeat() {
 // ── QUEUE PROCESSOR ──
 const queueProcessor = {
   isProcessing: false,
+  pollRunning: false, // one poll at a time, from its first check to the last status write
   isPaused: false,
   // False until the first heartbeat of this service-worker life has read is_paused from the
   // server. Chrome restarts the worker often and isPaused starts as false every time: on
@@ -643,7 +655,10 @@ const queueProcessor = {
     if (!supabase.accessToken || !supabase.userId) return;
     if (!this.pauseSynced) return;
     if (this.isPaused) return;
-    if (this.isProcessing) return;
+    if (this.isProcessing || this.pollRunning) return;
+    // Taken synchronously, before the first await: a second alarm-triggered poll that starts while
+    // this one is still reading storage must not get through and run a second action in parallel.
+    this.pollRunning = true;
     try {
       const cooldownUntil = await getLocalData('linkedin_cooldown_until');
       if (cooldownUntil && Date.now() < cooldownUntil) {
@@ -691,9 +706,13 @@ const queueProcessor = {
         if (stuck && stuck.length > 0) {
           for (const s of stuck) {
             console.warn(`[QueueProcessor] Unsticking action ${s.id} (${s.action_type}) — in_progress since ${s.picked_up_at}`);
+            // Only if the row is still the claim we just read: another copy may have reset it and
+            // taken it again in the meantime, and that new claim must not be undone.
+            const sameClaim = `status=eq.in_progress&picked_up_at=eq.${encodeURIComponent(s.picked_up_at)}`
+              + (s.claim_id ? `&claim_id=eq.${encodeURIComponent(s.claim_id)}` : '&claim_id=is.null');
             await supabase.update('action_queue',
               { status: 'pending', picked_up_at: null, error_message: 'auto-reset: stuck in_progress >5min' },
-              `id=eq.${s.id}`
+              `id=eq.${s.id}&${sameClaim}`
             );
           }
         }
@@ -734,6 +753,8 @@ const queueProcessor = {
       await this.executeAction(data[0]);
     } catch (error) {
       console.error('[QueueProcessor] Poll error:', error);
+    } finally {
+      this.pollRunning = false;
     }
   },
 
@@ -770,15 +791,41 @@ const queueProcessor = {
         return;
       }
       // Claim the action only while it is still pending. Two copies of the extension on one account
-      // (the old folder install next to the store one) both read the same pending row; without the
-      // status filter both would run it and an invitation or a message could go out twice.
-      const { data: claimed } = await supabase.update('action_queue',
-        { status: 'in_progress', picked_up_at: new Date().toISOString() },
-        `id=eq.${action.id}&status=eq.pending`
-      );
+      // (the old folder install next to the store one) both read the same pending row; the status
+      // filter lets only one of them take it, and the database refuses a second claim outright.
+      // The claim carries a random id: if the request went through but its answer was lost and the
+      // retry found nothing to update, reading the row back tells our own claim from another copy's.
+      const claimId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      let claimed = null;
+      let claimError = null;
+      try {
+        ({ data: claimed } = await supabase.update('action_queue',
+          { status: 'in_progress', picked_up_at: new Date().toISOString(), claim_id: claimId },
+          `id=eq.${action.id}&status=eq.pending`
+        ));
+      } catch (e) {
+        claimError = e;
+      }
       if (!Array.isArray(claimed) || claimed.length === 0) {
-        console.log(`[QueueProcessor] Action ${action.id} was already taken by another copy; skipping`);
-        return;
+        let mine = false;
+        try {
+          const { data: row } = await supabase.select('action_queue',
+            `id=eq.${action.id}&status=eq.in_progress&claim_id=eq.${claimId}`, { select: 'id', limit: 1 });
+          mine = Array.isArray(row) && row.length > 0;
+        } catch (e) {
+          console.warn('[QueueProcessor] Could not confirm the claim:', e.message);
+        }
+        if (!mine) {
+          console.log(`[QueueProcessor] Action ${action.id} not claimed (${claimError ? claimError.message : 'taken by another copy'}); skipping`);
+          return;
+        }
+      }
+      {
+        const claims = supabase.claims || (supabase.claims = (await getLocalData('action_claims')) || {});
+        claims[action.id] = { claimId, at: Date.now() };
+        // Proofs only matter while an action is fresh; keep a day of them.
+        for (const [id, c] of Object.entries(claims)) if (Date.now() - (c.at || 0) > 24 * 60 * 60 * 1000) delete claims[id];
+        await setLocalData('action_claims', claims);
       }
       // Every attempt counts for pacing, whatever its outcome: a skipped or failed action still
       // opened a LinkedIn page. (last_action_time is only written when an action succeeds.)
