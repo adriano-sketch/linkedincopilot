@@ -94,8 +94,10 @@ export function useUserPlan() {
   const [now, setNow] = useState(() => Date.now());
   const trialEndMs = trialEndsAt ? trialEndsAt.getTime() : 0;
   useEffect(() => {
-    if (isPaid || !trialEndMs || trialEndMs <= Date.now()) return;
+    // Refresh first: settings can arrive after the deadline passed, and the mount-time clock would
+    // otherwise keep saying the trial is running.
     setNow(Date.now());
+    if (isPaid || !trialEndMs || trialEndMs <= Date.now()) return;
     const id = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, [isPaid, trialEndMs]);
