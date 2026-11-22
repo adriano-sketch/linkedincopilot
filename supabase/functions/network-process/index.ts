@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, reviewComments, triagePost, type PostKind, type SenderFacts,
+  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, loadLearned, reviewComments, triagePost, type PostKind, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray,
@@ -163,6 +163,8 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
     about: [me?.company_description, me?.proof_points].filter(Boolean).join(" "), tone: me?.dm_tone,
     // deno-lint-ignore no-explicit-any
     topics: (me as any)?.comment_topics, avoid: (me as any)?.comment_avoid, examples: (me as any)?.comment_examples, views: (me as any)?.comment_views,
+    // What the user's own Inbox decisions show: published comments and rejected drafts.
+    learned: await loadLearned(supabase, userId),
   };
 
   // Posts found in the user's own network (post_urn "lc:…", no ICP, no campaign contact) are judged

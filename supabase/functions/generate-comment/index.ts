@@ -13,7 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, reviewComments, triagePost, type SenderFacts,
+  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, loadLearned, reviewComments, triagePost, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, parseJsonArray } from "../_shared/network.ts";
 
@@ -111,6 +111,8 @@ serve(async (req) => {
       about: [me?.company_description, campaign?.proof_points || me?.proof_points].filter(Boolean).join(" "),
       tone: campaign?.dm_tone || me?.dm_tone,
       topics: kb.comment_topics, avoid: kb.comment_avoid, examples: kb.comment_examples, views: kb.comment_views,
+      // What the user's own Inbox decisions show: published comments and rejected drafts.
+      learned: await loadLearned(supabase, lead.user_id),
     };
     const author = lead.full_name || null;
     const authorTitle = String(lead.title || lead.profile_current_title || "");
