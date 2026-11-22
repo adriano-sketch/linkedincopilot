@@ -382,3 +382,19 @@ export function renderInviteNote(template: string | null | undefined, fullName: 
   out = out.replace(/\s+/g, " ").trim();
   return out && out.length <= 300 ? out : null;
 }
+
+/**
+ * May Copilot work for this user right now (paid plan or free trial still running)?
+ * Fails open: if the check itself breaks, nobody is stopped because of our error.
+ */
+// deno-lint-ignore no-explicit-any
+export async function hasProductAccess(supabase: any, userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc("has_product_access", { p_user_id: userId });
+    if (error) { console.error("has_product_access failed:", error.message); return true; }
+    return data !== false;
+  } catch (e) {
+    console.error("has_product_access failed:", e instanceof Error ? e.message : e);
+    return true;
+  }
+}

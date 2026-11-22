@@ -10,15 +10,15 @@ const PLANS = [
   {
     key: 'pro',
     name: 'Pro',
-    price: '$147',
-    period: '/mo',
-    subtitle: 'per LinkedIn account',
+    price: { month: '$69', year: '$690' },
+    period: { month: '/mo', year: '/yr' },
+    subtitle: { month: 'per LinkedIn account, cancel any time', year: 'per LinkedIn account, two months free' },
     features: [
-      '1,000 leads/month',
-      'Unlimited campaigns',
-      'Batch DM approval',
-      'CSV upload',
-      'Priority support',
+      'Posts from your network, picked by your subjects',
+      'Comment drafts in your voice, posted by you',
+      'New people in your target audience, with invitations',
+      'First messages drafted for your approval',
+      'Daily limits that keep your account safe',
     ],
   },
 ];
@@ -30,6 +30,7 @@ interface UpgradeModalProps {
 
 export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
   const [loading, setLoading] = useState<string | null>(null);
+  const [interval, setInterval_] = useState<'month' | 'year'>('month');
 
   const handleCheckout = async (planKey: string) => {
     setLoading(planKey);
@@ -109,7 +110,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
           return await fetch(checkoutUrl, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ plan: planKey }),
+            body: JSON.stringify({ plan: planKey, interval }),
           });
         } catch (err: any) {
           if (String(err?.message || '').includes('Invalid value')) {
@@ -121,7 +122,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
             return await fetch(checkoutUrl, {
               method: 'POST',
               headers: retryHeaders,
-              body: JSON.stringify({ plan: planKey }),
+              body: JSON.stringify({ plan: planKey, interval }),
             });
           }
           throw err;
@@ -162,22 +163,30 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Crown className="w-5 h-5 text-primary" /> Upgrade Your Plan
+            <Crown className="w-5 h-5 text-primary" /> Subscribe to Pro
           </DialogTitle>
           <DialogDescription>
-            Choose a plan to unlock more leads and features.
+            One plan, everything included. Have a founder code? Enter it on the payment page.
           </DialogDescription>
         </DialogHeader>
+        <div role="group" aria-label="Billing" className="mt-3 mx-auto flex gap-1 rounded-full border border-border p-1 w-fit text-sm">
+          {(['month', 'year'] as const).map((k) => (
+            <button key={k} type="button" onClick={() => setInterval_(k)} aria-pressed={interval === k}
+              className={`h-8 px-4 rounded-full ${interval === k ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground'}`}>
+              {k === 'month' ? 'Monthly' : 'Yearly'}
+            </button>
+          ))}
+        </div>
         <div className="mt-4 max-w-sm mx-auto">
           {PLANS.map((plan) => (
             <Card key={plan.key} className="border-primary ring-1 ring-primary/20">
               <CardContent className="p-5 flex flex-col h-full">
                 <h3 className="font-bold text-lg">{plan.name}</h3>
                 <div className="mt-1">
-                  <span className="text-3xl font-extrabold">{plan.price}</span>
-                  <span className="text-muted-foreground text-sm">{plan.period}</span>
+                  <span className="text-3xl font-extrabold">{plan.price[interval]}</span>
+                  <span className="text-muted-foreground text-sm">{plan.period[interval]}</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">{plan.subtitle}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{plan.subtitle[interval]}</p>
                 <ul className="space-y-2 text-sm mt-4 flex-1">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2">

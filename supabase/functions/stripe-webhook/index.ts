@@ -17,10 +17,12 @@ const PLAN_LIMITS: Record<string, { max_leads_per_cycle: number; max_campaigns: 
 function resolvePlan(priceId?: string | null, productId?: string | null) {
   const pricePro = Deno.env.get("STRIPE_PRICE_PRO") || "";
   const priceAgency = Deno.env.get("STRIPE_PRICE_AGENCY") || "";
+  const priceProYearly = Deno.env.get("STRIPE_PRICE_PRO_YEARLY") || "";
   const productPro = Deno.env.get("STRIPE_PRODUCT_PRO") || "";
   const productAgency = Deno.env.get("STRIPE_PRODUCT_AGENCY") || "";
 
   if (priceId && priceId === pricePro) return "pro";
+  if (priceId && priceProYearly && priceId === priceProYearly) return "pro";
   if (priceId && priceId === priceAgency) return "agency";
   if (productId && productId === productPro) return "pro";
   if (productId && productId === productAgency) return "agency";

@@ -107,22 +107,20 @@ export default function Landing() {
     { q: 'How many invitations does it send?', a: 'You set a weekly number and Copilot spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day. The best matches for your audience go first.' },
     { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. Drafts are written with AI by Anthropic. The data is not sold and is not used to train AI models. The privacy policy has the full list.' },
     { q: 'Can I edit or reject what it writes?', a: 'Always. Every comment is a draft you post yourself, and every message waits for your approval. You can edit, skip or reject any of them.' },
-    { q: 'What do the plans include?', a: 'The free plan includes 50 outreach credits and one campaign. Pro is $147 a month per LinkedIn account, with 1,000 outreach credits a month and unlimited campaigns. A credit is used when a lead you imported passes the fit check and becomes ready for outreach.' },
+    { q: 'What does it cost?', a: 'You try everything free for 14 days, with no credit card. After that there is one plan: Pro, $69 a month per LinkedIn account, or $690 a year. If you do not subscribe when the trial ends, Copilot stops looking for posts, writing drafts and sending invitations; what is already in your Inbox stays there.' },
   ];
 
   const pricing = [
     {
-      name: 'Free',
+      name: 'Free trial',
       price: '$0',
-      period: '/mo',
+      period: ' for 14 days',
       subtitle: '',
-      leads: '50 outreach credits',
+      leads: 'Everything in Pro',
       features: [
-        'Comment drafts for posts by your connections',
-        'Audiences and invitations with your note',
-        'First-message drafts, approved one by one',
-        '1 campaign',
-        'Chrome extension with daily limits',
+        'No credit card',
+        'See drafts for real posts from your network on day one',
+        'When it ends, nothing is charged: Copilot just pauses',
       ],
       cta: 'Start free',
       sub: 'No credit card required.',
@@ -130,17 +128,18 @@ export default function Landing() {
     },
     {
       name: 'Pro',
-      price: '$147',
+      price: '$69',
       period: '/mo',
-      subtitle: 'per LinkedIn account',
-      leads: '1,000 outreach credits a month',
+      subtitle: 'per LinkedIn account, or $690 a year',
+      leads: 'One plan, everything included',
       features: [
-        'Everything in Free',
-        'Unlimited campaigns',
-        'Approve messages in batch',
-        'Priority support',
+        'Posts from your network, picked by your subjects',
+        'Comment drafts in your voice, posted by you',
+        'New people in your target audience, with invitations and your note',
+        'First messages drafted for your approval',
+        'Daily limits that keep your account safe',
       ],
-      cta: 'Start 7-day trial',
+      cta: 'Start free',
       sub: 'Cancel anytime.',
       highlighted: true,
     },
@@ -331,7 +330,7 @@ export default function Landing() {
       <section ref={pricingRef} id="pricing" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl text-center relative z-10">
           <motion.h2 {...fadeUp} className="text-3xl md:text-4xl font-display font-bold tracking-tight mb-2">Pricing</motion.h2>
-          <motion.p {...fadeUp} className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">Start free. Pay when it is part of your week.</motion.p>
+          <motion.p {...fadeUp} className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">Try it for 14 days. Pay when it is part of your week.</motion.p>
 
           <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
             {pricing.map((plan, i) => (

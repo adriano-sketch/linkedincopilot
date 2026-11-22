@@ -6,6 +6,7 @@
 // (watchdog owns the daily reset).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, unauthorized } from "../_shared/auth.ts";
+import { hasProductAccess } from "../_shared/network.ts";
 
 
 // Status → next action mapping (OUTREACH mode)
@@ -189,10 +190,16 @@ Deno.serve(async (req) => {
     );
 
     // Get active campaigns only (include stage approval flags + campaign mode)
-    const { data: activeCampaigns } = await supabase
+    const { data: allActiveCampaigns } = await supabase
       .from("campaign_profiles")
-      .select("id, auto_approve_dms, stage_connection_approved, stage_dm_approved, stage_followup_approved, campaign_mode")
+      .select("id, user_id, auto_approve_dms, stage_connection_approved, stage_dm_approved, stage_followup_approved, campaign_mode")
       .eq("status", "active");
+    // Trial over and no paid plan: the owner's campaigns schedule nothing new.
+    const accessByUser = new Map<string, boolean>();
+    for (const uid of new Set((allActiveCampaigns || []).map((c: any) => c.user_id as string))) {
+      accessByUser.set(uid, await hasProductAccess(supabase, uid));
+    }
+    const activeCampaigns = (allActiveCampaigns || []).filter((c: any) => accessByUser.get(c.user_id) !== false);
 
     const activeCampaignIds = (activeCampaigns || []).map(c => c.id);
     const campaignAutoApprove = new Map(
