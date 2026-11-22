@@ -692,7 +692,7 @@ const queueProcessor = {
           for (const s of stuck) {
             console.warn(`[QueueProcessor] Unsticking action ${s.id} (${s.action_type}) — in_progress since ${s.picked_up_at}`);
             await supabase.update('action_queue',
-              { status: 'pending', picked_up_at: null, error_message: 'auto-reset: stuck in_progress >5min' },
+              { status: 'pending', picked_up_at: null, claim_id: null, error_message: 'auto-reset: stuck in_progress >5min' },
               `id=eq.${s.id}`
             );
           }
@@ -770,15 +770,34 @@ const queueProcessor = {
         return;
       }
       // Claim the action only while it is still pending. Two copies of the extension on one account
-      // (the old folder install next to the store one) both read the same pending row; without the
-      // status filter both would run it and an invitation or a message could go out twice.
-      const { data: claimed } = await supabase.update('action_queue',
-        { status: 'in_progress', picked_up_at: new Date().toISOString() },
-        `id=eq.${action.id}&status=eq.pending`
-      );
+      // (the old folder install next to the store one) both read the same pending row; the status
+      // filter lets only one of them take it, and the database refuses a second claim outright.
+      // The claim carries a random id: if the request went through but its answer was lost and the
+      // retry found nothing to update, reading the row back tells our own claim from another copy's.
+      const claimId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      let claimed = null;
+      let claimError = null;
+      try {
+        ({ data: claimed } = await supabase.update('action_queue',
+          { status: 'in_progress', picked_up_at: new Date().toISOString(), claim_id: claimId },
+          `id=eq.${action.id}&status=eq.pending`
+        ));
+      } catch (e) {
+        claimError = e;
+      }
       if (!Array.isArray(claimed) || claimed.length === 0) {
-        console.log(`[QueueProcessor] Action ${action.id} was already taken by another copy; skipping`);
-        return;
+        let mine = false;
+        try {
+          const { data: row } = await supabase.select('action_queue',
+            `id=eq.${action.id}&status=eq.in_progress&claim_id=eq.${claimId}`, { select: 'id', limit: 1 });
+          mine = Array.isArray(row) && row.length > 0;
+        } catch (e) {
+          console.warn('[QueueProcessor] Could not confirm the claim:', e.message);
+        }
+        if (!mine) {
+          console.log(`[QueueProcessor] Action ${action.id} not claimed (${claimError ? claimError.message : 'taken by another copy'}); skipping`);
+          return;
+        }
       }
       // Every attempt counts for pacing, whatever its outcome: a skipped or failed action still
       // opened a LinkedIn page. (last_action_time is only written when an action succeeds.)
