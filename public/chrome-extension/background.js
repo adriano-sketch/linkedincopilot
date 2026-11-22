@@ -1859,6 +1859,23 @@ const queueProcessor = {
         console.warn('[QueueProcessor] Tab not on LinkedIn, skipping injection');
         return;
       }
+      const ping = (ms) => new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('ping timeout')), ms);
+        chrome.tabs.sendMessage(tabId, { type: 'PING' }, (resp) => {
+          clearTimeout(t);
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(resp);
+        });
+      });
+      // The manifest already loads content.js on every LinkedIn page. Loading it a second time
+      // throws "Identifier '_cachedMailboxUrn' has already been declared" (its top-level let/const
+      // cannot be declared twice) and shows up in the extension's error list. So ask first, and
+      // inject only when nobody answers.
+      try {
+        await ping(2000);
+        console.log('[QueueProcessor] Content script already loaded');
+        return;
+      } catch (_) { /* not there yet: inject below */ }
       await chrome.scripting.executeScript({
         target: { tabId },
         files: ['content.js']
@@ -1867,14 +1884,7 @@ const queueProcessor = {
       
       // Verify content script is responsive with a ping
       try {
-        await new Promise((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error('ping timeout')), 5000);
-          chrome.tabs.sendMessage(tabId, { type: 'PING' }, (resp) => {
-            clearTimeout(t);
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-            else resolve(resp);
-          });
-        });
+        await ping(5000);
         console.log('[QueueProcessor] Content script verified responsive');
       } catch (pingErr) {
         console.warn('[QueueProcessor] Content script not responding to ping, retrying injection...');
