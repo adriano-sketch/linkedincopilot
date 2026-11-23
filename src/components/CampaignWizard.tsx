@@ -23,7 +23,7 @@ import { parseLeadCsv } from '@/lib/csv';
 import VerticalSelector from '@/components/campaign-wizard/VerticalSelector';
 import TitleZones from '@/components/campaign-wizard/TitleZones';
 import IcpFitPreview from '@/components/IcpFitPreview';
-import { addPeopleToList } from '@/lib/addPeople';
+import { addPeopleToList, profileUrlFrom } from '@/lib/addPeople';
 import ContactPicker, { type PickedContact } from '@/components/contacts/ContactPicker';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -168,13 +168,12 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   };
 
   const addGrowthProfile = () => {
-    const url = growthProfileUrl.trim();
-    if (!url) return;
-    if (!url.includes('linkedin.com/in/')) {
+    if (!growthProfileUrl.trim()) return;
+    const normalized = profileUrlFrom(growthProfileUrl);
+    if (!normalized) {
       toast.error('Enter a valid LinkedIn profile URL (e.g. linkedin.com/in/username)');
       return;
     }
-    const normalized = url.startsWith('http') ? url : `https://www.${url}`;
     if (growthProfiles.includes(normalized)) {
       toast.error('Profile already added');
       return;

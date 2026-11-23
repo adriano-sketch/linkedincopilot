@@ -43,10 +43,11 @@ export default function LeadSourcing() {
   const { leads } = useCampaignLeads(listId || undefined);
   const list = lists.find(c => c.id === listId);
   // People already in this list stay ticked in the picker: they are not counted or sent again.
-  const already = new Set(leads.map(l => l.linkedin_url));
-  const newPicked = picked.filter(p => !already.has(p.linkedin_url));
+  const already = new Set(leads.map(l => profileUrlFrom(l.linkedin_url) || l.linkedin_url));
+  const newPicked = picked.filter(p => !already.has(profileUrlFrom(p.linkedin_url) || p.linkedin_url));
   const newUrls = urls.filter(u => !already.has(u));
-  const total = newPicked.length + newUrls.length;
+  // One person picked and also pasted counts once.
+  const total = new Set([...newPicked.map(p => profileUrlFrom(p.linkedin_url) || p.linkedin_url), ...newUrls]).size;
   // Lists made before the description was asked carry a placeholder: do not prefill the picker with it.
   const description = list?.icp_description && !/^growth mode/i.test(list.icp_description) ? list.icp_description : undefined;
 
