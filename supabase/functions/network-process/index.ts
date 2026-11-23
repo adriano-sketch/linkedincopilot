@@ -113,6 +113,7 @@ async function writeComments(
   retry: { previous: string; feedback: string }[] | null,
   kind: PostKind = "on_topic",
   topic = "",
+  need = "",
 ): Promise<{ comment: string; skip: string | null }[]> {
   const items = batch.map((d, idx) => [
     `[${idx}] Author: ${d.post.author_name || "Unknown"}`,
@@ -122,7 +123,7 @@ async function writeComments(
     `Post:\n${String(d.post.post_text).slice(0, 2000)}`,
     retry ? `Your previous draft was REJECTED: "${retry[idx].previous}"\nWhy: ${retry[idx].feedback}\nWrite a better one or skip.` : "",
   ].filter(Boolean).join("\n")).join("\n=====\n");
-  const system = `${commentRules(facts, kind, topic)}
+  const system = `${commentRules(facts, kind, topic, need)}
 
 Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "comment": "..."}] or
 [{"index": n, "skip": true, "skip_reason": "<max 12 words>"}]`;
@@ -184,12 +185,12 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
       if (triage.kind === "off_topic") { await ignore(`Off topic: ${triage.reason}`); kbSkipped++; continue; }
       const item = [{ post: p, signal: triage.kind, reason: triage.topic || "" }];
       const topic = triage.topic || "one of the subjects listed above";
-      let [draft] = await writeComments(item, facts, null, triage.kind, topic);
+      let [draft] = await writeComments(item, facts, null, triage.kind, topic, triage.signalReason);
       let rev = { ok: false, reason: draft.skip || "" };
       if (!draft.skip) {
         [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: draft.comment }], facts, triage.kind);
         if (!rev.ok) {
-          const [second] = await writeComments(item, facts, [{ previous: draft.comment, feedback: rev.reason }], triage.kind, topic);
+          const [second] = await writeComments(item, facts, [{ previous: draft.comment, feedback: rev.reason }], triage.kind, topic, triage.signalReason);
           draft = second;
           rev = second.skip
             ? { ok: false, reason: second.skip }
@@ -199,7 +200,10 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
       if (!draft.skip && rev.ok && !isSkip(draft.comment)) {
         await supabase.from("monitored_posts").update({
           suggested_comment: draft.comment, status: "pending", last_error: null,
-          signal_type: triage.kind === "milestone" ? "milestone" : "relationship",
+          // A need shown by the author goes to the top of the Inbox, labelled (same values as generate-comment).
+          signal_type: triage.signal === "opportunity" ? "business_opportunity" : triage.signal === "pain" ? "pain_point"
+            : triage.kind === "milestone" ? "milestone" : "relationship",
+          ...(triage.signal !== "none" ? { signal_reason: triage.signalReason, priority: triage.signal === "opportunity" ? 95 : 90 } : {}),
           fit_reason: triage.kind === "milestone" ? "Milestone of a contact" : `Your subject: ${triage.topic || "one of your subjects"}`.slice(0, 200),
         }).eq("id", p.id).eq("status", "new");
         kbDrafted++;
