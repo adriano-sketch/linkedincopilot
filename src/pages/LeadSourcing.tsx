@@ -59,7 +59,7 @@ export default function LeadSourcing() {
         return;
       }
       if (leadsRemaining <= 0) {
-        toast.warning('You have 0 lead credits remaining. Leads will be filtered by ICP but not counted until next cycle.');
+        toast.warning('You have no credits left this cycle. People are still checked against your audience, but not counted until the next cycle.');
       }
 
       setCsvParsed(rows);
@@ -67,13 +67,13 @@ export default function LeadSourcing() {
       const extra = invalidRows > 0 || duplicateRows > 0
         ? ` (${invalidRows} invalid, ${duplicateRows} duplicates)`
         : '';
-      toast.success(`Parsed ${rows.length} leads from CSV${extra}`);
+      toast.success(`Read ${rows.length} people from the CSV${extra}`);
     };
     reader.readAsText(file);
   };
 
   const importCsv = async () => {
-    if (!selectedCampaignId || !user) { toast.error('Select a campaign first'); return; }
+    if (!selectedCampaignId || !user) { toast.error('Select a list first'); return; }
     setCsvImporting(true);
     try {
       const existingUrls = new Set(
@@ -83,7 +83,7 @@ export default function LeadSourcing() {
       const dupes = csvParsed.length - newLeads.length;
 
       if (leadsRemaining <= 0) {
-        toast.warning('You have 0 lead credits remaining. Leads will be filtered by ICP but not counted until next cycle.');
+        toast.warning('You have no credits left this cycle. People are still checked against your audience, but not counted until the next cycle.');
       }
 
       if (newLeads.length > 0) {
@@ -117,10 +117,10 @@ export default function LeadSourcing() {
         }
 
         queryClient.invalidateQueries({ queryKey: ['user_settings'] });
-        toast.success(`Imported ${totalInserted} of ${newLeads.length} leads. ${dupes} duplicates skipped.`);
-        toast.info('Leads imported. Enrichment will validate profiles and skip ghosts as needed.', { duration: 8000 });
+        toast.success(`Added ${totalInserted} of ${newLeads.length} people. ${dupes} duplicates skipped.`);
+        toast.info('People added. Their profiles are checked first; empty profiles are skipped.', { duration: 8000 });
       } else {
-        toast.success(`Imported 0 leads. ${dupes} duplicates skipped.`);
+        toast.success(`Added 0 people. ${dupes} duplicates skipped.`);
       }
       queryClient.invalidateQueries({ queryKey: ['campaign_leads'] });
       setCsvParsed([]);
@@ -151,14 +151,14 @@ export default function LeadSourcing() {
   return (
     <AppShell>
       <div className="max-w-4xl space-y-4">
-        <h1 className="font-display font-bold text-4xl leading-none m-0 mb-2">Add leads</h1>
+        <h1 className="font-display font-bold text-4xl leading-none m-0 mb-2">Add people</h1>
 
         {/* Lead Credits Banner */}
         <Card className={isExhausted ? 'border-destructive/50 bg-destructive/5' : isLow ? 'border-warning/50 bg-warning/5' : ''}>
           <CardContent className="py-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium flex items-center gap-2">
-                {isExhausted ? '🚫' : isLow ? '⚠️' : '📊'} Lead Credits {isFree ? '(Lifetime)' : 'This Month'}
+                {isExhausted ? '🚫' : isLow ? '⚠️' : '📊'} Credits {isFree ? '(Lifetime)' : 'This Month'}
               </span>
               <span className="text-xs text-muted-foreground">
                 {leadsUsed.toLocaleString()} / {leadsLimit.toLocaleString()} used
@@ -167,7 +167,7 @@ export default function LeadSourcing() {
             <Progress value={creditsPercentage} className="h-2" />
             <div className="flex items-center justify-between mt-2">
               <span className="text-xs text-muted-foreground">
-                {leadsRemaining.toLocaleString()} leads remaining
+                {leadsRemaining.toLocaleString()} people remaining
                 {resetDateFormatted && !isFree && ` · Resets ${resetDateFormatted}`}
               </span>
               {isFree && (
@@ -178,10 +178,10 @@ export default function LeadSourcing() {
             </div>
             {isExhausted && (
               <div className="mt-3 p-3 rounded-lg bg-destructive/10 text-sm">
-                <p className="font-medium">Monthly Lead Limit Reached</p>
+                <p className="font-medium">Monthly limit reached</p>
                 <p className="text-muted-foreground text-xs mt-1">
-                  Your leads are still being processed — check the Pipeline tab.
-                  {resetDateFormatted && ` New lead imports reset on ${resetDateFormatted}.`}
+                  The people you already added are still being processed.
+                  {resetDateFormatted && ` The limit resets on ${resetDateFormatted}.`}
                 </p>
                 {isFree && (
                   <Button size="sm" className="mt-2" onClick={() => setUpgradeOpen(true)}>
@@ -195,24 +195,24 @@ export default function LeadSourcing() {
 
         {/* Campaign selector */}
         <div className="flex items-center gap-2">
-          <Label>Campaign:</Label>
+          <Label>List:</Label>
           <Select value={selectedCampaignId} onValueChange={v => { setSelectedCampaignId(v); setCsvParsed([]); }}>
-            <SelectTrigger className="w-[250px]"><SelectValue placeholder="Select campaign" /></SelectTrigger>
+            <SelectTrigger className="w-[250px]"><SelectValue placeholder="Select a list" /></SelectTrigger>
             <SelectContent>
               {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          {selectedCampaignId && <Badge variant="outline">{leads.length} existing leads</Badge>}
+          {selectedCampaignId && <Badge variant="outline">{leads.length} people already in it</Badge>}
         </div>
 
         {!selectedCampaignId ? (
-          <Card><CardContent className="py-12 text-center text-muted-foreground">Select a campaign to add leads.</CardContent></Card>
+          <Card><CardContent className="py-12 text-center text-muted-foreground">Select a list to add people to.</CardContent></Card>
         ) : (
           <>
             {/* CSV Upload */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">📄 Import Your Leads</CardTitle>
+                <CardTitle className="text-base">Import a CSV of people</CardTitle>
                 <CardDescription>Upload a CSV with LinkedIn profile URLs. We'll enrich each profile, validate against your ICP, and generate personalized messages.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -220,7 +220,7 @@ export default function LeadSourcing() {
                 <Collapsible>
                   <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 rounded-lg border border-border bg-muted/30 hover:bg-muted/50 transition-colors text-left">
                     <Info className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium flex-1">Where to find leads with LinkedIn URLs</span>
+                    <span className="text-sm font-medium flex-1">Where to get a CSV with LinkedIn URLs</span>
                     <ChevronDown className="w-4 h-4 text-muted-foreground" />
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-2 p-3 rounded-lg border border-border bg-muted/20 space-y-3 text-xs">
@@ -234,7 +234,7 @@ export default function LeadSourcing() {
                     </div>
                     <div className="flex items-start gap-2">
                       <span>🔎</span>
-                      <div><p className="font-medium">Apollo.io</p><p className="text-muted-foreground">Export leads with LinkedIn URLs as CSV.</p></div>
+                      <div><p className="font-medium">Apollo.io</p><p className="text-muted-foreground">Export people with LinkedIn URLs as CSV.</p></div>
                     </div>
                     <div className="flex items-start gap-2">
                       <span>👤</span>
@@ -272,7 +272,7 @@ export default function LeadSourcing() {
 
                 {csvParsed.length > 0 && (
                   <>
-                    <p className="text-sm font-medium">Preview ({csvParsed.length} leads):</p>
+                    <p className="text-sm font-medium">Preview ({csvParsed.length} people):</p>
                     <div className="overflow-x-auto max-h-48 border rounded-lg">
                       <table className="w-full text-xs">
                         <thead><tr className="bg-muted">
@@ -286,7 +286,7 @@ export default function LeadSourcing() {
                       </table>
                     </div>
                     <Button onClick={importCsv} disabled={csvImporting}>
-                      {csvImporting ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Importing...</> : `Import ${csvParsed.length} leads`}
+                      {csvImporting ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Importing...</> : `Add ${csvParsed.length} people`}
                     </Button>
                   </>
                 )}
@@ -300,9 +300,9 @@ export default function LeadSourcing() {
                   <p className="text-lg font-semibold">You have {leads.length} leads in {campaign?.name}</p>
                   <div className="flex gap-3 justify-center">
                     <Button size="lg" onClick={() => navigate(`/dashboard?campaign=${selectedCampaignId}&launch=true`)}>
-                      <Rocket className="w-4 h-4 mr-1" /> Launch Campaign
+                      <Rocket className="w-4 h-4 mr-1" /> Start this list
                     </Button>
-                    <Button variant="outline" onClick={() => { setCsvParsed([]); }}>Add more leads</Button>
+                    <Button variant="outline" onClick={() => { setCsvParsed([]); }}>Add more people</Button>
                   </div>
                 </CardContent>
               </Card>

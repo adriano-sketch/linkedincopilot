@@ -162,7 +162,7 @@ export default function ContactPicker({
       // Saved first: people found by the extension are scored against it automatically.
       if (campaignId) await supabase.from('campaign_profiles').update({ icp_description: description.trim() }).eq('id', campaignId);
       const r = await searchLinkedIn.mutateAsync({ keywords: terms, pages: 2, postedRecently: salesNav && postedRecently });
-      if (r.already_running) toast.info('A search is already running for this campaign.');
+      if (r.already_running) toast.info('A search is already running for this list.');
       else if (r.extension_online === false) toast.warning('Search queued. It starts when the Chrome extension is online, during your active hours.');
       else toast.success('Search started. Matches appear here in a few minutes.');
     } catch (err) {
@@ -203,7 +203,7 @@ export default function ContactPicker({
                 Open <a className="text-gold-dark font-medium underline inline-flex items-center gap-0.5" href="https://www.linkedin.com/mypreferences/d/download-my-data" target="_blank" rel="noreferrer">Get a copy of your data<ExternalLink className="w-3 h-3" /></a>
               </li>
               <li>Choose only <strong>Connections</strong> and request the archive</li>
-              <li>LinkedIn emails it, usually within an hour (it says up to 24h). Upload the .zip or Connections.csv here. Contacts stay saved for all your campaigns</li>
+              <li>LinkedIn emails it, usually within an hour (it says up to 24h). Upload the .zip or Connections.csv here. Contacts stay saved for all your lists</li>
             </ol>
             <input ref={fileRef} type="file" accept=".csv,.zip,text/csv,application/zip" className="hidden" onChange={onFile} />
             <Button variant="outline" className="mt-auto h-10" onClick={() => fileRef.current?.click()} disabled={importConnections.isPending}>

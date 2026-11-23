@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
-export type InboxKind = 'reply' | 'comment' | 'message';
+export type InboxKind = 'reply' | 'comment';
 
 /** Why a comment draft was skipped. Same keys as the check constraint on monitored_posts.dismiss_reason. */
 export type DismissReason = 'off_topic' | 'not_my_voice' | 'too_generic' | 'dont_know_person';
@@ -77,20 +77,6 @@ export function useInbox() {
     },
   });
 
-  const messages = useQuery({
-    queryKey: ['inbox-messages', user?.id],
-    enabled,
-    refetchInterval: 60000,
-    queryFn: async () => {
-      const { data, error } = await db.from('campaign_leads')
-        .select('id, full_name, first_name, last_name, title, company, profile_headline, profile_about, linkedin_url, custom_dm, dm_text, icp_match_reason, connected_at, connection_accepted_at, updated_at, campaign_profile_id')
-        .eq('user_id', user!.id).eq('status', 'dm_pending_approval')
-        .order('updated_at', { ascending: false }).limit(100);
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
   const replies = useQuery({
     queryKey: ['inbox-replies', user?.id],
     enabled,
@@ -145,32 +131,12 @@ export function useInbox() {
       });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const l of (messages.data || []) as any[]) {
-      const name = leadName(l);
-      const about = [l.icp_match_reason, l.profile_about ? String(l.profile_about).slice(0, 400) : null].filter(Boolean).join('\n\n');
-      out.push({
-        key: `message:${l.id}`, kind: 'message', id: l.id, name, initials: initialsOf(name),
-        headline: [l.title || l.profile_headline, l.company].filter(Boolean).join(' · ') || null,
-        campaign: names.get(l.campaign_profile_id) || null,
-        at: l.connection_accepted_at || l.connected_at || l.updated_at,
-        preview: 'Accepted your invite. First message ready.',
-        contextLabel: 'Why this person',
-        context: about || 'Accepted your connection request.',
-        draft: l.custom_dm || l.dm_text || '',
-        signal: null, signalWhy: null,
-        why: 'First messages sent the same day get noticeably more replies.',
-        profileUrl: l.linkedin_url, postUrl: null,
-      });
-    }
-
-    const rank = (i: InboxItem) => (i.kind === 'reply' ? 0 : i.signal ? 1 : i.kind === 'comment' ? 2 : 3);
+    const rank = (i: InboxItem) => (i.kind === 'reply' ? 0 : i.signal ? 1 : 2);
     return out.sort((a, b) => rank(a) - rank(b) || (b.at || '').localeCompare(a.at || ''));
-  }, [replies.data, comments.data, messages.data, campaigns.data]);
+  }, [replies.data, comments.data, campaigns.data]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['inbox-comments'] });
-    qc.invalidateQueries({ queryKey: ['inbox-messages'] });
     qc.invalidateQueries({ queryKey: ['inbox-replies'] });
     qc.invalidateQueries({ queryKey: ['monitored-posts'] });
     qc.invalidateQueries({ queryKey: ['network-stats'] });
@@ -178,36 +144,22 @@ export function useInbox() {
     qc.invalidateQueries({ queryKey: ['inbox-count'] });
   };
 
-  /** Approves messages and records comments the person posted. `edits` maps item key → edited text. */
+  /** Records the comments the person posted. `edits` maps item key → edited text. */
   const approve = useMutation({
     mutationFn: async ({ items: list, edits }: { items: InboxItem[]; edits: Record<string, string> }) => {
       const commentIds = list.filter(i => i.kind === 'comment').map(i => i.id);
-      const messageItems = list.filter(i => i.kind === 'message');
-      let done = 0;
-      if (commentIds.length) {
-        const p_edits: Record<string, string> = {};
-        for (const i of list) if (i.kind === 'comment' && edits[i.key] != null && edits[i.key].trim() !== i.draft.trim()) p_edits[i.id] = edits[i.key].trim();
-        // Comments: the person posted it on LinkedIn; this only records it.
-        const { data, error } = await db.rpc('mark_post_comments_posted', { p_ids: commentIds, p_edits });
-        if (error) throw error;
-        done += Number(data) || 0;
-      }
-      if (messageItems.length) {
-        const editsBody: Record<string, { custom_dm: string }> = {};
-        for (const i of messageItems) if (edits[i.key] != null && edits[i.key].trim() !== i.draft.trim()) editsBody[i.id] = { custom_dm: edits[i.key].trim() };
-        const hasEdits = Object.keys(editsBody).length > 0;
-        const { data, error } = await supabase.functions.invoke('approve-dms', {
-          body: { lead_ids: messageItems.map(i => i.id), action: hasEdits ? 'approve_with_edit' : 'approve', ...(hasEdits ? { edits: editsBody } : {}) },
-        });
-        if (error) throw error;
-        done += Number(data?.approved) || 0;
-      }
-      return done;
+      if (!commentIds.length) return 0;
+      const p_edits: Record<string, string> = {};
+      for (const i of list) if (i.kind === 'comment' && edits[i.key] != null && edits[i.key].trim() !== i.draft.trim()) p_edits[i.id] = edits[i.key].trim();
+      // The person posted it on LinkedIn; this only records it.
+      const { data, error } = await db.rpc('mark_post_comments_posted', { p_ids: commentIds, p_edits });
+      if (error) throw error;
+      return Number(data) || 0;
     },
     onSuccess: invalidate,
   });
 
-  /** Comment: skip it (optionally saying why). Message: write a new draft. Reply: mark as handled. */
+  /** Comment: skip it (optionally saying why). Reply: mark as handled. */
   const dismiss = useMutation({
     mutationFn: async (arg: InboxItem | { item: InboxItem; reason?: DismissReason | null }) => {
       const item = 'item' in arg ? arg.item : arg;
@@ -218,9 +170,6 @@ export function useInbox() {
           .update({ status: 'dismissed', updated_at: now, ...(reason ? { dismiss_reason: reason } : {}) })
           .eq('id', item.id).eq('status', 'pending');
         if (error) throw error;
-      } else if (item.kind === 'message') {
-        const { error } = await supabase.functions.invoke('approve-dms', { body: { lead_ids: [item.id], action: 'reject' } });
-        if (error) throw error;
       } else {
         const { error } = await db.from('campaign_leads').update({ reply_handled_at: now }).eq('id', item.id);
         if (error) throw error;
@@ -229,7 +178,7 @@ export function useInbox() {
     onSuccess: invalidate,
   });
 
-  const loading = comments.isLoading || messages.isLoading || replies.isLoading;
+  const loading = comments.isLoading || replies.isLoading;
   return { items, loading, approve, dismiss };
 }
 
@@ -241,12 +190,11 @@ export function useInboxCount() {
     enabled: !!user,
     refetchInterval: 60000,
     queryFn: async () => {
-      const [c, m, r] = await Promise.all([
+      const [c, r] = await Promise.all([
         supabase.from('monitored_posts').select('id', { count: 'exact', head: true }).eq('user_id', user!.id).eq('status', 'pending'),
-        db.from('campaign_leads').select('id', { count: 'exact', head: true }).eq('user_id', user!.id).eq('status', 'dm_pending_approval'),
         db.from('campaign_leads').select('id', { count: 'exact', head: true }).eq('user_id', user!.id).eq('status', 'replied').is('reply_handled_at', null),
       ]);
-      return (c.count || 0) + (m.count || 0) + (r.count || 0);
+      return (c.count || 0) + (r.count || 0);
     },
   });
 }

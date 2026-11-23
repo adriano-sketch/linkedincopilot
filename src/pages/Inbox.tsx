@@ -2,9 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { toast } from 'sonner';
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Sparkles } from 'lucide-react';
 import AppShell from '@/components/app/AppShell';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/hooks/useAuth';
 import { DISMISS_REASONS, useInbox, type DismissReason, type InboxItem, type InboxKind } from '@/hooks/useInbox';
 import { cn } from '@/lib/utils';
@@ -15,13 +14,12 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'reply', label: 'Replies' },
   { key: 'comment', label: 'Comments' },
-  { key: 'message', label: 'Messages' },
   { key: 'signal', label: 'Business signals' },
 ];
-const KIND_LABEL: Record<InboxKind, string> = { reply: 'Reply', comment: 'Comment', message: 'Message' };
-const APPROVE_LABEL: Record<InboxKind, string> = { reply: 'Mark as handled', comment: 'Copy and open post', message: 'Approve message' };
-const SECONDARY_LABEL: Record<InboxKind, string | null> = { reply: null, comment: 'Skip', message: 'Write a new draft' };
-const EDITOR_LABEL: Record<InboxKind, string> = { reply: '', comment: 'Draft comment', message: 'Suggested first message' };
+const KIND_LABEL: Record<InboxKind, string> = { reply: 'Reply', comment: 'Comment' };
+const APPROVE_LABEL: Record<InboxKind, string> = { reply: 'Mark as handled', comment: 'Copy and open post' };
+const SECONDARY_LABEL: Record<InboxKind, string | null> = { reply: null, comment: 'Skip' };
+const EDITOR_LABEL: Record<InboxKind, string> = { reply: '', comment: 'Draft comment' };
 
 const ago = (iso: string | null) => {
   if (!iso) return '';
@@ -52,7 +50,6 @@ export default function InboxPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [handled, setHandled] = useState<Set<string>>(new Set());
-  const [checked, setChecked] = useState<Set<string>>(new Set());
   // Comments whose post was already opened: the next step is to confirm it was posted.
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const [mobileDetail, setMobileDetail] = useState(false);
@@ -100,7 +97,7 @@ export default function InboxPage() {
     hide([item.key]);
     try {
       await approve.mutateAsync({ items: [item], edits });
-      toast.success(item.kind === 'comment' ? 'Recorded as posted.' : 'Approved. The message goes out in the next business hour.');
+      toast.success('Recorded as posted.');
     } catch (e) {
       unhide([item.key]);
       toast.error(errText(e, 'Could not record it. Try again.'));
@@ -119,32 +116,12 @@ export default function InboxPage() {
     hide([item.key]);
     try {
       await dismiss.mutateAsync({ item, reason });
-      toast.success(item.kind === 'comment' ? (reason ? 'Skipped. Olanovo will take that into account.' : 'Skipped') : item.kind === 'message' ? 'A new draft is being written' : 'Marked as handled');
+      toast.success(item.kind === 'comment' ? (reason ? 'Skipped. Olanovo will take that into account.' : 'Skipped') : 'Marked as handled');
     } catch (e) {
       unhide([item.key]);
       toast.error(errText(e, 'Something went wrong. Try again.'));
     }
   };
-
-  // Only first messages can be approved in bulk: each comment is posted by hand, one at a time.
-  const bulkItems = visible.filter(i => checked.has(i.key) && i.kind === 'message');
-  const doBulkApprove = async () => {
-    const empty = bulkItems.filter(i => !textOf(i).trim());
-    if (empty.length) { toast.error('Some selected drafts are empty'); return; }
-    const keys = bulkItems.map(i => i.key);
-    hide(keys);
-    setChecked(new Set());
-    try {
-      const n = await approve.mutateAsync({ items: bulkItems, edits });
-      toast.success(`${n} approved. The messages go out spaced through your active hours.`);
-    } catch (e) {
-      unhide(keys);
-      toast.error(errText(e, 'Could not approve. Try again.'));
-    }
-  };
-  const selectable = visible.filter(i => i.kind === 'message');
-  const allChecked = selectable.length > 0 && selectable.every(i => checked.has(i.key));
-  const toggleAll = () => setChecked(allChecked ? new Set() : new Set(selectable.map(i => i.key)));
 
   // Keyboard: J/K move, A approve, S skip / secondary, E edit, Cmd+Enter approve while editing.
   useEffect(() => {
@@ -171,7 +148,7 @@ export default function InboxPage() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const setFilter = (f: Filter) => { setParams(f === 'all' ? {} : { type: f }, { replace: true }); setSelectedKey(null); setChecked(new Set()); };
+  const setFilter = (f: Filter) => { setParams(f === 'all' ? {} : { type: f }, { replace: true }); setSelectedKey(null); };
 
   return (
     <AppShell>
@@ -203,20 +180,6 @@ export default function InboxPage() {
           {/* List */}
           <div className={cn('w-full lg:w-[380px] lg:shrink-0 lg:border-r border-border bg-[hsl(var(--section-white))] flex flex-col',
             mobileDetail ? 'hidden lg:flex' : 'flex')}>
-            {selectable.length > 0 && (
-              <div className="flex items-center justify-between gap-2 px-4 h-12 border-b border-border">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox checked={allChecked} onCheckedChange={toggleAll} aria-label="Select all drafts shown" />
-                  {checked.size > 0 ? `${bulkItems.length} selected` : 'Select all'}
-                </label>
-                {bulkItems.length > 0 && (
-                  <button onClick={doBulkApprove} disabled={busy}
-                    className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-60">
-                    Approve {bulkItems.length}
-                  </button>
-                )}
-              </div>
-            )}
             {loading ? (
               <div className="flex-1 grid place-items-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin" /></div>
             ) : visible.length === 0 ? (
@@ -227,12 +190,8 @@ export default function InboxPage() {
                   const active = current?.key === i.key;
                   return (
                     <li key={i.key} className={cn('flex items-start gap-2 border-b border-border/70 pl-3', active ? 'bg-card shadow-[inset_3px_0_0_hsl(var(--primary))]' : 'hover:bg-card/70')}>
-                      {i.kind !== 'reply' ? (
-                        <Checkbox className="mt-[22px]" checked={checked.has(i.key)} aria-label={`Select ${i.name}`}
-                          onCheckedChange={v => setChecked(prev => { const n = new Set(prev); if (v === true) n.add(i.key); else n.delete(i.key); return n; })} />
-                      ) : <span className="w-4 shrink-0" />}
                       <button onClick={() => { setSelectedKey(i.key); setMobileDetail(true); }}
-                        className="flex-1 min-w-0 flex gap-3 py-3.5 pr-4 text-left">
+                        className="flex-1 min-w-0 flex gap-3 py-3.5 pl-1 pr-4 text-left">
                         <Avatar text={i.initials} size={38} />
                         <span className="flex-1 min-w-0">
                           <span className="flex justify-between gap-2">
@@ -320,7 +279,6 @@ export default function InboxPage() {
                     <button onClick={() => doSkip(current)} disabled={busy}
                       aria-expanded={current.kind === 'comment' ? reasonsFor === current.key : undefined}
                       className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2.5 disabled:opacity-60">
-                      {current.kind === 'message' && <RefreshCw className="w-4 h-4" />}
                       {current.kind === 'comment' && reasonsFor === current.key ? 'Skip without a reason' : SECONDARY_LABEL[current.kind]}
                       {current.kind === 'comment' && <kbd className="font-mono text-[11px] bg-secondary rounded px-1.5 py-0.5">S</kbd>}
                     </button>
@@ -357,7 +315,7 @@ export default function InboxPage() {
           </section>
         </div>
         <p className="text-xs text-muted-foreground m-0">
-          Nothing goes out without your approval. You post each comment yourself on LinkedIn; approved messages are sent spaced through your active hours, within your daily limits.
+          You post each comment yourself on LinkedIn. Olanovo never posts or sends a message for you.
         </p>
       </div>
     </AppShell>
@@ -384,8 +342,8 @@ function EmptyState({ filtered, onShowAll }: { filtered: boolean; onShowAll: () 
           Comment drafts land here a few times a day while autopilot runs.
         </p>
         <div className="flex gap-4 text-sm mt-1">
-          <Link to="/dashboard?new=1" className="text-gold-dark font-medium">New campaign</Link>
-          <Link to="/network?tab=icps" className="text-gold-dark font-medium">Set up an ICP</Link>
+          <Link to="/dashboard?new=1" className="text-gold-dark font-medium">New list</Link>
+          <Link to="/network?tab=icps" className="text-gold-dark font-medium">Describe an audience</Link>
         </div>
       </div>
     </div>

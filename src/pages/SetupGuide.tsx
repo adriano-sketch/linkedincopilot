@@ -58,7 +58,7 @@ export default function SetupGuide() {
                 In <Link to="/settings" className="text-primary font-medium hover:underline">Settings</Link>, list the subjects you want to be known for and, for each one, what you think and what you
                 have seen in your work. Then add a few search terms: the words Olanovo looks for in the posts of your
                 connections. Click <strong>Save</strong>. Until your subjects are saved, no draft is written; without search terms,
-                Olanovo does not search the posts of your connections (contacts you put in a campaign are still checked).
+                Olanovo does not search the posts of your connections (contacts you put in a list are still checked).
               </p>
             </Step>
 
@@ -68,7 +68,7 @@ export default function SetupGuide() {
 
             <Step number={6} title="Bring your connections and pick who matters">
               <p>
-                In <Link to="/dashboard" className="text-primary font-medium hover:underline">Campaigns</Link>, create a list and upload the connections file LinkedIn
+                In <Link to="/dashboard" className="text-primary font-medium hover:underline">Lists</Link>, create a list and upload the connections file LinkedIn
                 emails you (the screen shows where to ask for it). Describe who matters to you and Olanovo keeps that shortlist.
                 Run one list at a time: the daily ceiling is shared, so a second list only slows the first.
               </p>

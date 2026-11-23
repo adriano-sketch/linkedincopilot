@@ -127,7 +127,7 @@ function GrowthStepper({ leadsCount, growthCounts }: CampaignStepperProps) {
   return (
     <Card>
       <CardContent className="p-4">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Campaign Flow</p>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">How this list works</p>
         <div className="flex items-start gap-0">
           {GROWTH_STEPS.map((step, i) => {
             const done = reached(step.key);
@@ -163,7 +163,7 @@ export default function CampaignStepper(props: CampaignStepperProps) {
   return (
     <Card>
       <CardContent className="p-4">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Campaign Flow</p>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">How this list works</p>
         <div className="flex items-start gap-0">
           {STEPS.map((step, i) => {
             const status = getStepStatus(step, props);
