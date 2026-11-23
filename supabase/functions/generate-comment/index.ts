@@ -58,6 +58,24 @@ function fail(error: string, status: number): Response {
   return json({ success: false, error }, status);
 }
 
+/** Queue statuses that mean the user (or the engine) already dealt with the post. */
+const DECIDED = ["approved", "queued", "posted", "dismissed"];
+
+/**
+ * Stable identity of a post in the approval queue. LinkedIn's own id when the URL carries one; otherwise
+ * the lead plus a hash of the start of the text, so the same post read on another day is the same row.
+ * (It used to end in a timestamp, which made every read a new row and hid posts already commented.)
+ */
+async function postKey(postUrl: string, leadId: string, text: string): Promise<string> {
+  const urn = postUrl.match(/urn:li:(?:activity|share|ugcPost):\d+/i);
+  if (urn) return urn[0];
+  // Counted in characters, not UTF-16 units, so an emoji is one position (as it is in Postgres).
+  const start = [...text.toLowerCase().replace(/\s+/g, " ").trim()].slice(0, 300).join("");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(start));
+  const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `growth:${leadId}:${hex.slice(0, 24)}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -155,6 +173,22 @@ serve(async (req) => {
       return json({ success: true, skipped: "no_context", lead_id: campaign_lead_id });
     }
 
+    // The user already decided on this very post (published, approved or skipped): the lead rests and no
+    // second draft is written. Checked before any model call.
+    const postUrl: string = lead.post_url || "";
+    const postUrn = await postKey(postUrl, campaign_lead_id, String(lead.post_content));
+    const { data: existing, error: existingErr } = await supabase.from("monitored_posts")
+      .select("id, status").eq("user_id", lead.user_id).eq("post_urn", postUrn).maybeSingle();
+    if (existingErr) {
+      console.error("generate-comment: queue lookup failed", existingErr);
+      return fail("Failed to check the approval queue", 500);
+    }
+    if (existing && DECIDED.includes(existing.status)) {
+      await restLead("comment_skipped_already_seen", { reason: `post already ${existing.status}` });
+      console.log(`generate-comment: lead ${campaign_lead_id} rests (post already ${existing.status})`);
+      return json({ success: true, skipped: "post already decided", lead_id: campaign_lead_id });
+    }
+
     const triage = await triagePost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
     if (triage.kind === "off_topic") {
       await restLead("comment_skipped_off_topic", { reason: triage.reason });
@@ -245,21 +279,10 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
         signal_reason: triage.signalReason,
         priority: triage.signal === "opportunity" ? 95 : 90,
       };
-    const postUrl: string = lead.post_url || "";
-    const urnMatch = postUrl.match(/urn:li:(?:activity|share|ugcPost):\d+/i);
-    const postUrn = urnMatch ? urnMatch[0] : `growth:${campaign_lead_id}:${Date.now()}`;
-    // The same post may already be in the queue (found by a Network search).
-    const { data: existing } = await supabase.from("monitored_posts")
-      .select("id, status").eq("user_id", lead.user_id).eq("post_urn", postUrn).maybeSingle();
+    // The same post may already be waiting in the queue (found by a Network search, or a failed attempt):
+    // that row gets the new draft instead of a second row.
     let queueErr: unknown = null;
-    if (existing && ["approved", "queued", "posted"].includes(existing.status)) {
-      // Already commented (or about to): skip this cycle instead of commenting twice.
-      await supabase.from("campaign_leads").update({
-        status: "engagement_done", comment_text: null, post_url: null, post_content: null,
-        last_engagement_at: now, next_action_at: new Date(Date.now() + 7 * 864e5).toISOString(), updated_at: now,
-      }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "comment_review");
-      return json({ success: true, skipped: "post already commented", lead_id: campaign_lead_id });
-    } else if (existing) {
+    if (existing) {
       const { error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
         fit_reason: whyCommented, ...signalFields,
