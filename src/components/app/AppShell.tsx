@@ -39,7 +39,7 @@ function AutopilotCard() {
   if (!extensionStatus) {
     return (
       <Link to="/setup-guide" className="block rounded-xl border border-[#2E2643] bg-navy-light p-3.5 text-[13px] hover:border-primary/60">
-        <div className="font-mono-label text-[11px] text-slate-400">Autopilot</div>
+        <div className="font-mono-label text-[11px] text-slate-400">Extension</div>
         <div className="mt-1 font-semibold text-white">Not set up yet</div>
         <div className="text-slate-400">Install the Chrome extension to start.</div>
       </Link>
@@ -60,13 +60,13 @@ function AutopilotCard() {
     const { error } = await supabase.from('extension_status').update({ is_paused: !paused }).eq('id', extensionStatus.id);
     setToggling(false);
     if (error) toast.error('Could not change autopilot');
-    else toast.success(paused ? 'Autopilot resumed' : 'Autopilot paused');
+    else toast.success(paused ? 'Extension resumed' : 'Extension paused');
   };
 
   return (
     <div className="rounded-xl border border-[#2E2643] bg-navy-light p-3.5 text-[13px] flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="font-mono-label text-[11px] text-slate-400">Autopilot</span>
+        <span className="font-mono-label text-[11px] text-slate-400">Extension</span>
         <span className={cn('flex items-center gap-1.5 font-semibold', state.text)}><span className={cn('w-2 h-2 rounded-full', state.dot)} />{state.label}</span>
       </div>
       <div className="text-slate-300">{note}</div>

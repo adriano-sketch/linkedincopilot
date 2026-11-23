@@ -15,7 +15,9 @@ const LIMITS: Record<keyof Kb, number> = { comment_topics: 600, comment_avoid: 4
  * something to say about, the ones they stay out of, what they think and have seen on those subjects
  * (so drafts state a point of view instead of asking questions), a few comments they wrote
  * themselves, and the terms used to look for posts of their own connections.
- * A post that is not about one of the subjects gets a like and no comment.
+ * A post that is not about one of the subjects is skipped: no draft. The exception is a milestone of
+ * the author (a new role, an anniversary), which gets a short congratulation draft whatever the subject.
+ * Nothing is liked by the extension: AUTO_LIKE is false in schedule-actions, so the find visit only reads.
  */
 export default function CommentKnowledgeBase() {
   const { profile, updateProfile } = useProfile();
