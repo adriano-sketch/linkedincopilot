@@ -26,8 +26,6 @@ type Summary = {
 
 const PLAN_LABEL: Record<string, string> = {
   send_connection_request: 'Send connection requests',
-  send_dm: 'Send approved first messages',
-  send_followup: 'Send follow-ups',
   post_comment: 'Comments (posted by you)',
   like_post: 'Like posts',
   find_latest_post: 'Check people for new posts',
@@ -167,7 +165,7 @@ export default function Today() {
   const name = first ? first.charAt(0).toUpperCase() + first.slice(1) : '';
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz }).format(now);
 
-  const needs = s ? s.inbox.replies + s.inbox.comments + s.inbox.messages : 0;
+  const needs = s ? s.inbox.replies + s.inbox.comments : 0;
   const minutes = Math.max(1, Math.round(needs * 0.4));
 
   const extensionReady = !!extensionStatus && !!extensionStatus.last_heartbeat_at;
@@ -186,7 +184,7 @@ export default function Today() {
     { done: hasSubjects, label: 'Tell Olanovo your subjects and search terms', to: '/settings' },
     { done: (s?.contacts || 0) > 0, label: 'Import your LinkedIn contacts', to: '/dashboard?new=1', optional: true },
     { done: !!s?.network_active, label: 'Describe an audience to meet new people', to: '/network?tab=icps', optional: true },
-    { done: hasRunningCampaign, label: 'Start a campaign for a list of leads', to: '/dashboard?new=1', optional: true },
+    { done: hasRunningCampaign, label: 'Start a list of people to keep up with', to: '/dashboard?new=1', optional: true },
   ];
   const required = steps.filter(x => !x.optional);
   const setupDone = required.filter(x => x.done).length;
@@ -258,12 +256,6 @@ export default function Today() {
                     body={s.inbox.signals > 0 ? `${s.inbox.signals} of them show a business signal. Fresh posts are the best window to be seen.` : 'Fresh posts are the best window to be seen.'}
                     cta="Review comments" />
                 )}
-                {s.inbox.messages > 0 && (
-                  <NeedCard to="/inbox?type=message" chip={`${s.inbox.messages} ${s.inbox.messages === 1 ? 'message' : 'messages'}`} minutes={`~${Math.max(1, Math.round(s.inbox.messages * 0.4))} min`}
-                    title="New connections ready for a first message"
-                    body="They accepted your invite. Each draft references their profile."
-                    cta="Review messages" />
-                )}
               </section>
             )}
 
@@ -329,7 +321,7 @@ export default function Today() {
               <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-4">
                 {[
                   { label: 'New connections', value: s.week.new_connections, note: s.week.invites > 0 ? `${s.week.invites} invites sent this week` : 'from invites sent' },
-                  { label: 'Replies', value: s.week.replies, note: s.week.positive_replies > 0 ? `${s.week.positive_replies} positive` : 'to your messages' },
+                  { label: 'Replies', value: s.week.replies, note: s.week.positive_replies > 0 ? `${s.week.positive_replies} positive` : 'waiting on you' },
                   { label: 'Comments posted', value: s.week.comments_posted, note: 'on posts of people you follow' },
                   { label: 'Opportunities spotted', value: s.week.opportunities, note: 'buying signals in posts' },
                 ].map(k => (
@@ -344,13 +336,13 @@ export default function Today() {
 
             <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
               <div className="flex justify-between items-baseline mb-1">
-                <h2 className="m-0 text-lg font-semibold">Campaigns</h2>
-                <Link to="/dashboard" className="text-sm font-medium text-gold-dark">All campaigns</Link>
+                <h2 className="m-0 text-lg font-semibold">Lists</h2>
+                <Link to="/dashboard" className="text-sm font-medium text-gold-dark">All lists</Link>
               </div>
               {s.campaigns.length === 0 ? (
                 <div className="py-6 flex flex-wrap items-center justify-between gap-3">
-                  <p className="m-0 text-sm text-muted-foreground">No campaign running yet.</p>
-                  <Link to="/dashboard?new=1" className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground hover:bg-gold-dark font-semibold h-10 px-4 text-sm">Create your first campaign</Link>
+                  <p className="m-0 text-sm text-muted-foreground">No list running yet.</p>
+                  <Link to="/dashboard?new=1" className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground hover:bg-gold-dark font-semibold h-10 px-4 text-sm">Create your first list</Link>
                 </div>
               ) : s.campaigns.map(c => {
                 const result = c.mode === 'growth'

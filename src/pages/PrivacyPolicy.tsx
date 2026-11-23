@@ -71,7 +71,7 @@ export default function PrivacyPolicy() {
               Name, headline, company, location, profile address, connection degree and the text
               of recent posts. It comes from your list of connections, from the posts of your
               connections, from LinkedIn and Sales Navigator search results for the audiences you
-              define, and from the profiles of people in your campaigns.
+              define, and from the profiles of people in your lists.
             </li>
             <li>
               <strong className="text-gray-300">Replies from people in your campaigns:</strong>{' '}
@@ -124,7 +124,7 @@ export default function PrivacyPolicy() {
             </li>
             <li>
               <strong className="text-gray-300">ScrapIn and Apollo (profile data):</strong>{' '}
-              The profile address of a lead you added to a campaign, to complete its public
+              The profile address of a person you added to a list, to complete its public
               professional information.
             </li>
             <li>
@@ -183,9 +183,9 @@ export default function PrivacyPolicy() {
 
         <Section title="7. Data Retention and Deletion">
           <p>
-            Your campaign data is retained for as long as your account is active. You may
+            Your list data is retained for as long as your account is active. You may
             request deletion of all your data at any time by contacting us at the email
-            below. Upon account deletion, all associated campaign data, lead profiles, and
+            below. Upon account deletion, all associated list data, profiles of the people in them, and
             activity logs are permanently removed from our servers within 30 days.
           </p>
         </Section>
@@ -193,7 +193,7 @@ export default function PrivacyPolicy() {
         <Section title="8. Your Rights">
           <p>
             You have the right to: access all data we store about you, request correction of
-            inaccurate data, request deletion of your data, export your campaign data, and
+            inaccurate data, request deletion of your data, export your list data, and
             withdraw consent at any time by uninstalling the extension.
           </p>
         </Section>

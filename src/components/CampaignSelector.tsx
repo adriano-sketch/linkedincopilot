@@ -28,13 +28,13 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-sm font-medium text-muted-foreground">Campaign:</span>
+      <span className="text-sm font-medium text-muted-foreground">List:</span>
       <Select value={selectedCampaignId || 'all'} onValueChange={v => onSelect(v === 'all' ? null : v)}>
         <SelectTrigger className="w-[260px]">
-          <SelectValue placeholder="All Active Campaigns" />
+          <SelectValue placeholder="All active lists" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All Active Campaigns</SelectItem>
+          <SelectItem value="all">All active lists</SelectItem>
           {activeCampaigns.length > 0 && (
             <SelectGroup>
               <SelectLabel className="text-xs text-muted-foreground">Active / Paused</SelectLabel>
@@ -47,7 +47,7 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
           )}
           {showDrafts && draftCampaigns.length > 0 && (
             <SelectGroup>
-              <SelectLabel className="text-xs text-muted-foreground">Drafts</SelectLabel>
+              <SelectLabel className="text-xs text-muted-foreground">Not started</SelectLabel>
               {draftCampaigns.map(c => (
                 <SelectItem key={c.id} value={c.id}>
                   {getVerticalIcon(c.vertical_id)}{c.name} 📝 {c.is_default && '⭐'}
@@ -58,11 +58,11 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
         </SelectContent>
       </Select>
       <Button variant="outline" size="sm" onClick={onNewCampaign} className="gap-1">
-        <Plus className="w-3 h-3" /> New Campaign
+        <Plus className="w-3 h-3" /> New list
       </Button>
       {onToggleDrafts && (
         <Button variant="ghost" size="sm" onClick={onToggleDrafts} className="text-xs text-muted-foreground">
-          {showDrafts ? 'Hide Drafts' : 'Show Drafts'}
+          {showDrafts ? 'Hide unfinished lists' : 'Show unfinished lists'}
         </Button>
       )}
       {selectedCampaignId && (

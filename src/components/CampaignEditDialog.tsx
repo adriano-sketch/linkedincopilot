@@ -19,14 +19,14 @@ function DeleteCampaignConfirm({ campaignName, onDelete, isDeleting }: { campaig
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button variant="ghost" className="w-full text-destructive hover:text-destructive hover:bg-destructive/10" disabled={isDeleting}>
-          <Trash2 className="w-4 h-4 mr-1" /> Delete Campaign
+          <Trash2 className="w-4 h-4 mr-1" /> Delete list
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete "{campaignName}"?</AlertDialogTitle>
           <AlertDialogDescription className="space-y-3">
-            <span>This will permanently delete the campaign and all its associated leads. This action cannot be undone.</span>
+            <span>This permanently deletes the list and the people in it. It cannot be undone.</span>
             <span className="block">
               Type <strong className="text-foreground">DELETE</strong> to confirm:
             </span>
@@ -126,12 +126,12 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Campaign</DialogTitle>
+          <DialogTitle>Edit list</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           {(campaign as any)?.campaign_mode === 'growth' && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-700 font-medium flex items-center gap-2">
-              <span>📈</span> Growth Mode Campaign
+              <span>📈</span> People you already know
             </div>
           )}
           <div><Label>Name</Label><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
@@ -213,7 +213,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
           </div>
           <div><Label>Example DM</Label><Textarea value={form.dm_example || ''} onChange={e => setForm({ ...form, dm_example: e.target.value.slice(0, 500) })} rows={3} /></div>
           <div>
-            <Label>Campaign Angle</Label>
+            <Label>Angle</Label>
             <p className="text-xs text-muted-foreground mt-0.5">The specific angle or hook for this campaign.</p>
             <Input value={form.campaign_angle || ''} onChange={e => setForm({ ...form, campaign_angle: e.target.value })} placeholder="e.g., HIPAA compliance for multi-location dental groups" className="mt-1" />
           </div>
@@ -229,7 +229,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
             />
           )}
           {campaign.is_default && (
-            <p className="text-xs text-muted-foreground text-center">Default campaigns cannot be deleted. Remove default status first.</p>
+            <p className="text-xs text-muted-foreground text-center">A default list cannot be deleted. Remove the default status first.</p>
           )}
         </div>
       </DialogContent>

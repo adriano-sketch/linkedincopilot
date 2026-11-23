@@ -25,7 +25,7 @@ function useNav(): NavItem[] {
   return [
     { to: '/today', label: 'Today', icon: Sun, match: p => p.startsWith('/today') },
     { to: '/inbox', label: 'Inbox', icon: Inbox, match: p => p.startsWith('/inbox'), badge: inboxCount || 0 },
-    { to: '/dashboard', label: 'Campaigns', icon: Send, match: p => p.startsWith('/dashboard') || p.startsWith('/leads') },
+    { to: '/dashboard', label: 'Lists', icon: Send, match: p => p.startsWith('/dashboard') || p.startsWith('/leads') },
     { to: '/network', label: 'Network', icon: Radar, match: p => p.startsWith('/network') },
   ];
 }
@@ -110,7 +110,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </Link>
           );
         })}
-        <Link to="/leads" onClick={onNavigate} className={linkCls(false)}><Upload className="w-[18px] h-[18px]" />Add leads</Link>
+        <Link to="/leads" onClick={onNavigate} className={linkCls(false)}><Upload className="w-[18px] h-[18px]" />Add people</Link>
       </nav>
       <div className="mt-auto flex flex-col gap-1">
         <AutopilotCard />
@@ -134,26 +134,26 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const go = (to: string) => { onOpenChange(false); navigate(to); };
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Jump to a page or campaign…" />
+      <CommandInput placeholder="Jump to a page or list…" />
       <CommandList>
         <CommandEmpty>Nothing found.</CommandEmpty>
         <CommandGroup heading="Go to">
           <CommandItem onSelect={() => go('/today')}><Sun className="mr-2 h-4 w-4" />Today</CommandItem>
           <CommandItem onSelect={() => go('/inbox')}><Inbox className="mr-2 h-4 w-4" />Inbox</CommandItem>
-          <CommandItem onSelect={() => go('/dashboard')}><Send className="mr-2 h-4 w-4" />Campaigns</CommandItem>
-          <CommandItem onSelect={() => go('/dashboard?new=1')}><Plus className="mr-2 h-4 w-4" />New campaign</CommandItem>
+          <CommandItem onSelect={() => go('/dashboard')}><Send className="mr-2 h-4 w-4" />Lists</CommandItem>
+          <CommandItem onSelect={() => go('/dashboard?new=1')}><Plus className="mr-2 h-4 w-4" />New list</CommandItem>
           <CommandItem onSelect={() => go('/network')}><Radar className="mr-2 h-4 w-4" />Network · new connections</CommandItem>
           <CommandItem onSelect={() => go('/network?tab=icps')}><Radar className="mr-2 h-4 w-4" />Network · ICPs</CommandItem>
-          <CommandItem onSelect={() => go('/leads')}><Upload className="mr-2 h-4 w-4" />Add leads</CommandItem>
+          <CommandItem onSelect={() => go('/leads')}><Upload className="mr-2 h-4 w-4" />Add people</CommandItem>
           <CommandItem onSelect={() => go('/settings')}><Settings className="mr-2 h-4 w-4" />Settings</CommandItem>
           <CommandItem onSelect={() => go('/help')}><HelpCircle className="mr-2 h-4 w-4" />Help</CommandItem>
         </CommandGroup>
         {campaigns.length > 0 && (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Campaigns">
+            <CommandGroup heading="Lists">
               {campaigns.map(c => (
-                <CommandItem key={c.id} value={`campaign ${c.name} ${c.id}`} onSelect={() => go(`/dashboard?campaign=${c.id}`)}>
+                <CommandItem key={c.id} value={`list ${c.name} ${c.id}`} onSelect={() => go(`/dashboard?campaign=${c.id}`)}>
                   <Send className="mr-2 h-4 w-4" />{c.name}
                   <span className="ml-auto text-xs text-muted-foreground capitalize">{c.status}</span>
                 </CommandItem>
@@ -232,7 +232,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
           <button onClick={() => navigate('/dashboard?new=1')}
             className="ml-auto inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground font-semibold px-4 h-10 text-sm hover:bg-gold-dark">
-            <Plus className="w-4 h-4" /><span className="hidden sm:inline">New campaign</span>
+            <Plus className="w-4 h-4" /><span className="hidden sm:inline">New list</span>
           </button>
         </header>
         <TrialBanner />

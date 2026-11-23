@@ -148,7 +148,7 @@ export default function Onboarding() {
                 <div>
                   <Label>Description</Label>
                   <Textarea
-                    placeholder="What does your company do? This helps the AI write better messages."
+                    placeholder="What does your company do? This helps the drafts sound like you."
                     value={form.company_description}
                     onChange={e => setForm({ ...form, company_description: e.target.value.slice(0, 1000) })}
                     rows={4}

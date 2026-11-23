@@ -150,7 +150,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   const validateStep = (): boolean => {
     switch (step) {
       case 0:
-        if (!form.name) { toast.error('Fill campaign name'); return false; }
+        if (!form.name) { toast.error('Give the list a name'); return false; }
         if (isGrowth) {
           if (!form.dm_tone) { toast.error('Select a comment tone'); return false; }
           return true;
@@ -216,7 +216,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
       }
       setImportedCount(c => c + inserted);
       const skipped = payload.length - inserted;
-      if (skipped > 0) toast.info(`${skipped} of them are already in another campaign and were skipped.`);
+      if (skipped > 0) toast.info(`${skipped} of them are already in another list and were skipped.`);
       return inserted;
     } catch (e) {
       toast.error('Import failed: ' + (e instanceof Error ? e.message : 'Unknown'));
@@ -245,9 +245,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         if (error) throw error;
         setCreatedCampaignId(data.id);
         queryClient.invalidateQueries({ queryKey: ['campaign_profiles'] });
-        toast.success('Growth campaign created. Now choose who to engage with.');
+        toast.success('List created. Now choose the people.');
       } catch (e) {
-        toast.error('Failed to create campaign');
+        toast.error('Could not create the list');
         return;
       }
       setStep(1);
@@ -287,7 +287,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         queryClient.invalidateQueries({ queryKey: ['campaign_profiles'] });
         toast.success('Campaign created — now import leads');
       } catch (e) {
-        toast.error('Failed to create campaign');
+        toast.error('Could not create the list');
         return;
       }
     }
@@ -439,7 +439,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
 
       queryClient.invalidateQueries({ queryKey: ['campaign_leads'] });
       queryClient.invalidateQueries({ queryKey: ['campaign_profiles'] });
-      toast.success('🚀 Campaign launched!');
+      toast.success('List started.');
       onComplete(form, createdCampaignId);
     } catch (e) {
       toast.error('Launch failed');
@@ -447,7 +447,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   };
 
   const STEP_TITLES = isGrowth
-    ? ['Mode & Strategy', 'Choose Who to Engage']
+    ? ['Name and tone', 'Choose the people']
     : ['Name & Strategy', 'Select Vertical', 'Import CSV'];
   const STEP_ICONS = isGrowth
     ? [TrendingUp, Target]
@@ -465,8 +465,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           </div>
           <CardTitle>Step {step + 1} of {totalSteps} — {STEP_TITLES[step]}</CardTitle>
           <CardDescription>
-            {step === 0 && (isGrowth ? "Set up your Growth campaign." : "What's this campaign about?")}
-            {step === 1 && (isGrowth ? "Choose the people whose posts you want to engage with." : "Select your target vertical so our AI can validate leads.")}
+            {step === 0 && (isGrowth ? "Name the list and choose how the drafts should sound." : "What's this campaign about?")}
+            {step === 1 && (isGrowth ? "Choose the people whose posts you want to follow." : "Select your target vertical so our AI can validate leads.")}
             {step === 2 && !isGrowth && "Upload your CSV file with LinkedIn profile URLs."}
           </CardDescription>
         </CardHeader>
@@ -476,8 +476,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           {step === 0 && (
             <>
               <div>
-                <Label>Campaign Name *</Label>
-                <Input placeholder={isGrowth ? "e.g. Growth — Marketing Agency Leaders" : "e.g. Dental Practices - Orlando"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                <Label>List name *</Label>
+                <Input placeholder={isGrowth ? "e.g. Operations leaders I know" : "e.g. Dental Practices - Orlando"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               </div>
 
               {/* Outreach-only fields */}
@@ -541,9 +541,9 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                   <div className="flex items-start gap-2">
                     <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-medium text-emerald-800">How Growth Mode works</p>
+                      <p className="font-medium text-emerald-800">How a list works</p>
                       <p className="text-xs text-emerald-700 mt-1">
-                        Pick people from your own LinkedIn contacts (or paste profile URLs). Every week the extension finds their latest post and likes it, and the AI drafts a comment about it. Comments are only posted after you approve them in Network → Comments, next to the original post.
+                        Pick people from your own LinkedIn contacts (or paste profile URLs). From time to time Olanovo reads their latest post. When it is about one of your subjects, a comment draft waits in your Inbox next to the post. You publish it yourself; nothing is posted or liked for you.
                       </p>
                     </div>
                   </div>
@@ -664,8 +664,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
             <>
               {importedCount > 0 && (
                 <div className="bg-gold-bg border border-[#E9D3A4] rounded-lg p-3">
-                  <p className="text-sm font-medium">{importedCount} target profiles added</p>
-                  <p className="text-xs text-muted-foreground mt-1">The extension checks their latest post every week. Suggested comments wait for your approval in Network → Comments.</p>
+                  <p className="text-sm font-medium">{importedCount} people added</p>
+                  <p className="text-xs text-muted-foreground mt-1">Olanovo checks their latest post from time to time. Comment drafts wait for you in the Inbox.</p>
                 </div>
               )}
 
@@ -684,7 +684,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
               ) : (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Add LinkedIn profile URLs of thought leaders or accounts whose audience you want to reach.
+                  Add the LinkedIn profile URLs of the people you want in this list.
                 </p>
 
                 <div className="flex gap-2">
@@ -723,8 +723,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
 
               <p className="text-sm text-muted-foreground border-t border-border pt-3">
                 {pickedContacts.length + growthProfiles.length > 0
-                  ? `${pickedContacts.length + growthProfiles.length} people will be added when you launch.`
-                  : 'Pick contacts or paste URLs, then launch.'}
+                  ? `${pickedContacts.length + growthProfiles.length} people will be added when you start the list.`
+                  : 'Pick contacts or paste URLs, then start the list.'}
               </p>
             </>
           )}
@@ -860,7 +860,7 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
                 size="lg"
                 className={isGrowth ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
               >
-                {launching ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Launching...</> : <><Rocket className="w-4 h-4 mr-1" /> Launch Campaign</>}
+                {launching ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Starting...</> : <><Rocket className="w-4 h-4 mr-1" /> Start this list</>}
               </Button>
             ) : (
               <Button onClick={handleNext} className={isGrowth ? 'bg-emerald-600 hover:bg-emerald-700' : ''}>Next <ArrowRight className="w-4 h-4 ml-1" /></Button>

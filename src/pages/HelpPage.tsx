@@ -211,7 +211,7 @@ export default function HelpPage() {
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground space-y-2">
               <p>
-                In Campaigns, upload the connections file LinkedIn emails you (Settings &amp; Privacy, Data privacy, Get a copy of
+                In Lists, upload the connections file LinkedIn emails you (Settings &amp; Privacy, Data privacy, Get a copy of
                 your data, Connections) and describe who matters to you. Olanovo keeps that shortlist: out of a few thousand
                 connections, usually a few hundred. It then opens each profile from time to time, reads their latest post, and
                 writes a comment draft when the post is about your subjects.

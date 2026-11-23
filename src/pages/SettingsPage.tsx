@@ -213,7 +213,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">Current plan</p>
-                    <p className="text-xs text-muted-foreground">Plan: {plan.toUpperCase()} · Lead limit: {leadsLimit.toLocaleString()}/cycle</p>
+                    <p className="text-xs text-muted-foreground">Plan: {plan.toUpperCase()} · People limit: {leadsLimit.toLocaleString()}/cycle</p>
                   </div>
                   <Badge variant={isFree ? 'secondary' : 'default'}>{isFree ? 'Free' : isAgency ? 'Agency' : 'Pro'}</Badge>
                 </div>
@@ -285,7 +285,7 @@ export default function SettingsPage() {
 
                 {/* Schedule */}
                 <div className="space-y-3 border border-border rounded-lg p-3">
-                  <p className="text-xs font-medium text-foreground">Campaign Schedule</p>
+                  <p className="text-xs font-medium text-foreground">Active days and hours</p>
                   
                   {/* Active Days */}
                   <div>
@@ -394,11 +394,11 @@ export default function SettingsPage() {
         {/* Campaigns */}
         <Card>
           <Collapsible open={openSections.campaigns}>
-            <CardHeader className="pb-2"><SectionHeader id="campaigns" icon={Rocket} title={`Campaigns (${campaigns.length})`} /></CardHeader>
+            <CardHeader className="pb-2"><SectionHeader id="campaigns" icon={Rocket} title={`Lists (${campaigns.length})`} /></CardHeader>
             <CollapsibleContent>
               <CardContent className="space-y-3 pt-0">
                 {campaigns.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No campaigns yet.</p>
+                  <p className="text-sm text-muted-foreground">No lists yet.</p>
                 ) : campaigns.map(c => {
                   const statusInfo = STATUS_LABELS[(c as any).status || 'draft'] || STATUS_LABELS.draft;
                   return (
@@ -420,7 +420,7 @@ export default function SettingsPage() {
                         <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => { duplicateCampaign.mutate(c); toast.success('Duplicated'); }}><CopyPlus className="w-3 h-3" /></Button>
                         {!c.is_default && <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => { updateCampaign.mutate({ id: c.id, is_default: true } as any); toast.success('Set as default'); }}><Star className="w-3 h-3" /></Button>}
                         <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => saveAsTemplate.mutate(c)}><BookmarkPlus className="w-3 h-3" /></Button>
-                        <Button variant="destructive" size="sm" className="h-6 text-xs" onClick={() => { if (confirm('Delete this campaign?')) { deleteCampaign.mutate(c.id); toast.success('Deleted'); } }}><Trash2 className="w-3 h-3" /></Button>
+                        <Button variant="destructive" size="sm" className="h-6 text-xs" onClick={() => { if (confirm('Delete this list?')) { deleteCampaign.mutate(c.id); toast.success('Deleted'); } }}><Trash2 className="w-3 h-3" /></Button>
                       </div>
                     </div>
                   );
