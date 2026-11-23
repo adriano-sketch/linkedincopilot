@@ -56,7 +56,7 @@ export default function CommentKnowledgeBase() {
       <CardContent className="space-y-4 pt-0">
         <p className="text-sm text-muted-foreground">
           Comments are drafted only for posts about your subjects, and for milestones of your contacts (a new role, an anniversary).
-          Every other post gets a like and no comment.
+          Every other post is skipped: no draft, and nothing is liked for you.
           {empty && <span className="block mt-1 font-medium text-foreground">Nothing here yet: until you fill in your subjects, no comment is drafted.</span>}
         </p>
         <div>

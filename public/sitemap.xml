@@ -2,31 +2,31 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
-    <loc>https://linkedincopilot.io/</loc>
-    <lastmod>2026-03-27</lastmod>
+    <loc>https://www.linkedincopilot.io/</loc>
+    <lastmod>2026-11-22</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <image:image>
-      <image:loc>https://linkedincopilot.io/og-image.png</image:loc>
-      <image:title>LinkedIn Copilot — AI-Powered LinkedIn Automation for B2B Outreach</image:title>
+      <image:loc>https://www.linkedincopilot.io/og-image.png</image:loc>
+      <image:title>LinkedIn Copilot: comment drafts in your voice, posted by you</image:title>
     </image:image>
   </url>
   <url>
-    <loc>https://linkedincopilot.io/auth</loc>
-    <lastmod>2026-03-27</lastmod>
+    <loc>https://www.linkedincopilot.io/setup-guide</loc>
+    <lastmod>2026-11-22</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://linkedincopilot.io/setup-guide</loc>
-    <lastmod>2026-03-27</lastmod>
+    <loc>https://www.linkedincopilot.io/help</loc>
+    <lastmod>2026-11-22</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://linkedincopilot.io/help</loc>
-    <lastmod>2026-03-27</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <loc>https://www.linkedincopilot.io/privacy</loc>
+    <lastmod>2026-11-22</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
 </urlset>
