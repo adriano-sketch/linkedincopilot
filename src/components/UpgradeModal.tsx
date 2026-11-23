@@ -17,7 +17,7 @@ const PLANS = [
       'Posts from your network, picked by your subjects',
       'Comment drafts in your voice, posted by you',
       'New people in your target audience, with invitations',
-      'First messages drafted for your approval',
+      'First messages for campaign leads, in the pattern you approve',
       'Daily limits that keep your account safe',
     ],
   },

@@ -45,8 +45,9 @@ export default function PrivacyPolicy() {
               comment yourself on LinkedIn.
             </li>
             <li>
-              Connection invitations to people who match an audience you set up, and messages you
-              approved, are sent by the extension from your browser, within daily limits you can see.
+              Connection invitations to people who match an audience you set up are sent by the
+              extension with the note you wrote. In campaigns, messages are sent once you have approved
+              the first ones of each kind. All of it from your browser, within daily limits you can see.
             </li>
           </ul>
         </Section>
