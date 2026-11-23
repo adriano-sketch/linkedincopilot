@@ -178,10 +178,10 @@ export default function LeadSourcing() {
             </div>
             {isExhausted && (
               <div className="mt-3 p-3 rounded-lg bg-destructive/10 text-sm">
-                <p className="font-medium">Monthly limit reached</p>
+                <p className="font-medium">{isFree ? 'Limit reached' : 'Monthly limit reached'}</p>
                 <p className="text-muted-foreground text-xs mt-1">
                   The people you already added are still being processed.
-                  {resetDateFormatted && ` The limit resets on ${resetDateFormatted}.`}
+                  {resetDateFormatted && !isFree && ` The limit resets on ${resetDateFormatted}.`}
                 </p>
                 {isFree && (
                   <Button size="sm" className="mt-2" onClick={() => setUpgradeOpen(true)}>

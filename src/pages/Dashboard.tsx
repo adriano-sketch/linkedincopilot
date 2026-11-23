@@ -304,7 +304,8 @@ export default function Dashboard() {
           />
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        {/* Until the list has loaded (or when it is empty) the People view shows, with its empty-list guidance. */}
+        <Tabs value={activeTab === 'auto' ? 'pipeline' : activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="approval" className="relative">
               Comments to post
