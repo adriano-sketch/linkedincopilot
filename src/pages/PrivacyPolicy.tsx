@@ -214,10 +214,10 @@ export default function PrivacyPolicy() {
           <p className="mt-3 text-gray-300">
             <strong>Email:</strong>{' '}
             <a
-              href="mailto:privacy@linkedincopilot.io"
+              href="mailto:privacy@olanovo.com"
               className="text-blue-400 hover:text-blue-300 transition-colors"
             >
-              privacy@linkedincopilot.io
+              privacy@olanovo.com
             </a>
           </p>
           <p className="text-gray-300">
