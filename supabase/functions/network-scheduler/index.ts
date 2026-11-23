@@ -190,7 +190,9 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     // Only prospects that can be invited count as pool (see the 3rd-degree note above); otherwise a pool
     // made of 3rd-degree people would stop new searches while nothing could be sent.
     const { count: qualifiedPool } = await supabase.from("network_prospects").select("id", { count: "exact", head: true })
-      .eq("user_id", userId).eq("status", "qualified").or("degree.is.null,degree.not.ilike.3rd*");
+      .eq("user_id", userId).eq("status", "qualified").or("degree.is.null,degree.not.ilike.3rd*")
+      // Same audiences as the invitations above: prospects of an audience with invitations turned off are never queued.
+      .in("icp_id", prospectingIcps.map((i) => i.id));
     const searchesPaused = ext.searches_paused_until && new Date(ext.searches_paused_until).getTime() > now;
     const monthStart = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1)).toISOString();
     const { count: searchesThisMonth } = await supabase.from("network_search_runs").select("id", { count: "exact", head: true })

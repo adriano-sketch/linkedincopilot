@@ -140,8 +140,7 @@ async function sendConnectionRequest(noteText) {
       if (messageElement) {
         // A Message button alone does not mean "connected": 2nd and 3rd-degree profiles show one too.
         // Only the "1st" badge next to the name does.
-        const first = Array.from(document.querySelectorAll('main span, main div'))
-          .some(el => el.children.length === 0 && /^(·\s*)?1st( degree connection)?$/i.test((el.textContent || '').trim()));
+        const first = lcFirstDegreeBadgeOfProfile();
         return { success: true, action: 'send_connection_request', note: first ? 'already_connected' : 'connect_unavailable' };
       }
 
@@ -2174,6 +2173,25 @@ function lcNormName(t) {
 function lcProfileName() {
   const t = (document.title || '').replace(/^\(\d+\+?\)\s*/, '').replace(/\s*\|\s*LinkedIn\s*$/i, '');
   return lcNormName(t);
+}
+/**
+ * Is the "1st" badge shown next to the name of the profile being visited? Looks only inside the block that
+ * holds that person's name (other people on the page, such as "People also viewed", have badges too) and
+ * accepts the forms LinkedIn uses in other languages, like checkConnectionStatus does.
+ */
+function lcFirstDegreeBadgeOfProfile() {
+  const name = lcProfileName();
+  const heading = Array.from(document.querySelectorAll('main h1, main h2'))
+    .find(h => name && lcNormName(h.textContent) === name) || document.querySelector('main h1');
+  if (!heading) return false;
+  const section = heading.closest('section, .artdeco-card, [data-view-name]') ||
+    (heading.parentElement && heading.parentElement.parentElement);
+  if (!section) return false;
+  return Array.from(section.querySelectorAll('span, li, div')).some(el => {
+    if (el.children.length) return false;
+    const txt = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    return txt.length <= 22 && /^(·\s*)?(1st|1º|1er|1\.? ?grau|1\.? ?grado|1\.? ?degree)( degree connection)?$/.test(txt);
+  });
 }
 function lcIsOtherPersonsControl(el) {
   if (!el) return false;
