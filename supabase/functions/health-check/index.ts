@@ -130,7 +130,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Olanovo <onboarding@resend.dev>",
+          from: "Olanovo <notifications@olanovo.com>",
           to: [ALERT_EMAIL],
           subject: `⚠️ Health Check ALERT – ${failures.length} falha(s) detectada(s)`,
           html,

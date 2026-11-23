@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
     const dryRun = body?.dry_run === true;
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "Olanovo <notifications@linkedincopilot.io>";
+    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "Olanovo <notifications@olanovo.com>";
     const APP_URL = Deno.env.get("APP_URL") || "https://www.olanovo.com";
 
     const nowMs = Date.now();

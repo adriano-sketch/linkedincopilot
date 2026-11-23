@@ -392,7 +392,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const APP_URL = Deno.env.get("APP_URL") || "https://www.olanovo.com";
-    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "Olanovo <notifications@linkedincopilot.io>";
+    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "Olanovo <notifications@olanovo.com>";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = req.body ? await req.json().catch(() => ({})) : {};
