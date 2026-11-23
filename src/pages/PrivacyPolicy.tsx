@@ -104,34 +104,40 @@ export default function PrivacyPolicy() {
 
         <Section title="4. How We Store Your Data and Who Processes It">
           <p className="mb-4">
-            Your data is stored on Supabase, a SOC 2 Type II compliant cloud platform hosted on
-            AWS. Data is encrypted in transit (TLS 1.2+) and at rest (AES-256). Each user's data is
+            Your data is stored with a cloud database provider that is SOC 2 Type II compliant.
+            Data is encrypted in transit (TLS 1.2+) and at rest (AES-256). Each user's data is
             isolated by user ID: you can only access your own.
           </p>
           <p className="mb-4">
-            To provide the service, some data is sent to these processors, and only for the
-            purpose stated:
+            To provide the service, some data is sent to service providers that process it on our
+            behalf, and only for the purpose stated:
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>
-              <strong className="text-gray-300">Anthropic (AI):</strong>{' '}
+              <strong className="text-gray-300">An AI provider:</strong>{' '}
               Post text, public profile information and what you wrote in the app, to write drafts
-              and to check whether a person matches your audience.
+              and to check whether a person matches your audience. It is not used to train AI
+              models.
             </li>
             <li>
-              <strong className="text-gray-300">ScrapIn and Apollo (profile data):</strong>{' '}
-              The profile address of a person you added to a list, to complete its public
-              professional information.
-            </li>
-            <li>
-              <strong className="text-gray-300">Stripe (payments):</strong>{' '}
+              <strong className="text-gray-300">A payment processor:</strong>{' '}
               Your email and subscription. We never see your card number.
             </li>
             <li>
-              <strong className="text-gray-300">Resend (email):</strong>{' '}
+              <strong className="text-gray-300">An email delivery provider:</strong>{' '}
               Your email address, to send you service notices.
             </li>
+            <li>
+              <strong className="text-gray-300">Hosting and database providers:</strong>{' '}
+              The data described in this policy, to run the app.
+            </li>
           </ul>
+          <p className="mt-4">
+            We do not buy profile data from data brokers or enrichment services. What Olanovo knows
+            about a person comes from the LinkedIn pages opened in your own session and from the
+            connections file you upload. You can ask for the current list of providers at the
+            contact address below.
+          </p>
         </Section>
 
         <Section title="5. LinkedIn Interaction">
@@ -171,8 +177,8 @@ export default function PrivacyPolicy() {
               The extension only works on LinkedIn pages.
             </li>
             <li>
-              <strong className="text-gray-300">host_permissions (supabase.co):</strong>{' '}
-              To talk to our backend, where your data is stored.
+              <strong className="text-gray-300">host_permissions (our backend):</strong>{' '}
+              To talk to our own server, where your data is stored.
             </li>
           </ul>
         </Section>
