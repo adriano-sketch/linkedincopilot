@@ -82,19 +82,19 @@ export default function Landing() {
 
   const differences = [
     { icon: VolumeX, title: 'It knows when to stay quiet', desc: 'If a post is not about your subjects, there is no draft. Olanovo would rather skip a post than put a generic comment under your name. A contact\'s new role or anniversary still gets a short congratulation.' },
-    { icon: Users, title: 'Your network, one price', desc: 'It searches recent posts from your connections for your subjects, instead of only following a short list of people you picked. One plan, with no charge per contact.' },
+    { icon: Users, title: 'Your network, one price', desc: 'Bring every connection that matters to you, hundreds of them, and Olanovo also searches recent posts from the rest of your network for your subjects. One plan, with no charge per contact.' },
     { icon: MousePointerClick, title: 'You press Comment', desc: 'Olanovo writes the draft and opens the post. You adjust it and publish it yourself: the extension has no function that posts a comment. The edits you make in the Inbox, and the drafts you reject, shape the next ones.' },
   ];
 
   const howSteps = [
-    { num: '1', title: 'Say what you think', desc: 'List your subjects and, for each one, what you believe and what you have seen in practice. This is what makes the drafts sound like you.' },
-    { num: '2', title: 'Olanovo reads LinkedIn', desc: 'A few times a day, during the hours you set, the extension looks for recent posts by your connections on those subjects.' },
-    { num: '3', title: 'Drafts wait in your Inbox', desc: 'One draft per post, next to the post itself. Off-topic posts are skipped. You edit freely.' },
+    { num: '1', title: 'Bring your connections', desc: 'Download your connections from LinkedIn (it emails you the file) and upload it. Describe who matters to you, and Olanovo keeps that shortlist: often a few hundred people out of a few thousand.' },
+    { num: '2', title: 'Say what you think', desc: 'List your subjects and, for each one, what you believe and what you have seen in practice. Every draft is written from that, and from nothing else.' },
+    { num: '3', title: 'Olanovo reads their posts', desc: 'A few people a day, inside the hours you set. A post about your subjects gets a draft. When a contact describes a problem you work on, it goes to the top of your Inbox.' },
     { num: '4', title: 'You publish', desc: 'One click copies the draft and opens the post. You paste it and press Comment on LinkedIn. It is your comment, posted by you.' },
   ];
 
   const limitCards = [
-    { icon: Gauge, title: 'One daily ceiling', desc: 'Every profile page the extension opens counts toward a single daily ceiling: contact checks and invitations together. It starts at 15 pages a day and grows by 5 a week, up to 40.' },
+    { icon: Gauge, title: 'One daily ceiling', desc: 'Every profile page the extension opens counts toward a single daily ceiling: contact checks and invitations together. It starts at 15 pages a day and grows by 5 a week, up to 40. At that pace a list of a few hundred people takes weeks, so we recommend one list at a time.' },
     { icon: Clock, title: 'Your days and hours', desc: 'It works only inside the days and hours you choose. After your computer sleeps, it waits a few minutes and resumes at the normal pace instead of catching up in a burst.' },
     { icon: ShieldAlert, title: 'Stops on a warning', desc: 'If LinkedIn shows a verification page or logs you out, everything pauses. Nothing restarts by itself: only you resume.' },
     { icon: Hand, title: 'You are in charge', desc: 'Comments are always posted by you. Invitations go out with the note you wrote. One pause button stops everything.' },
@@ -254,6 +254,9 @@ export default function Landing() {
             <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl">
               Three things it does <span className="text-gradient-gold">on purpose</span>
             </h2>
+            <p className="text-lg text-muted-foreground mt-4 mb-0 max-w-2xl mx-auto">
+              Use the network you already have. Expand it. Interact, engage, sell more. Without sounding like everyone else in the inbox.
+            </p>
           </motion.div>
           <div className="grid md:grid-cols-3 gap-5">
             {differences.map((d, i) => (
@@ -264,6 +267,26 @@ export default function Landing() {
               </motion.article>
             ))}
           </div>
+
+          {/* The contrast: what a scripted message looks like, next to a comment on something the person said. */}
+          <motion.div {...fadeUp} className="grid md:grid-cols-2 gap-5 mt-5">
+            <figure className="rounded-2xl border border-border bg-muted/40 p-6 m-0 flex flex-col gap-3">
+              <figcaption className="font-mono-label text-xs text-muted-foreground">What everyone gets · illustrative example</figcaption>
+              <blockquote className="m-0 text-base text-muted-foreground leading-relaxed">
+                Hi, thanks for connecting! Your work in your industry is impressive. We help companies like yours with AI, data
+                and custom software. Happy to stay connected and exchange ideas.
+              </blockquote>
+              <p className="text-sm text-muted-foreground m-0">Written once, sent to hundreds, read by nobody before it left. It could be for anyone.</p>
+            </figure>
+            <figure className="rounded-2xl border-2 border-primary bg-card p-6 m-0 flex flex-col gap-3">
+              <figcaption className="font-mono-label text-xs text-gold-dark">What you post with Olanovo · illustrative example</figcaption>
+              <blockquote className="m-0 text-base leading-relaxed">
+                Same here on night flow: the alert was never the hard part. What moved our numbers was how many days passed
+                between the alert and the crew on site.
+              </blockquote>
+              <p className="text-sm text-muted-foreground m-0">Under a post the person wrote, about a subject you work on, read and edited by you before it went out.</p>
+            </figure>
+          </motion.div>
         </div>
       </section>
 
