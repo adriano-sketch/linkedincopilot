@@ -77,7 +77,8 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
 
   const [form, setForm] = useState<CampaignFormData>({
     name: initialData?.name || '',
-    campaign_mode: (initialData as any)?.campaign_mode || 'outreach',
+    // Message campaigns ("outreach") were retired: every new campaign is a comment campaign.
+    campaign_mode: 'growth',
     campaign_objective: initialData?.campaign_objective || '',
     value_proposition: initialData?.value_proposition || '',
     proof_points: initialData?.proof_points || '',
@@ -469,30 +470,6 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
           {/* STEP 0: Name & Strategy */}
           {step === 0 && (
             <>
-              {/* Campaign Mode Selector */}
-              <div>
-                <Label className="mb-2 block">Campaign Mode *</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => setForm({ ...form, campaign_mode: 'outreach' })}
-                    className={`p-4 rounded-lg border text-left transition-all ${form.campaign_mode === 'outreach' ? 'border-primary bg-primary/5 ring-2 ring-primary' : 'border-border hover:border-primary/50'}`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Target className="w-5 h-5 text-primary" />
-                      <p className="font-semibold text-sm">Outreach</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Send personalized connection requests & DMs to convert leads into conversations.</p>
-                  </button>
-                  <button type="button" onClick={() => setForm({ ...form, campaign_mode: 'growth', campaign_objective: 'build_relationship' })}
-                    className={`p-4 rounded-lg border text-left transition-all relative ${form.campaign_mode === 'growth' ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500' : 'border-border hover:border-emerald-400/50'}`}>
-                    <div className="absolute -top-2 -right-2 bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full">New</div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <TrendingUp className="w-5 h-5 text-emerald-600" />
-                      <p className="font-semibold text-sm">Growth</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Stay present with people you choose: Copilot finds their recent posts and drafts comments for you to post.</p>
-                  </button>
-                </div>
-              </div>
-
               <div>
                 <Label>Campaign Name *</Label>
                 <Input placeholder={isGrowth ? "e.g. Growth — Marketing Agency Leaders" : "e.g. Dental Practices - Orlando"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />

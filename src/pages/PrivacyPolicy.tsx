@@ -37,8 +37,7 @@ export default function PrivacyPolicy() {
               by your connections and people who match an audience you define.
             </li>
             <li>
-              The app drafts comments, invitation notes and messages with AI, for you to review
-              and edit.
+              The app drafts comments with AI, for you to review and edit.
             </li>
             <li>
               Comments are never posted by the extension. You open the post and publish the
@@ -46,8 +45,8 @@ export default function PrivacyPolicy() {
             </li>
             <li>
               Connection invitations to people who match an audience you set up are sent by the
-              extension with the note you wrote. In campaigns, messages are sent once you have approved
-              the first ones of each kind. All of it from your browser, within daily limits you can see.
+              extension with the note you wrote. The extension does not send
+              messages. All of it from your browser, within daily limits you can see.
             </li>
           </ul>
         </Section>
@@ -64,7 +63,7 @@ export default function PrivacyPolicy() {
             </li>
             <li>
               <strong className="text-gray-300">What you write in the app:</strong>{' '}
-              Your subjects, your views on them, audiences, invitation notes, comments and messages
+              Your subjects, your views on them, audiences, invitation notes and the comments
               you draft, edit or approve.
             </li>
             <li>
@@ -94,8 +93,7 @@ export default function PrivacyPolicy() {
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>We do not read, store, or transmit your LinkedIn password or login credentials.</li>
             <li>
-              We do not read your LinkedIn messages in general. The extension only looks at the
-              conversation with a person who is in one of your campaigns, to detect a reply.
+              We do not read your LinkedIn messages.
             </li>
             <li>
               We do not collect browsing history, cookies, or data from any website other
@@ -143,7 +141,7 @@ export default function PrivacyPolicy() {
         <Section title="5. LinkedIn Interaction">
           <p className="mb-4">
             The extension works inside your own browser, using your existing LinkedIn session. It
-            opens LinkedIn pages, reads them, and sends the invitations and messages described in
+            opens LinkedIn pages, reads them, and sends the invitations described in
             section 1. It keeps to low daily limits, works only in the hours you choose, and pauses
             by itself if LinkedIn shows a verification or warning page.
           </p>
