@@ -136,7 +136,7 @@ export default function Today() {
               {isLoading ? 'Getting your briefing…'
                 : needs > 0 ? <>{greeting}{name ? `, ${name}` : ''}. About {minutes} min of your time.</>
                 : showSetup ? 'A few steps and your copilot is flying.'
-                : 'Nothing needs you right now. Autopilot keeps working.'}
+                : 'Nothing needs you right now. Copilot keeps working.'}
             </p>
           </div>
           {needs > 0 && (
@@ -232,7 +232,7 @@ export default function Today() {
                   <span className="font-mono-label text-[11px] text-slate-400">{(tz.split('/').pop() || tz).replace(/_/g, ' ')} time</span>
                 </div>
                 {s.plan.length === 0 ? (
-                  <p className="m-0 text-sm text-slate-400">Nothing scheduled yet. Autopilot plans the next actions every 20 minutes inside your active hours.</p>
+                  <p className="m-0 text-sm text-slate-400">Nothing scheduled yet. Copilot plans the next actions every 20 minutes inside your active hours.</p>
                 ) : (
                   <ol className="list-none m-0 p-0">
                     {s.plan.slice(0, 6).map(p => (
