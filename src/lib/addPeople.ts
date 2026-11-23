@@ -17,9 +17,12 @@ export function profileUrlFrom(input: string): string | null {
   if (!m) return null;
   let slug = m[1];
   try { slug = decodeURIComponent(slug); } catch { /* keep as typed */ }
-  slug = slug.trim().toLowerCase();
-  // A decoded identifier that carries a delimiter would change meaning when read again: not a profile.
-  if (!slug || /[/?#%\s]/.test(slug)) return null;
+  // Checked on the decoded text, before anything else touches it. A separator, an escape character or
+  // an ASCII space or control character would change the identifier when the result is read again.
+  // Other characters stay: real identifiers carry accents, emoji and signs such as ® or ’.
+  // eslint-disable-next-line no-control-regex
+  if (!slug || /[/\\?#%\x00-\x20\x7f]/.test(slug)) return null;
+  slug = slug.toLowerCase();
   return `https://www.linkedin.com/in/${slug}`;
 }
 
@@ -30,12 +33,14 @@ export function profileUrlFrom(input: string): string | null {
  */
 export async function addPeopleToList(
   userId: string, listId: string, picked: PickedContact[], urls: string[],
-): Promise<{ inserted: number; skipped: number }> {
+): Promise<{ inserted: number; skipped: number; rejected: number }> {
   const byUrl = new Map<string, Record<string, unknown>>();
+  // Addresses that are not a LinkedIn profile: reported apart from duplicates, which are a different thing.
+  let rejected = 0;
   // Both sources are reduced to the same stored form, so one person is one row whatever was pasted.
   for (const c of picked) {
     const url = profileUrlFrom(c.linkedin_url);
-    if (!url) continue;
+    if (!url) { rejected++; continue; }
     byUrl.set(url, {
       user_id: userId, campaign_profile_id: listId, linkedin_url: url,
       full_name: c.full_name || url.split('/in/')[1] || null, title: c.title, company: c.company,
@@ -44,7 +49,8 @@ export async function addPeopleToList(
   }
   for (const typed of urls) {
     const url = profileUrlFrom(typed);
-    if (!url || byUrl.has(url)) continue;
+    if (!url) { rejected++; continue; }
+    if (byUrl.has(url)) continue;
     const vanity = url.split('/in/')[1] || '';
     byUrl.set(url, {
       user_id: userId, campaign_profile_id: listId, linkedin_url: url,
@@ -62,5 +68,5 @@ export async function addPeopleToList(
     if (error) throw error;
     inserted += data?.length || 0;
   }
-  return { inserted, skipped: payload.length - inserted };
+  return { inserted, skipped: payload.length - inserted, rejected };
 }
