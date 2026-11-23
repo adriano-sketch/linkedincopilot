@@ -350,12 +350,20 @@ async function handleConnectionRequest(supabase: Supa, userId: string, action: a
   if (!prospectId) return { ok: false, error: "prospect_id missing" };
   const now = new Date().toISOString();
   const { data: prospect } = await supabase.from("network_prospects")
-    .select("id, raw").eq("id", prospectId).eq("user_id", userId).maybeSingle();
+    .select("id, raw, degree").eq("id", prospectId).eq("user_id", userId).maybeSingle();
   if (!prospect) return { ok: false, error: "prospect not found" };
 
   if (success) {
     const note = String(result?.note || "");
-    if (note === "already_connected") {
+    // Extensions up to 0.6.4 answer "already_connected" whenever the profile has a Message button and no
+    // Connect control. That is also what a 3rd-degree profile looks like, so the answer is only believed
+    // for someone who was not found as 2nd or 3rd degree.
+    const far = /^(2|3)/.test(String(prospect.degree || ""));
+    if (note === "connect_unavailable" || (note === "already_connected" && far)) {
+      await supabase.from("network_prospects").update({
+        status: "skipped", last_error: "no Connect control on the profile (not sent)",
+      }).eq("id", prospectId);
+    } else if (note === "already_connected") {
       await supabase.from("network_prospects").update({ status: "skipped", last_error: "already connected" }).eq("id", prospectId);
     } else {
       await supabase.from("network_prospects").update({

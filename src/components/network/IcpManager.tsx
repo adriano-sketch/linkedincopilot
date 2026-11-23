@@ -299,9 +299,9 @@ export default function IcpManager() {
               <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
                 <span>
                   Include people with no connection in common (3rd degree)
-                  <span className="block text-xs text-muted-foreground">Larger audience, usually lower acceptance. People with connections in common are still invited first.</span>
+                  <span className="block text-xs text-muted-foreground">Not available for now: LinkedIn does not show a Connect button on these profiles that Olanovo can use, so only people with a connection in common are searched and invited.</span>
                 </span>
-                <Switch checked={form.include_third_degree} onCheckedChange={v => set('include_third_degree', v)} />
+                <Switch checked={false} disabled aria-label="Include 3rd degree (not available for now)" />
               </label>
               <div className="grid gap-3 md:grid-cols-3">
                 <label className="flex items-center justify-between gap-2 rounded-md border p-3 text-sm">

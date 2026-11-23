@@ -66,7 +66,9 @@ export function buildPeopleSearchUrl(icp: Icp, page: number): string {
   const params = new URLSearchParams();
   const kw = buildPeopleKeywords(icp);
   if (kw) params.set("keywords", kw);
-  params.set("network", JSON.stringify(icp.include_third_degree ? ["S", "O"] : ["S"]));
+  // 2nd degree only, whatever include_third_degree says: 3rd-degree profiles show no Connect control the
+  // extension can use (2026-11-23), so finding them only spends searches and profile pages.
+  params.set("network", JSON.stringify(["S"]));
   if (icp.location_geo_ids && icp.location_geo_ids.length) {
     params.set("geoUrn", JSON.stringify(icp.location_geo_ids.slice(0, 10)));
   }
@@ -214,7 +216,7 @@ export function buildSalesNavPeopleSearchUrl(icp: Icp & IcpSearchExtras, page: n
     companySizeMin: icp.company_size_min,
     companySizeMax: icp.company_size_max,
     // 2nd degree by default; 3rd degree too when the audience asks for it (people with no mutual connection).
-    relationship: icp.include_third_degree ? ["S", "O"] : ["S"],
+    relationship: ["S"], // 2nd degree only for now, see buildPeopleSearchUrl
     postedRecently: !!icp.recently_posted,
     changedJobs: !!icp.changed_jobs,
     page,
