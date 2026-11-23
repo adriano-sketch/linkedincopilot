@@ -108,7 +108,7 @@ export default function Landing() {
     { q: 'How does it know what I would say?', a: 'You write it down once: your subjects, what you think about each one, what you have seen in your work, and what you never want to say. Drafts are built from that and from the post. If a post is not about your subjects, there is no draft.' },
     { q: 'Do I need Sales Navigator?', a: 'No. Finding posts by your own connections and drafting comments works with a free LinkedIn account. Sales Navigator is recommended only if you want to find new people by audience, because its filters (job title, seniority, region, company size) make that search much more precise.' },
     { q: 'How many invitations does it send?', a: 'You set a weekly number and Olanovo spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day. The best matches for your audience go first.' },
-    { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. Drafts are written with AI by Anthropic. The data is not sold and is not used to train AI models. The privacy policy has the full list.' },
+    { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. Drafts are written with AI. The data is not sold and is not used to train AI models. The privacy policy explains what is processed and why.' },
     { q: 'Can I edit or reject what it writes?', a: 'Every comment is a draft you post yourself: edit it, skip it or ignore it. Invitation notes are written by you. Olanovo does not write or send messages.' },
     { q: 'What does it cost?', a: 'You try everything free for 14 days, with no credit card. After that there is one plan: Pro, $69 a month per LinkedIn account, or $690 a year. If you do not subscribe when the trial ends, Olanovo stops looking for posts, writing drafts and sending invitations; what is already in your Inbox stays there.' },
   ];
@@ -238,7 +238,7 @@ export default function Landing() {
         </div>
         <div className="border-t border-white/[0.06] bg-[#15111F]">
           <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-5 flex flex-wrap justify-between gap-4 font-mono-label text-xs text-slate-400">
-            <span>Drafts written with Claude</span>
+            <span>Drafts in the language of the post</span>
             <span>You post every comment</span>
             <span>Low daily limits</span>
             <span>Sales Navigator optional</span>

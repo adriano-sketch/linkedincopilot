@@ -56,21 +56,18 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       const supabaseAnonRaw = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
       const supabaseAnon = supabaseAnonRaw.replace(/\s+/g, '');
       if (!supabaseUrl || !supabaseAnon) {
-        throw new Error('Supabase env vars missing. Please refresh and try again.');
+        throw new Error('The app is not configured correctly. Please refresh and try again.');
       }
       try {
         new URL(supabaseUrl);
       } catch {
-        throw new Error('Invalid Supabase URL. Check Vercel env vars.');
-      }
-      if (/\s/.test(supabaseAnonRaw)) {
-        console.warn('Supabase anon key contains whitespace; normalized for request.');
+        throw new Error('The app is not configured correctly. Please contact support.');
       }
       if (!supabaseUrl.startsWith('https://')) {
-        throw new Error('Supabase URL must start with https://');
+        throw new Error('The app is not configured correctly. Please contact support.');
       }
       if (supabaseAnon.split('.').length !== 3) {
-        throw new Error('Supabase anon key looks invalid. Use the anon public JWT.');
+        throw new Error('The app is not configured correctly. Please contact support.');
       }
 
       const decodeJwt = (jwt: string) => {
@@ -85,14 +82,8 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
 
       const expectedHost = new URL(supabaseUrl).host;
       const payload = token ? decodeJwt(token) : null;
-      console.info('checkout debug:', {
-        supabaseHost: expectedHost,
-        tokenPrefix: token.slice(0, 12),
-        tokenLength: token.length,
-        tokenIss: payload?.iss,
-      });
       if (payload?.iss && !String(payload.iss).includes(expectedHost)) {
-        throw new Error('Supabase URL/ANON do not match the session token. Check Vercel env vars.');
+        throw new Error('Your session does not match this app. Sign out, sign in again and retry.');
       }
 
       const checkoutUrl = new URL('/functions/v1/create-checkout', supabaseUrl).toString();

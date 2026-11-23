@@ -7,7 +7,15 @@ import type { PickedContact } from '@/components/contacts/ContactPicker';
  * profile address (wrong host, or no identifier after /in/). A scheme is optional.
  */
 export function profileUrlFrom(input: string): string | null {
-  const raw = (input || '').trim().replace(/^<|>$/g, '');
+  // Only ASCII whitespace is trimmed: String.trim() would also remove an ideographic space that belongs
+  // to a real identifier, and the result would then change when read a second time. Done by scanning in
+  // from both ends, which stays linear on a long run of spaces.
+  const text = input || '';
+  let start = 0;
+  let end = text.length;
+  while (start < end && text.charCodeAt(start) <= 0x20) start++;
+  while (end > start && text.charCodeAt(end - 1) <= 0x20) end--;
+  const raw = text.slice(start, end).replace(/^<|>$/g, '');
   if (!raw) return null;
   let parsed: URL;
   try { parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { return null; }
