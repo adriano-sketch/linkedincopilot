@@ -63,21 +63,18 @@ export default function Landing() {
     {
       icon: MessageCircle,
       title: 'Stay close',
-      featured: true,
       desc: 'Copilot finds recent posts by people you already know, about the subjects you care about, and drafts a comment from your point of view.',
       bullets: ['You tell it once what you think about each subject', 'A draft waits for you in the Inbox', 'You open the post and publish the comment yourself'],
     },
     {
       icon: Radar,
       title: 'Meet new people',
-      featured: false,
       desc: 'Describe the audience you want to know. Copilot looks for people who fit and sends them a connection invitation with the note you wrote.',
       bullets: ['Each person is checked against your audience first', 'A few invitations a day, never a burst', 'Sales Navigator is optional and makes the search more precise'],
     },
     {
       icon: Handshake,
       title: 'No scripted messages',
-      featured: false,
       desc: 'No compliment from a stranger, no pitch in the second message. When someone accepts your invitation, Copilot does not send them anything.',
       bullets: ['New connections become part of the network Copilot reads', 'Their posts about your subjects can come up with a comment draft', 'The conversation starts from something they actually said'],
     },
@@ -282,14 +279,14 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-5">
             {parts.map((m, i) => (
               <motion.article key={m.title} {...stagger(i)}
-                className={`relative rounded-[18px] p-8 flex flex-col gap-4 border ${m.featured ? 'bg-navy text-white border-primary' : 'bg-card border-border'}`}
+                className="relative rounded-[18px] p-8 flex flex-col gap-4 border bg-card border-border"
               >
-                <m.icon className={`w-9 h-9 ${m.featured ? 'text-primary' : 'text-gold-dark'}`} strokeWidth={1.5} />
+                <m.icon className="w-9 h-9 text-gold-dark" strokeWidth={1.5} />
                 <h3 className="font-display font-bold text-2xl leading-tight m-0">{m.title}</h3>
-                <p className={`m-0 ${m.featured ? 'text-slate-300' : 'text-muted-foreground'}`}>{m.desc}</p>
+                <p className="m-0 text-muted-foreground">{m.desc}</p>
                 <ul className="list-none p-0 m-0 flex flex-col gap-2.5">
                   {m.bullets.map(b => (
-                    <li key={b} className="flex gap-2.5 items-start"><Check className={`w-4 h-4 mt-1 shrink-0 ${m.featured ? 'text-primary' : 'text-gold-dark'}`} />{b}</li>
+                    <li key={b} className="flex gap-2.5 items-start"><Check className="w-4 h-4 mt-1 shrink-0 text-gold-dark" />{b}</li>
                   ))}
                 </ul>
               </motion.article>
