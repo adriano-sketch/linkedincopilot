@@ -195,12 +195,17 @@ Classify the post as exactly one of:
 - "off_topic": anything else, including posts about a subject the person stays out of, job openings, sponsorships, institutional announcements, politics, motivational text, and posts from the right industry that are not about the person's subjects.
 When a post is both a milestone and on topic, answer "on_topic". When in doubt, answer "off_topic": no comment is better than a comment with nothing behind it.
 
-Then, ONLY for an "on_topic" post, say whether the AUTHOR (or the organisation they speak for) shows a need that this person's work addresses:
-- "opportunity": they say they are looking for, planning, starting, tendering or evaluating something in that subject: a project, a supplier or partner search, a request for recommendations, a budget or programme being set up.
-- "pain": they describe a concrete problem, loss, failure or difficulty THEY have in that subject (numbers that are bad, something that does not work, a constraint they cannot get around).
-- "none": everything else. An article, an opinion, a result they are proud of, a product they sell, or general commentary about the sector is "none", even when the subject is a problem in the abstract. When in doubt, "none": a false alarm costs the person's attention.
+Then, ONLY for an "on_topic" post, say whether the AUTHOR personally shows an OPEN need that this person's work addresses. This is rare: most on-topic posts are "none". All three must be true:
+1. The author is on the side that HAS the problem or will BUY: they operate, manage or own the thing (a utility, a plant, a city, an operations or maintenance team). An author who sells, advises or promotes in this subject (supplier, vendor, consultant, business development, a company page, someone whose role or headline is about offering these services) is describing other people's problems to attract them: always "none".
+2. The need is theirs and specific: something they are looking for, deciding, or failing at now.
+3. It is still open. A contract signed, a project started, a centre inaugurated, a result achieved, a partnership announced: these are things already solved or under way, always "none". So is any project the person's own company takes part in.
+Then pick:
+- "opportunity": they are looking for, planning, tendering or evaluating something in the subject (a supplier or partner search, a request for recommendations, a tender, a budget or programme being set up and not yet awarded).
+- "pain": they describe a concrete problem, loss or failure THEY have and have not solved (their own bad numbers, something of theirs that does not work, a constraint they cannot get around).
+- "none": everything else, including: opinion and thought-leadership posts, rhetorical questions to the reader ("what would you find running in your plant?"), sector statistics and funding news, reports of a busy month, articles, and general statements that a problem exists in the sector.
+When in doubt, "none": a false alarm costs the person's attention and their trust in the label.
 For "milestone" and "off_topic" posts the signal is always "none".
-Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words>", "signal": "opportunity"|"pain"|"none", "signal_reason": "<for opportunity or pain: what the author needs or struggles with, in plain words, same language as the post, max 18 words; otherwise empty>"}`;
+Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words>", "signal": "opportunity"|"pain"|"none", "signal_reason": "<for opportunity or pain: what THEY need or struggle with, as a plain statement starting with who (e.g. \"A Sanepar procura...\"), written in the language of the post, max 18 words; otherwise empty>"}`;
   const user = [
     `AUTHOR: ${author.name || "Unknown"} (${author.title || "role unknown"}${author.company ? `, ${author.company}` : ""})`,
     `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,
