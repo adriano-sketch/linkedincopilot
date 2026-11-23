@@ -64,10 +64,11 @@ export default function LeadSourcing() {
     if (total === 0) { toast.error('Pick at least one contact or add a profile URL'); return; }
     setSaving(true);
     try {
-      const { inserted, skipped } = await addPeopleToList(user.id, listId, newPicked, newUrls);
+      const { inserted, skipped, rejected } = await addPeopleToList(user.id, listId, newPicked, newUrls);
       queryClient.invalidateQueries({ queryKey: ['campaign_leads'] });
       if (inserted > 0) toast.success(`${inserted} ${inserted === 1 ? 'person' : 'people'} added to ${list?.name || 'the list'}.`);
       if (skipped > 0) toast.info(`${skipped} already in one of your lists and skipped.`);
+      if (rejected > 0) toast.error(`${rejected} not added: the profile address is not a valid LinkedIn profile.`);
       if (inserted > 0) { setUrls([]); navigate(`/dashboard?campaign=${listId}`); }
     } catch (e) {
       toast.error('Could not add them: ' + (e instanceof Error ? e.message : 'unknown error'));

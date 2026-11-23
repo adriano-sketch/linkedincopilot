@@ -188,9 +188,10 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
     if (pickedContacts.length + growthProfiles.length === 0) return 0;
     setGrowthImporting(true);
     try {
-      const { inserted, skipped } = await addPeopleToList(user.id, createdCampaignId, pickedContacts, growthProfiles);
+      const { inserted, skipped, rejected } = await addPeopleToList(user.id, createdCampaignId, pickedContacts, growthProfiles);
       setImportedCount(c => c + inserted);
       if (skipped > 0) toast.info(`${skipped} of them are already in another list and were skipped.`);
+      if (rejected > 0) toast.error(`${rejected} not added: the profile address is not a valid LinkedIn profile.`);
       return inserted;
     } catch (e) {
       toast.error('Import failed: ' + (e instanceof Error ? e.message : 'Unknown'));
