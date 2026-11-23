@@ -236,6 +236,9 @@ const supabase = {
   }
 };
 
+// Message actions are never executed (retired in 0.6.7). Kept as a guard in case the server still holds one.
+const RETIRED_ACTIONS = ['send_dm', 'send_followup', 'check_reply_status'];
+
 // ── SAFETY MANAGER ──
 const LIMITS = {
   connection_requests: 40,
@@ -253,7 +256,6 @@ const LIMITS = {
   min_delay_ms: 15000,
   max_delay_ms: 90000,
   connection_request_extra_delay_ms: 5000,
-  message_extra_delay_ms: 3000,
 };
 
 const safetyManager = {
@@ -306,9 +308,10 @@ const safetyManager = {
   },
 
   async canExecute(actionType) {
-    // Only messaging actions are restricted to business hours
-    const MESSAGING_ACTIONS = ['send_connection_request', 'send_dm', 'send_followup'];
-    if (MESSAGING_ACTIONS.includes(actionType) && !this.isWithinActiveHours()) {
+    // Messages were retired in 0.6.7: the extension refuses them even if one is still in the queue.
+    if (RETIRED_ACTIONS.includes(actionType)) return { allowed: false, reason: 'retired_action' };
+    // Only invitations are restricted to business hours
+    if (actionType === 'send_connection_request' && !this.isWithinActiveHours()) {
       return { allowed: false, reason: 'outside_business_hours', retryAt: this.getNextActiveWindow() };
     }
     const counters = await this.getDailyCounters();
@@ -328,12 +331,6 @@ const safetyManager = {
       case 'send_connection_request':
         if (counters.connections >= effectiveLimit(LIMITS.connection_requests)) {
           return { allowed: false, reason: 'daily_limit_connections' };
-        }
-        break;
-      case 'send_dm':
-      case 'send_followup':
-        if (counters.messages >= effectiveLimit(LIMITS.messages)) {
-          return { allowed: false, reason: 'daily_limit_messages' };
         }
         break;
       case 'visit_profile':
@@ -366,7 +363,6 @@ const safetyManager = {
   getRandomDelay(actionType) {
     let base = LIMITS.min_delay_ms + Math.random() * (LIMITS.max_delay_ms - LIMITS.min_delay_ms);
     if (actionType === 'send_connection_request') base += LIMITS.connection_request_extra_delay_ms;
-    if (actionType === 'send_dm' || actionType === 'send_followup') base += LIMITS.message_extra_delay_ms;
     const jitter = base * 0.2;
     base += (Math.random() * jitter * 2) - jitter;
     return Math.floor(base);
@@ -466,7 +462,6 @@ const safetyManager = {
     counters.total++;
     switch (actionType) {
       case 'send_connection_request': counters.connections++; break;
-      case 'send_dm': case 'send_followup': counters.messages++; break;
       // Every page of a person's profile counts, including the activity page read for posts.
       case 'visit_profile': case 'find_latest_post': counters.visits++; break;
       case 'follow_profile': counters.follows++; break;
@@ -679,9 +674,9 @@ const queueProcessor = {
       
       // Build exclusion list for action types that hit daily limits
       const counters = await safetyManager.getDailyCounters();
-      const excludeTypes = [];
+      // Retired action types are never claimed.
+      const excludeTypes = [...RETIRED_ACTIONS];
       if (counters.connections >= LIMITS.connection_requests) excludeTypes.push('send_connection_request');
-      if (counters.messages >= LIMITS.messages) { excludeTypes.push('send_dm'); excludeTypes.push('send_followup'); }
       const warmingCount = (counters.visits || 0) + (counters.follows || 0); // visit + follow share the same daily cap
       if (warmingCount >= LIMITS.profile_visits) { excludeTypes.push('visit_profile'); excludeTypes.push('follow_profile'); }
       if (counters.likes >= LIMITS.post_likes) excludeTypes.push('like_post');
@@ -689,7 +684,7 @@ const queueProcessor = {
       
       // Only messaging actions need business hours
       if (!safetyManager.isWithinActiveHours()) {
-        excludeTypes.push('send_connection_request', 'send_dm', 'send_followup');
+        excludeTypes.push('send_connection_request');
       }
       
       // ── STUCK ACTION GUARD ──
@@ -834,71 +829,6 @@ const queueProcessor = {
       console.log(`[QueueProcessor] Waiting ${Math.round(delay / 1000)}s before ${action.action_type}...`);
       await this.sleep(delay);
 
-      // ── PRE-FLIGHT REPLY CHECK (v0.1.9) ──
-      // Before sending a follow-up, navigate to the profile and check if the lead
-      // has already replied. If they have, skip the follow-up entirely — the user
-      // takes over manually once a lead engages. This is more reliable than
-      // depending on check_reply_status having run correctly beforehand.
-      if (action.action_type === 'send_followup') {
-        console.log('[QueueProcessor] Pre-flight reply check before send_followup...');
-        try {
-          // Create a temporary check action to reuse the existing flow
-          const checkAction = {
-            ...action,
-            action_type: 'check_reply_status',
-          };
-          const checkResult = await this.sendToContentScript(checkAction);
-
-          if (checkResult && checkResult.has_reply) {
-            console.log(`[QueueProcessor] ✅ Reply detected in pre-flight check — aborting follow-up`);
-            console.log(`[QueueProcessor]   Reply text: ${(checkResult.reply_text || '').substring(0, 60)}...`);
-
-            // Mark the followup as skipped
-            await supabase.update('action_queue',
-              { status: 'skipped', error_message: 'REPLY_DETECTED: Lead already replied — follow-up aborted', completed_at: new Date().toISOString() },
-              `id=eq.${action.id}`
-            );
-
-            // Update lead status to replied
-            if (action.campaign_lead_id) {
-              await supabase.update('campaign_leads',
-                {
-                  status: 'replied',
-                  replied_at: new Date().toISOString(),
-                  reply_detected_at: new Date().toISOString(),
-                  reply_text: (checkResult.reply_text || '').substring(0, 4000),
-                  next_action_at: null, // Stop all automation
-                  error_message: null,
-                },
-                `id=eq.${action.campaign_lead_id}`
-              );
-            }
-
-            // Report as skipped (not failed, not success)
-            await this.reportCompletion(action, false, checkResult, 'REPLY_DETECTED: Lead already replied — follow-up aborted');
-
-            await supabase.insert('activity_log', {
-              user_id: supabase.userId,
-              campaign_lead_id: action.campaign_lead_id,
-              action: 'send_followup_aborted_reply_detected',
-              details: {
-                reply_count: checkResult.reply_count || 0,
-                reply_text: (checkResult.reply_text || '').substring(0, 200),
-                detection_method: checkResult.detection_method || 'pre_flight',
-              },
-            });
-
-            this.isProcessing = false;
-            return;
-          }
-          console.log('[QueueProcessor] No reply detected — proceeding with follow-up');
-        } catch (checkErr) {
-          // If the pre-flight check fails, log but continue with the follow-up
-          // (better to send a follow-up than to silently skip it due to a check failure)
-          console.warn('[QueueProcessor] Pre-flight reply check failed (non-fatal):', checkErr.message);
-        }
-      }
-
       let result = await this.sendToContentScript(action);
 
       // Handle custom-invite redirect (new LinkedIn 2026 layout)
@@ -917,209 +847,6 @@ const queueProcessor = {
           // Do NOT call sendToContentScript — it would re-navigate to the profile page
           await this.ensureContentScript(tab.id);
           result = await this.sendMessageToTab(tab.id, action);
-        }
-      }
-
-      // NOTE: The messaging_redirect fallback (DOM compose on /messaging/ page) was removed
-      // in v0.1.7 — it's 100% broken in LinkedIn's 2026-04 layout. content.js now sends
-      // via Voyager API directly and propagates errors instead of returning a redirect.
-
-      // ── INMAIL THREAD BYPASS (v0.1.9) ──
-      // When the standard hostRecipientUrns approach returns 422 NOT_ALLOWED_PREMIUM_INMAIL,
-      // content.js returns { note: 'inmail_thread_retry_needed', recipientProfileId }.
-      // We navigate to /messaging/thread/new/?recipient=ID, let LinkedIn SPA resolve
-      // the conversation URL (/messaging/thread/THREAD_ID/), extract the threadId,
-      // then send via conversationUrn which bypasses the InMail restriction.
-      if (result && result.note === 'inmail_thread_retry_needed' && result.recipientProfileId) {
-        console.log(`[QueueProcessor] InMail thread detected — attempting conversationUrn bypass for ${result.recipientProfileId}`);
-        const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
-        if (tab) {
-          try {
-            // Step 1: Navigate to messaging thread (LinkedIn SPA resolves to /messaging/thread/THREAD_ID/)
-            const messagingUrl = `https://www.linkedin.com/messaging/thread/new/?recipient=${result.recipientProfileId}`;
-            console.log('[QueueProcessor] Navigating to messaging URL:', messagingUrl);
-            await chrome.tabs.update(tab.id, { url: messagingUrl });
-            await this.waitForTabLoad(tab.id);
-            await this.sleep(5000); // Give SPA time to resolve the conversation
-
-            // Step 2: Extract threadId from the resolved URL
-            const updatedTab = await chrome.tabs.get(tab.id);
-            const tabUrl = updatedTab.url || '';
-            console.log('[QueueProcessor] Resolved messaging URL:', tabUrl);
-
-            // URL pattern: /messaging/thread/THREAD_ID/ (e.g. /messaging/thread/2-MTEwOGFm...==/)
-            const threadMatch = tabUrl.match(/\/messaging\/thread\/([^/?]+)/);
-            if (!threadMatch || threadMatch[1] === 'new') {
-              // SPA didn't resolve — try waiting longer
-              console.warn('[QueueProcessor] Thread ID not resolved yet, waiting...');
-              await this.sleep(5000);
-              const retryTab = await chrome.tabs.get(tab.id);
-              const retryUrl = retryTab.url || '';
-              const retryMatch = retryUrl.match(/\/messaging\/thread\/([^/?]+)/);
-              if (!retryMatch || retryMatch[1] === 'new') {
-                throw new Error(`INMAIL_THREAD_ID_NOT_RESOLVED: URL stayed at ${retryUrl.substring(0, 100)}`);
-              }
-              threadMatch[1] = retryMatch[1];
-            }
-
-            const threadId = decodeURIComponent(threadMatch[1]);
-            console.log('[QueueProcessor] Extracted threadId:', threadId);
-
-            // Step 3: Inject content script and send via conversationUrn
-            await this.ensureContentScript(tab.id);
-            const messageText = action.action_data?.message_text || action.message_text;
-
-            const inmailResult = await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => reject(new Error('conversationUrn send timeout (60s)')), 60000);
-              chrome.tabs.sendMessage(tab.id, {
-                type: 'SEND_VIA_CONVERSATION_URN',
-                threadId: threadId,
-                messageText: messageText,
-              }, (response) => {
-                clearTimeout(timeout);
-                if (chrome.runtime.lastError) {
-                  reject(new Error(chrome.runtime.lastError.message));
-                  return;
-                }
-                if (!response) {
-                  reject(new Error('No response from content script (conversationUrn)'));
-                  return;
-                }
-                if (response.success) {
-                  resolve(response);
-                } else {
-                  reject(new Error(response.error || 'conversationUrn send failed'));
-                }
-              });
-            });
-
-            console.log('[QueueProcessor] ✅ InMail bypass successful via conversationUrn');
-            result = {
-              success: true,
-              action: action.action_type,
-              note: 'sent_via_conversation_urn_inmail_bypass',
-              via: 'voyager_api_conversation_urn',
-              conversationUrn: inmailResult.conversationUrn || null,
-              messageUrn: inmailResult.messageUrn || null,
-              threadId: threadId,
-            };
-          } catch (inmailErr) {
-            console.warn('[QueueProcessor] InMail conversationUrn bypass failed:', inmailErr.message);
-
-            // ── FALLBACK: sendViaMessagingPage (v0.2.3) ──
-            // When conversationUrn fails (usually INMAIL_THREAD_ID_NOT_RESOLVED because
-            // LinkedIn won't resolve /messaging/thread/new/ for non-1st-degree),
-            // fall back to the DOM-based compose approach that worked 09-14/04 with 65 successes.
-            // This requires navigating BACK to the profile page first (URL guard protection).
-            const isThreadNotResolved = /INMAIL_THREAD_ID_NOT_RESOLVED/i.test(inmailErr.message);
-            if (isThreadNotResolved) {
-              console.log('[QueueProcessor] Falling back to messaging page compose...');
-              try {
-                // Navigate back to the lead's profile page
-                const profileUrl = action.action_data?.linkedin_url || action.linkedin_url;
-                if (!profileUrl) throw new Error('No profile URL for messaging page fallback');
-
-                console.log('[QueueProcessor] Navigating back to profile:', profileUrl);
-                await chrome.tabs.update(tab.id, { url: profileUrl });
-                await this.waitForTabLoad(tab.id);
-                await this.sleep(6000);
-
-                // Verify we're on the profile page
-                const profileTab = await chrome.tabs.get(tab.id);
-                const profileTabUrl = profileTab.url || '';
-                if (!profileTabUrl.includes('/in/')) {
-                  throw new Error(`MESSAGING_FALLBACK_NAVIGATION_FAILED: Expected /in/ but on ${profileTabUrl}`);
-                }
-
-                // Inject content script and send via the old messaging page flow
-                await this.ensureContentScript(tab.id);
-                const messageText = action.action_data?.message_text || action.message_text;
-                const expectedName = action.action_data?.expected_name || null;
-
-                // First, tell content script to click the Message button on the profile
-                // This will open the messaging overlay or navigate to /messaging/thread/...
-                const clickResult = await new Promise((resolve, reject) => {
-                  const timeout = setTimeout(() => reject(new Error('Message button click timeout (30s)')), 30000);
-                  chrome.tabs.sendMessage(tab.id, {
-                    type: 'EXECUTE_ACTION',
-                    action: {
-                      action_type: 'find_and_click_message_button',
-                      linkedin_url: profileUrl,
-                    }
-                  }, (response) => {
-                    clearTimeout(timeout);
-                    if (chrome.runtime.lastError) {
-                      reject(new Error(chrome.runtime.lastError.message));
-                      return;
-                    }
-                    resolve(response || {});
-                  });
-                });
-
-                // If clicking the Message button navigated to a messaging page, wait and compose there
-                await this.sleep(3000);
-                const afterClickTab = await chrome.tabs.get(tab.id);
-                const afterClickUrl = afterClickTab.url || '';
-                console.log('[QueueProcessor] After Message button click, URL:', afterClickUrl);
-
-                if (afterClickUrl.includes('/messaging/')) {
-                  // We're on the messaging page — use composeOnMessagingPage
-                  await this.ensureContentScript(tab.id);
-                  const composeResult = await new Promise((resolve, reject) => {
-                    const timeout = setTimeout(() => reject(new Error('Messaging page compose timeout (90s)')), 90000);
-                    chrome.tabs.sendMessage(tab.id, {
-                      type: 'EXECUTE_ACTION',
-                      action: {
-                        action_type: 'compose_on_messaging_page',
-                        message_text: messageText,
-                        expected_name: expectedName,
-                      }
-                    }, (response) => {
-                      clearTimeout(timeout);
-                      if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                        return;
-                      }
-                      if (!response) {
-                        reject(new Error('No response from compose_on_messaging_page'));
-                        return;
-                      }
-                      if (response.success) {
-                        resolve(response);
-                      } else {
-                        reject(new Error(response.error || 'compose_on_messaging_page failed'));
-                      }
-                    });
-                  });
-
-                  console.log('[QueueProcessor] ✅ InMail fallback via messaging page compose succeeded');
-                  result = {
-                    success: true,
-                    action: action.action_type,
-                    note: 'sent_via_messaging_page_inmail_fallback',
-                    via: 'messaging_page_dom',
-                    telemetry: composeResult.telemetry || null,
-                  };
-                } else {
-                  // Message button didn't navigate to messaging — no compose available
-                  throw new Error('INMAIL_NOT_AVAILABLE: Message button did not open messaging page');
-                }
-              } catch (fallbackErr) {
-                console.error('[QueueProcessor] Messaging page fallback also failed:', fallbackErr.message);
-                const isNotAvailable = /INMAIL_NOT_AVAILABLE|RECIPIENT_UNABLE_TO_RECEIVE|Message button not found/i.test(fallbackErr.message);
-                if (isNotAvailable) {
-                  // Mark lead as skipped_inmail so we stop retrying
-                  throw new Error(`INMAIL_NOT_AVAILABLE: ${fallbackErr.message}`);
-                }
-                throw new Error(`INMAIL_BYPASS_FAILED: conversationUrn=${inmailErr.message} | messagingPage=${fallbackErr.message}`);
-              }
-            } else {
-              // Non-threadID error (e.g. timeout, script error) — don't retry via messaging page
-              throw new Error(`INMAIL_BYPASS_FAILED: ${inmailErr.message}`);
-            }
-          }
-        } else {
-          throw new Error('INMAIL_BYPASS_FAILED: No LinkedIn tab found');
         }
       }
 
@@ -1192,188 +919,6 @@ const queueProcessor = {
 
         this.isProcessing = false;
         return; // Exit early — don't retry
-      }
-
-      // ── NOT FIRST DEGREE (v0.2.4, improved v0.2.5) ──
-      // The DOM check_connection_status reported is_connected=true but the Voyager API
-      // rejects with RECIPIENT_NOT_FIRST_DEGREE_CONNECTION. This means the LinkedIn UI
-      // shows "1st" but the API disagrees. Count past failures: if 3+, mark as error
-      // (permanent — LinkedIn UI/API disagreement won't resolve). Otherwise regress
-      // to connection_sent for one more try in 24h.
-      const isNotFirstDegree = /RECIPIENT_NOT_FIRST_DEGREE/i.test(error.message);
-      if (isNotFirstDegree && (action.action_type === 'send_dm' || action.action_type === 'send_followup')) {
-        console.warn(`[QueueProcessor] NOT_FIRST_DEGREE for ${action.action_type}`);
-        try {
-          await this.reportCompletion(action, false, null, `NOT_FIRST_DEGREE: ${error.message}`);
-          await supabase.update('action_queue',
-            { status: 'failed', error_message: `NOT_FIRST_DEGREE: ${error.message}` },
-            `id=eq.${action.id}`
-          );
-          if (action.campaign_lead_id) {
-            // Count how many NOT_FIRST_DEGREE failures this lead has accumulated
-            const { data: pastFailures } = await supabase.select(
-              'action_queue', 'id',
-              `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.failed&error_message=ilike.*FIRST_DEGREE*`
-            );
-            const failCount = pastFailures ? pastFailures.length : 0;
-            console.log(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} has ${failCount} NOT_FIRST_DEGREE failures`);
-
-            if (failCount >= 3) {
-              // Permanent: LinkedIn UI/API disagreement won't self-resolve
-              console.warn(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} reached ${failCount} NOT_FIRST_DEGREE failures — marking as error`);
-              await supabase.update('campaign_leads',
-                {
-                  status: 'error',
-                  error_message: `NOT_FIRST_DEGREE: API rejects DM after ${failCount} attempts despite UI showing 1st-degree`,
-                  next_action_at: null,
-                },
-                `id=eq.${action.campaign_lead_id}`
-              );
-              // Cancel ALL pending actions for this lead
-              const { data: pendingActions } = await supabase.select(
-                'action_queue', 'id',
-                `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending`
-              );
-              if (pendingActions && pendingActions.length > 0) {
-                for (const pa of pendingActions) {
-                  await supabase.update('action_queue',
-                    { status: 'cancelled', error_message: 'Lead marked as error (NOT_FIRST_DEGREE loop)' },
-                    `id=eq.${pa.id}`
-                  );
-                }
-                console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending actions for error lead`);
-              }
-            } else {
-              // Still under threshold — regress to connection_sent for another try
-              const nextCheck = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-              await supabase.update('campaign_leads',
-                {
-                  status: 'connection_sent',
-                  next_action_at: nextCheck,
-                  error_message: `NOT_FIRST_DEGREE: DM rejected by API despite UI showing 1st-degree. Rechecking in 24h. (${failCount} failures)`,
-                },
-                `id=eq.${action.campaign_lead_id}`
-              );
-              // Cancel any other pending send_dm/send_followup for this lead
-              try {
-                const { data: pendingActions } = await supabase.select(
-                  'action_queue',
-                  'id',
-                  `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending&action_type=in.(send_dm,send_followup)`
-                );
-                if (pendingActions && pendingActions.length > 0) {
-                  for (const pa of pendingActions) {
-                    await supabase.update('action_queue',
-                      { status: 'cancelled', error_message: 'Cancelled: lead regressed to connection_sent (NOT_FIRST_DEGREE)' },
-                      `id=eq.${pa.id}`
-                    );
-                  }
-                  console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending DM/followup actions for lead`);
-                }
-              } catch (cancelErr) {
-                console.warn('[QueueProcessor] Failed to cancel pending actions:', cancelErr.message);
-              }
-            }
-          }
-        } catch (reportErr) {
-          console.error(`[QueueProcessor] Failed to report NOT_FIRST_DEGREE:`, reportErr.message);
-        }
-        this.isProcessing = false;
-        return;
-      }
-
-      // ── INMAIL NOT AVAILABLE (v0.2.3) ──
-      // Both conversationUrn AND messaging page fallback failed — this lead
-      // cannot receive messages via any method. Mark as skipped_inmail so
-      // the pipeline stops retrying.
-      const isInmailNotAvailable = /INMAIL_NOT_AVAILABLE/i.test(error.message);
-      if (isInmailNotAvailable) {
-        console.warn(`[QueueProcessor] InMail not available for ${action.action_type}: ${error.message}`);
-        try {
-          await this.reportCompletion(action, false, null, `INMAIL_NOT_AVAILABLE: ${error.message}`);
-          await supabase.update('action_queue',
-            { status: 'skipped', error_message: `INMAIL_NOT_AVAILABLE: ${error.message}` },
-            `id=eq.${action.id}`
-          );
-          if (action.campaign_lead_id) {
-            await supabase.update('campaign_leads',
-              {
-                status: 'skipped_inmail',
-                error_message: `InMail not available: ${error.message}`,
-                next_action_at: null,
-              },
-              `id=eq.${action.campaign_lead_id}`
-            );
-          }
-        } catch (reportErr) {
-          console.error(`[QueueProcessor] Failed to report InMail not available:`, reportErr.message);
-        }
-        this.isProcessing = false;
-        return;
-      }
-
-      // ── INMAIL BYPASS FAILURE (v0.2.5 — auto-skip after 3 failures) ──
-      // If the conversationUrn bypass was attempted but failed with a non-recoverable
-      // error (timeout, script crash, etc). Count past INMAIL failures for this lead:
-      // if 3+, escalate to skipped_inmail so the pipeline stops retrying.
-      const isInmailError = /INMAIL_BYPASS_FAILED|NOT_ALLOWED_PREMIUM_INMAIL/i.test(error.message);
-      if (isInmailError) {
-        console.warn(`[QueueProcessor] InMail bypass failed for ${action.action_type}: ${error.message}`);
-        try {
-          // Mark this action as failed
-          await this.reportCompletion(action, false, null, `INMAIL_FAILED: ${error.message}`);
-          await supabase.update('action_queue',
-            { status: 'failed', error_message: `INMAIL_FAILED: ${error.message}` },
-            `id=eq.${action.id}`
-          );
-
-          if (action.campaign_lead_id) {
-            // Count how many INMAIL failures this lead has accumulated
-            const { data: pastFailures } = await supabase.select(
-              'action_queue', 'id',
-              `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.failed&error_message=ilike.*INMAIL*`
-            );
-            const failCount = pastFailures ? pastFailures.length : 0;
-            console.log(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} has ${failCount} INMAIL failures`);
-
-            if (failCount >= 3) {
-              // Escalate: mark lead as skipped_inmail and cancel pending actions
-              console.warn(`[QueueProcessor] Lead ${action.campaign_lead_id.slice(0,8)} reached ${failCount} INMAIL failures — marking as skipped_inmail`);
-              await supabase.update('campaign_leads',
-                {
-                  status: 'skipped_inmail',
-                  error_message: `Auto-skipped after ${failCount} INMAIL failures: ${error.message}`,
-                  next_action_at: null,
-                },
-                `id=eq.${action.campaign_lead_id}`
-              );
-              // Cancel any remaining pending actions for this lead
-              const { data: pendingActions } = await supabase.select(
-                'action_queue', 'id',
-                `campaign_lead_id=eq.${action.campaign_lead_id}&status=eq.pending`
-              );
-              if (pendingActions && pendingActions.length > 0) {
-                for (const pa of pendingActions) {
-                  await supabase.update('action_queue',
-                    { status: 'cancelled', error_message: 'Lead escalated to skipped_inmail' },
-                    `id=eq.${pa.id}`
-                  );
-                }
-                console.log(`[QueueProcessor] Cancelled ${pendingActions.length} pending actions for skipped_inmail lead`);
-              }
-            } else {
-              // Not yet at threshold — just record the error on the lead
-              await supabase.update('campaign_leads',
-                { error_message: `InMail bypass failed (${failCount}x): ${error.message}` },
-                `id=eq.${action.campaign_lead_id}`
-              );
-            }
-          }
-        } catch (reportErr) {
-          console.error(`[QueueProcessor] Failed to report InMail failure:`, reportErr.message);
-        }
-        this.isProcessing = false;
-        return;
       }
 
       try {
@@ -1532,7 +1077,7 @@ const queueProcessor = {
 
     // find_latest_post was missing too: the tab stayed wherever the previous action left it
     // (invitation manager, a search page) and the page script answered WRONG_PAGE.
-    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'find_latest_post', 'like_post', 'send_dm', 'send_followup', 'check_connection_status', 'check_reply_status'];
+    const actionTypes = ['visit_profile', 'follow_profile', 'send_connection_request', 'find_latest_post', 'like_post', 'check_connection_status'];
     if (actionTypes.includes(action.action_type)) {
       let targetUrl = action.action_data?.linkedin_url || action.linkedin_url;
       if (targetUrl) {
@@ -1600,7 +1145,7 @@ const queueProcessor = {
         // Cross-contamination root cause: LinkedIn SPA sometimes doesn't complete
         // the navigation, leaving the tab on a /messaging/thread/ page from a
         // previous action. We must verify before injecting the content script.
-        const messagingActions = ['send_dm', 'send_followup', 'send_connection_request', 'visit_profile', 'follow_profile', 'find_latest_post', 'like_post', 'post_comment'];
+        const messagingActions = ['send_connection_request', 'visit_profile', 'follow_profile', 'find_latest_post', 'like_post', 'post_comment'];
         if (messagingActions.includes(action.action_type)) {
           const postNavTab = await chrome.tabs.get(tab.id);
           const postNavUrl = postNavTab.url || '';
@@ -1679,7 +1224,7 @@ const queueProcessor = {
       }
     }
 
-    const ghostGuardActions = ['visit_profile', 'send_connection_request', 'send_dm', 'send_followup'];
+    const ghostGuardActions = ['visit_profile', 'send_connection_request'];
     if (ghostGuardActions.includes(action.action_type)) {
       const quality = await this.runProfileQualityCheck(tab.id);
       if (quality?.is_ghost && quality?.confidence === 'strong') {
@@ -1914,8 +1459,7 @@ const queueProcessor = {
 
   sendMessageToTab(tabId, action) {
     return new Promise((resolve, reject) => {
-      // send_dm/compose needs longer: 25s compose input retry + typing/verification/sending
-      const timeoutMs = (action.action_type === 'send_dm' || action.action_type === 'send_followup' || action.action_type === 'compose_on_messaging_page') ? 90000 : 30000;
+      const timeoutMs = 30000;
       const timeout = setTimeout(() => reject(new Error(`Content script timeout (${timeoutMs / 1000}s)`)), timeoutMs);
       chrome.tabs.sendMessage(tabId, {
         type: 'EXECUTE_ACTION',
@@ -1938,7 +1482,7 @@ const queueProcessor = {
           reject(new Error('No response from content script'));
           return;
         }
-        if (response.success || response.redirect || response.note === 'inmail_thread_retry_needed') {
+        if (response.success || response.redirect) {
           resolve(response);
         } else {
           reject(new Error(response.error || 'Action failed'));

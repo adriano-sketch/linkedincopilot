@@ -74,10 +74,6 @@ export default function PrivacyPolicy() {
               define, and from the profiles of people in your campaigns.
             </li>
             <li>
-              <strong className="text-gray-300">Replies from people in your campaigns:</strong>{' '}
-              The text of a reply, so the app can stop the sequence and show it to you.
-            </li>
-            <li>
               <strong className="text-gray-300">Activity logs:</strong>{' '}
               What the extension did and when (for example "profile page opened", "invitation
               sent"), for your dashboard and for the daily limits.

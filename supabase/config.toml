@@ -4,8 +4,6 @@ project_id = "gdwpkojugtggozyofpmw"
 verify_jwt = false
 [functions.admin-set-plan]
 verify_jwt = false
-[functions.approve-dms]
-verify_jwt = false
 [functions.capture-profile-scrapin]
 verify_jwt = false
 [functions.check-subscription]
@@ -21,8 +19,6 @@ verify_jwt = false
 [functions.extension-heartbeat]
 verify_jwt = false
 [functions.generate-dm]
-verify_jwt = false
-[functions.generate-dm-cron]
 verify_jwt = false
 [functions.gmail-auth-url]
 verify_jwt = false
