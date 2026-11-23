@@ -32,7 +32,6 @@ const PLAN_LABEL: Record<string, string> = {
   visit_profile: 'Visit profiles',
   follow_profile: 'Follow profiles',
   check_connection_status: 'Check who accepted',
-  check_reply_status: 'Check for replies',
   network_search_people: 'Search LinkedIn for people who fit',
   network_search_posts: 'Look for fresh posts in your ICPs',
   network_sync_connections: 'Sync accepted invites',
@@ -165,7 +164,7 @@ export default function Today() {
   const name = first ? first.charAt(0).toUpperCase() + first.slice(1) : '';
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz }).format(now);
 
-  const needs = s ? s.inbox.replies + s.inbox.comments : 0;
+  const needs = s ? s.inbox.comments : 0;
   const minutes = Math.max(1, Math.round(needs * 0.4));
 
   const extensionReady = !!extensionStatus && !!extensionStatus.last_heartbeat_at;
@@ -244,14 +243,8 @@ export default function Today() {
 
             {needs > 0 && (
               <section aria-label="Needs you" className="grid gap-3.5 md:grid-cols-3">
-                {s.inbox.replies > 0 && (
-                  <NeedCard to="/inbox?type=reply" chipStrong chip={`${s.inbox.replies} ${s.inbox.replies === 1 ? 'reply' : 'replies'}`} minutes="Priority"
-                    title={s.top_reply ? `${s.top_reply.name || 'Someone'} wrote back` : 'People wrote back'}
-                    body={s.top_reply?.text ? `"${s.top_reply.text}"` : 'Open the conversation and answer while it is warm.'}
-                    cta="Reply now" />
-                )}
                 {s.inbox.comments > 0 && (
-                  <NeedCard to="/inbox?type=comment" chip={`${s.inbox.comments} ${s.inbox.comments === 1 ? 'comment' : 'comments'}`} minutes={`~${Math.max(1, Math.round(s.inbox.comments * 0.4))} min`}
+                  <NeedCard to="/inbox" chip={`${s.inbox.comments} ${s.inbox.comments === 1 ? 'comment' : 'comments'}`} minutes={`~${Math.max(1, Math.round(s.inbox.comments * 0.4))} min`}
                     title="Comments drafted on fresh posts"
                     body={s.inbox.signals > 0 ? `${s.inbox.signals} of them show a business signal. Fresh posts are the best window to be seen.` : 'Fresh posts are the best window to be seen.'}
                     cta="Review comments" />
@@ -318,10 +311,9 @@ export default function Today() {
 
             <section className="flex flex-col gap-3.5">
               <h2 className="m-0 text-lg font-semibold">Last 7 days</h2>
-              <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-3">
                 {[
                   { label: 'New connections', value: s.week.new_connections, note: s.week.invites > 0 ? `${s.week.invites} invites sent this week` : 'from invites sent' },
-                  { label: 'Replies', value: s.week.replies, note: s.week.positive_replies > 0 ? `${s.week.positive_replies} positive` : 'waiting on you' },
                   { label: 'Comments posted', value: s.week.comments_posted, note: 'on posts of people you follow' },
                   { label: 'Opportunities spotted', value: s.week.opportunities, note: 'buying signals in posts' },
                 ].map(k => (
@@ -345,9 +337,7 @@ export default function Today() {
                   <Link to="/dashboard?new=1" className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground hover:bg-gold-dark font-semibold h-10 px-4 text-sm">Create your first list</Link>
                 </div>
               ) : s.campaigns.map(c => {
-                const result = c.mode === 'growth'
-                  ? `${c.engaged} engaged · ${c.replied} conversations`
-                  : `${c.connected} connected · ${c.replied} replies`;
+                const result = `${c.engaged} with a comment from you`;
                 return (
                   <Link key={c.id} to={`/dashboard?campaign=${c.id}`}
                     className="grid grid-cols-[minmax(0,2fr)_auto] sm:grid-cols-[minmax(0,2fr)_110px_minmax(0,2fr)_60px] gap-x-4 gap-y-1 items-center py-3.5 border-t border-border/70 first-of-type:border-t-0 hover:bg-background/50 -mx-2 px-2 rounded-lg">

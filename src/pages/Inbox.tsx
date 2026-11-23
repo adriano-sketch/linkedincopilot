@@ -5,21 +5,15 @@ import { toast } from 'sonner';
 import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Sparkles } from 'lucide-react';
 import AppShell from '@/components/app/AppShell';
 import { useAuth } from '@/hooks/useAuth';
-import { DISMISS_REASONS, useInbox, type DismissReason, type InboxItem, type InboxKind } from '@/hooks/useInbox';
+import { DISMISS_REASONS, useInbox, type DismissReason, type InboxItem } from '@/hooks/useInbox';
 import { cn } from '@/lib/utils';
 import { cleanPostUrl, isActivityUrl, openPostWithDraft } from '@/lib/commentHandoff';
 
-type Filter = 'all' | InboxKind | 'signal';
+type Filter = 'all' | 'signal';
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'reply', label: 'Replies' },
-  { key: 'comment', label: 'Comments' },
   { key: 'signal', label: 'Business signals' },
 ];
-const KIND_LABEL: Record<InboxKind, string> = { reply: 'Reply', comment: 'Comment' };
-const APPROVE_LABEL: Record<InboxKind, string> = { reply: 'Mark as handled', comment: 'Copy and open post' };
-const SECONDARY_LABEL: Record<InboxKind, string | null> = { reply: null, comment: 'Skip' };
-const EDITOR_LABEL: Record<InboxKind, string> = { reply: '', comment: 'Draft comment' };
 
 const ago = (iso: string | null) => {
   if (!iso) return '';
@@ -61,13 +55,12 @@ export default function InboxPage() {
 
   const open = useMemo(() => items.filter(i => !handled.has(i.key)), [items, handled]);
   const visible = useMemo(() => open.filter(i =>
-    filter === 'all' ? true : filter === 'signal' ? !!i.signal : i.kind === filter), [open, filter]);
+    filter === 'signal' ? !!i.signal : true), [open, filter]);
   const current = visible.find(i => i.key === selectedKey) || visible[0] || null;
   const busy = approve.isPending || dismiss.isPending;
 
-  const countOf = (f: Filter) => open.filter(i => f === 'all' ? true : f === 'signal' ? !!i.signal : i.kind === f).length;
+  const countOf = (f: Filter) => open.filter(i => f === 'signal' ? !!i.signal : true).length;
   const minutes = Math.max(1, Math.round(open.length * 0.4));
-  const replies = countOf('reply');
 
   const textOf = (i: InboxItem) => edits[i.key] ?? i.draft;
 
@@ -90,9 +83,8 @@ export default function InboxPage() {
   };
 
   const doApprove = async (item: InboxItem) => {
-    if (item.kind === 'reply') return doSecondary(item);
     if (!textOf(item).trim()) { toast.error('The text is empty'); return; }
-    if (item.kind === 'comment' && !opened.has(item.key)) return doOpenPost(item);
+    if (!opened.has(item.key)) return doOpenPost(item);
     advanceFrom(item.key);
     hide([item.key]);
     try {
@@ -106,7 +98,7 @@ export default function InboxPage() {
 
   // Skip on a comment first offers the reasons (one click each). Skip again skips without a reason.
   const doSkip = (item: InboxItem) => {
-    if (item.kind === 'comment' && reasonsFor !== item.key) { setReasonsFor(item.key); return; }
+    if (reasonsFor !== item.key) { setReasonsFor(item.key); return; }
     return doSecondary(item);
   };
 
@@ -116,7 +108,7 @@ export default function InboxPage() {
     hide([item.key]);
     try {
       await dismiss.mutateAsync({ item, reason });
-      toast.success(item.kind === 'comment' ? (reason ? 'Skipped. Olanovo will take that into account.' : 'Skipped') : 'Marked as handled');
+      toast.success(reason ? 'Skipped. Olanovo will take that into account.' : 'Skipped');
     } catch (e) {
       unhide([item.key]);
       toast.error(errText(e, 'Something went wrong. Try again.'));
@@ -141,8 +133,8 @@ export default function InboxPage() {
       if (e.key === 'j') { e.preventDefault(); const n = visible[idx + 1]; if (n) setSelectedKey(n.key); }
       else if (e.key === 'k') { e.preventDefault(); const p = visible[idx - 1]; if (p) setSelectedKey(p.key); }
       else if (e.key === 'a' && !busy) { e.preventDefault(); doApprove(current); }
-      else if (e.key === 's' && !busy && current.kind === 'comment') { e.preventDefault(); doSkip(current); }
-      else if (e.key === 'e' && current.kind !== 'reply') { e.preventDefault(); editorRef.current?.focus(); }
+      else if (e.key === 's' && !busy) { e.preventDefault(); doSkip(current); }
+      else if (e.key === 'e') { e.preventDefault(); editorRef.current?.focus(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -158,7 +150,7 @@ export default function InboxPage() {
             <h1 className="font-display font-extrabold text-4xl leading-none m-0">Inbox{countOf('all') > 0 && <span className="text-attention"> {countOf('all')}</span>}</h1>
             <p className="text-muted-foreground m-0 mt-1.5">
               {loading ? 'Loading…' : open.length === 0 ? 'You are all caught up.'
-                : `${open.length} to review${replies ? `, ${replies} ${replies === 1 ? 'reply is' : 'replies are'} waiting on you` : ''}. About ${minutes} min.`}
+                : `${open.length} to review. About ${minutes} min.`}
             </p>
           </div>
           <div role="group" aria-label="Filter" className="flex flex-wrap gap-1.5">
@@ -199,7 +191,7 @@ export default function InboxPage() {
                             <span className="font-mono text-[11px] text-muted-foreground shrink-0">{ago(i.at)}</span>
                           </span>
                           <span className="flex items-center gap-1.5 my-0.5">
-                            <span className={cn('text-[11px] font-semibold px-2 py-px rounded-full', i.kind === 'reply' ? 'bg-navy text-primary' : 'bg-secondary text-foreground/80')}>{KIND_LABEL[i.kind]}</span>
+                            <span className="text-[11px] font-semibold px-2 py-px rounded-full bg-secondary text-foreground/80">Comment</span>
                             {i.signal && <span className="text-[11px] font-semibold text-[#A01268] truncate">● {i.signal}</span>}
                           </span>
                           <span className="block text-[13px] text-muted-foreground truncate">{i.preview}</span>
@@ -225,7 +217,6 @@ export default function InboxPage() {
                     <div className="font-semibold text-lg">{current.name}</div>
                     {current.headline && <div className="text-sm text-muted-foreground">{current.headline}</div>}
                   </div>
-                  {current.campaign && <span className="text-xs font-medium bg-background border border-border rounded-full px-2.5 py-1">{current.campaign}</span>}
                   <div className="flex gap-3 text-sm">
                     {current.postUrl && <a href={cleanPostUrl(current.postUrl)} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Post<ExternalLink className="w-3.5 h-3.5" /></a>}
                     {current.profileUrl && <a href={current.profileUrl} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Profile<ExternalLink className="w-3.5 h-3.5" /></a>}
@@ -242,50 +233,36 @@ export default function InboxPage() {
                   )}
                 </div>
 
-                {current.kind !== 'reply' && (
-                  <label className="flex flex-col gap-2 text-[13px] font-medium text-muted-foreground">
-                    <span className="flex justify-between">{EDITOR_LABEL[current.kind]}<span className="tabular-nums font-normal">{textOf(current).length} characters</span></span>
-                    <textarea ref={editorRef} rows={5} value={textOf(current)}
-                      onChange={e => setEdits(prev => ({ ...prev, [current.key]: e.target.value }))}
-                      className="w-full rounded-xl border-2 border-primary bg-card px-4 py-3 text-base leading-relaxed text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-ring" />
-                    {current.kind === 'comment' && (
-                      <span className="font-normal">Change it here, before copying. Olanovo learns from your edits; changes made on LinkedIn are not seen.</span>
-                    )}
-                  </label>
-                )}
+                <label className="flex flex-col gap-2 text-[13px] font-medium text-muted-foreground">
+                  <span className="flex justify-between">Draft comment<span className="tabular-nums font-normal">{textOf(current).length} characters</span></span>
+                  <textarea ref={editorRef} rows={5} value={textOf(current)}
+                    onChange={e => setEdits(prev => ({ ...prev, [current.key]: e.target.value }))}
+                    className="w-full rounded-xl border-2 border-primary bg-card px-4 py-3 text-base leading-relaxed text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-ring" />
+                  <span className="font-normal">Change it here, before copying. Olanovo learns from your edits; changes made on LinkedIn are not seen.</span>
+                </label>
                 {current.why && <p className="text-[13px] text-muted-foreground m-0 flex gap-2"><Sparkles className="w-4 h-4 shrink-0 text-gold-dark" />{current.why}</p>}
 
                 <div className="flex flex-wrap items-center gap-2.5">
-                  {current.kind === 'reply' && current.profileUrl && (
-                    <a href="https://www.linkedin.com/messaging/" target="_blank" rel="noreferrer"
-                      className="h-12 px-5 rounded-full bg-primary text-primary-foreground hover:bg-gold-dark font-semibold inline-flex items-center gap-2">
-                      Answer on LinkedIn<ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
                   <button onClick={() => doApprove(current)} disabled={busy}
-                    className={cn('h-12 px-5 rounded-full font-semibold inline-flex items-center gap-2.5 disabled:opacity-60',
-                      current.kind === 'reply' ? 'border border-border bg-card' : 'bg-primary text-primary-foreground hover:bg-gold-dark')}>
-                    {current.kind === 'reply' && <CheckCircle2 className="w-4 h-4" />}
-                    {current.kind === 'comment' && opened.has(current.key) ? 'I posted it' : APPROVE_LABEL[current.kind]}
-                    <kbd className={cn('font-mono text-[11px] rounded px-1.5 py-0.5', current.kind === 'reply' ? 'bg-secondary' : 'bg-white/20 text-white')}>A</kbd>
+                    className="h-12 px-5 rounded-full font-semibold inline-flex items-center gap-2.5 disabled:opacity-60 bg-primary text-primary-foreground hover:bg-gold-dark">
+                    {opened.has(current.key) ? 'I posted it' : 'Copy and open post'}
+                    <kbd className="font-mono text-[11px] rounded px-1.5 py-0.5 bg-white/20 text-white">A</kbd>
                   </button>
-                  {current.kind === 'comment' && opened.has(current.key) && (
+                  {opened.has(current.key) && (
                     <button onClick={() => doOpenPost(current)} disabled={busy}
                       className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2 disabled:opacity-60">
                       Copy and open again<ExternalLink className="w-4 h-4" />
                     </button>
                   )}
-                  {SECONDARY_LABEL[current.kind] && (
-                    <button onClick={() => doSkip(current)} disabled={busy}
-                      aria-expanded={current.kind === 'comment' ? reasonsFor === current.key : undefined}
-                      className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2.5 disabled:opacity-60">
-                      {current.kind === 'comment' && reasonsFor === current.key ? 'Skip without a reason' : SECONDARY_LABEL[current.kind]}
-                      {current.kind === 'comment' && <kbd className="font-mono text-[11px] bg-secondary rounded px-1.5 py-0.5">S</kbd>}
-                    </button>
-                  )}
+                  <button onClick={() => doSkip(current)} disabled={busy}
+                    aria-expanded={reasonsFor === current.key}
+                    className="h-12 px-5 rounded-full border border-foreground/70 bg-card font-semibold inline-flex items-center gap-2.5 disabled:opacity-60">
+                    {reasonsFor === current.key ? 'Skip without a reason' : 'Skip'}
+                    <kbd className="font-mono text-[11px] bg-secondary rounded px-1.5 py-0.5">S</kbd>
+                  </button>
                   <span className="ml-auto hidden md:inline text-xs text-muted-foreground">J / K to move · E to edit · A for the main action</span>
                 </div>
-                {current.kind === 'comment' && reasonsFor === current.key && (
+                {reasonsFor === current.key && (
                   <div role="group" aria-label="Why are you skipping this draft?" className="rounded-xl border border-border bg-background/60 p-3.5 flex flex-col gap-2.5">
                     <div className="text-[13px] font-medium">Why are you skipping it? One click, and Olanovo writes fewer drafts like this.</div>
                     <div className="flex flex-wrap gap-2">
@@ -298,14 +275,12 @@ export default function InboxPage() {
                     </div>
                   </div>
                 )}
-                {current.kind === 'comment' && (
-                  <p className="m-0 text-[13px] text-muted-foreground">
-                    {opened.has(current.key)
-                      ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here with "I posted it".'
-                      : 'You post every comment yourself: Olanovo copies the draft and opens the post, you paste it and click Comment on LinkedIn.'}
-                    {isActivityUrl(current.postUrl) && ` The link opens ${current.name.split(' ')[0]}'s recent activity; the post is the one shown above.`}
-                  </p>
-                )}
+                <p className="m-0 text-[13px] text-muted-foreground">
+                  {opened.has(current.key)
+                    ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here with "I posted it".'
+                    : 'You post every comment yourself: Olanovo copies the draft and opens the post, you paste it and click Comment on LinkedIn.'}
+                  {isActivityUrl(current.postUrl) && ` The link opens ${current.name.split(' ')[0]}'s recent activity; the post is the one shown above.`}
+                </p>
               </>
             ) : (
               <div className="m-auto text-center text-muted-foreground max-w-sm">

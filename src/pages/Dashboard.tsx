@@ -263,7 +263,7 @@ export default function Dashboard() {
                 <Button variant="outline" size="sm" onClick={() => handlePauseResume('pause')} disabled={togglingPause}>
                   {togglingPause ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Pause className="w-3 h-3 mr-1" /> Pause</>}
                 </Button>
-                <Link to="/leads"><Button variant="outline" size="sm"><Plus className="w-3 h-3 mr-1" /> Add people</Button></Link>
+                <Link to={`/leads?list=${selectedCampaignId}`}><Button variant="outline" size="sm"><Plus className="w-3 h-3 mr-1" /> Add people</Button></Link>
               </>
             )}
             {campaignIsPaused && (
