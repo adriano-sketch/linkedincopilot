@@ -79,7 +79,7 @@ export default function Landing() {
       title: 'Start conversations',
       featured: false,
       desc: 'When someone in a campaign accepts, Copilot writes a first message from their public profile, in the pattern you approved.',
-      bullets: ['You review and approve the first messages of each kind', 'After that, the rest go out on their own, inside the daily limits', 'The sequence stops when the person replies'],
+      bullets: ['You review and approve the first messages of each kind', 'After that, the rest go out on their own, inside the daily limits', 'The sequence stops as soon as a reply is detected'],
     },
   ];
 

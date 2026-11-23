@@ -215,7 +215,8 @@ export default function HelpPage() {
               </p>
               <p>
                 You review samples of each stage in the campaign before anything goes out. When you approve a stage, the remaining
-                messages of that stage are sent without asking again, inside the same daily limits. The sequence stops when the person replies.
+                messages of that stage are sent without asking again, inside the same daily limits. Copilot checks for a reply
+                before each message and stops the sequence as soon as it sees one.
               </p>
               <p>You do not need campaigns to use the Inbox and the Network.</p>
             </CardContent>
