@@ -163,7 +163,9 @@ export function learnedFor(l: Learned | null | undefined, kind: PostKind, maxPos
 
 /** What a post is, seen from the sender's business. Decides whether and how to comment. */
 export type PostKind = "on_topic" | "milestone" | "off_topic";
-export type Triage = { kind: PostKind; topic: string; reason: string };
+/** A post in which the author shows a need the sender's work addresses. "none" for everything else. */
+export type PostSignal = "opportunity" | "pain" | "none";
+export type Triage = { kind: PostKind; topic: string; reason: string; signal: PostSignal; signalReason: string };
 
 /** True when the user told us what they work on. Without it there is no basis to judge relevance. */
 export function hasKnowledgeBase(f: SenderFacts): boolean {
@@ -192,20 +194,29 @@ Classify the post as exactly one of:
 - "milestone": the post announces a personal or professional milestone of the AUTHOR (new job or role, promotion, work anniversary, award, graduation, retirement). Company marketing and project announcements are NOT milestones.
 - "off_topic": anything else, including posts about a subject the person stays out of, job openings, sponsorships, institutional announcements, politics, motivational text, and posts from the right industry that are not about the person's subjects.
 When a post is both a milestone and on topic, answer "on_topic". When in doubt, answer "off_topic": no comment is better than a comment with nothing behind it.
-Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words>"}`;
+
+Then, ONLY for an "on_topic" post, say whether the AUTHOR (or the organisation they speak for) shows a need that this person's work addresses:
+- "opportunity": they say they are looking for, planning, starting, tendering or evaluating something in that subject: a project, a supplier or partner search, a request for recommendations, a budget or programme being set up.
+- "pain": they describe a concrete problem, loss, failure or difficulty THEY have in that subject (numbers that are bad, something that does not work, a constraint they cannot get around).
+- "none": everything else. An article, an opinion, a result they are proud of, a product they sell, or general commentary about the sector is "none", even when the subject is a problem in the abstract. When in doubt, "none": a false alarm costs the person's attention.
+For "milestone" and "off_topic" posts the signal is always "none".
+Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words>", "signal": "opportunity"|"pain"|"none", "signal_reason": "<for opportunity or pain: what the author needs or struggles with, in plain words, same language as the post, max 18 words; otherwise empty>"}`;
   const user = [
     `AUTHOR: ${author.name || "Unknown"} (${author.title || "role unknown"}${author.company ? `, ${author.company}` : ""})`,
     `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,
   ].join("\n\n");
   try {
-    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 200, temperature: 0 });
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 260, temperature: 0 });
     const m = text.match(/\{[\s\S]*\}/);
-    const r = JSON.parse(m ? m[0] : text) as { kind?: string; topic?: string; reason?: string };
+    const r = JSON.parse(m ? m[0] : text) as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string };
     const kind: PostKind = r.kind === "on_topic" || r.kind === "milestone" ? r.kind : "off_topic";
-    return { kind, topic: String(r.topic || "").slice(0, 60), reason: String(r.reason || "").slice(0, 140) };
+    const signalReason = String(r.signal_reason || "").trim().slice(0, 200);
+    // A signal needs a stated reason; without one it is not shown as a signal.
+    const signal: PostSignal = kind === "on_topic" && signalReason && (r.signal === "opportunity" || r.signal === "pain") ? r.signal : "none";
+    return { kind, topic: String(r.topic || "").slice(0, 60), reason: String(r.reason || "").slice(0, 140), signal, signalReason: signal === "none" ? "" : signalReason };
   } catch (e) {
     console.error("post triage failed:", e instanceof Error ? e.message : e);
-    return { kind: "off_topic", topic: "", reason: "triage unavailable" };
+    return { kind: "off_topic", topic: "", reason: "triage unavailable", signal: "none", signalReason: "" };
   }
 }
 
@@ -263,7 +274,7 @@ If the post is not really a milestone of the author, SKIP it.`;
 }
 
 /** Writer rules used by every comment prompt. `kind` comes from triagePost (default: a post on the sender's subjects). */
-export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic = ""): string {
+export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic = "", need = ""): string {
   if (kind === "milestone") return milestoneRules(f);
   // Only when a triage picked this post for a subject (Growth). Network posts are chosen by who wrote them.
   const lens = hasKnowledgeBase(f) && topic
@@ -273,9 +284,17 @@ to parts of the post that are outside the sender's subjects (contracts, finance,
 The comment must stay on what the post actually describes. If connecting the post to the sender's subject needs a
 stretch, or you are not sure what a technical term in the post means, SKIP: a forced link is worse than no comment.\n`
     : "";
+  // The author shows a need the sender's work addresses. The comment helps them think about THEIR problem.
+  const needLens = need
+    ? `\nIn this post the author shows a need: ${need}
+Answer that need as a peer who has been through it: one concrete consideration that helps them decide or look in the
+right place, taken from what the sender thinks and has seen (facts above). Do not offer help, do not offer a call, do
+not say what the sender or their company does, do not suggest a product. A comment that reads like the first line of
+a sales pitch fails. If the facts give nothing useful for this need, SKIP.\n`
+    : "";
   return `You write LinkedIn comments for this person. These are the ONLY facts you know about them:
 ${factsBlock(f)}
-${voiceBlock(f, kind)}${lens}
+${voiceBlock(f, kind)}${lens}${needLens}
 The comment exists to add something to the author's post, the way a respected peer would: a point of view, a
 consequence, a practical consideration. It is a contribution, not an interview. LinkedIn is full of
 generic comments ("Impressive results!", "Incredible to see how technology...") written by people who want to sell

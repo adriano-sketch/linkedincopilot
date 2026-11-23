@@ -70,6 +70,24 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = await req.json().catch(() => ({}));
+
+    // Check of the triage alone, for the service role only: classifies a post text for a user and returns
+    // the verdict. It writes nothing and drafts nothing. Used to see how posts are classified before trusting it.
+    if (auth.kind === "service" && typeof body.triage_only === "string" && typeof body.user_id === "string") {
+      const { data: me } = await supabase.from("profiles")
+        .select("sender_name, sender_title, company_name, company_description, proof_points, dm_tone, comment_topics, comment_avoid, comment_examples, comment_views")
+        .eq("user_id", body.user_id).maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const k = (me || {}) as any;
+      const f: SenderFacts = {
+        name: k.sender_name, title: k.sender_title, company: k.company_name,
+        about: [k.company_description, k.proof_points].filter(Boolean).join(" "), tone: k.dm_tone,
+        topics: k.comment_topics, avoid: k.comment_avoid, examples: k.comment_examples, views: k.comment_views,
+      };
+      const t = await triagePost(body.triage_only.slice(0, 2000), { name: body.author || null, title: body.author_title || null }, f);
+      return json({ success: true, triage: t });
+    }
+
     const campaign_lead_id: unknown = body.campaign_lead_id;
     if (typeof campaign_lead_id !== "string" || !campaign_lead_id) return fail("campaign_lead_id required", 400);
 
@@ -153,7 +171,7 @@ serve(async (req) => {
         variant.hint ? `ANGLE: ${variant.hint}` : "",
         feedback ? `Your previous draft was REJECTED: "${feedback.previous}"\nWhy: ${feedback.why}\nWrite a better one or skip.` : "",
       ].filter(Boolean).join("\n\n");
-      const system = `${commentRules(facts, triage.kind, triage.topic || "one of the subjects listed above")}
+      const system = `${commentRules(facts, triage.kind, triage.topic || "one of the subjects listed above", triage.signalReason)}
 
 Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
       const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6 });
@@ -216,6 +234,14 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
     const whyCommented = triage.kind === "milestone"
       ? "Milestone of a contact"
       : `Your subject: ${triage.topic || "matches what you work on"}`;
+    // The author shows a need the user's work addresses: it goes to the top of the Inbox, labelled.
+    const signalFields = triage.signal === "none"
+      ? (triage.kind === "milestone" ? { signal_type: "milestone", signal_reason: null, priority: 2 } : { signal_type: null, signal_reason: null, priority: 2 })
+      : {
+        signal_type: triage.signal === "opportunity" ? "business_opportunity" : "pain_point",
+        signal_reason: triage.signalReason,
+        priority: triage.signal === "opportunity" ? 95 : 90,
+      };
     const postUrl: string = lead.post_url || "";
     const urnMatch = postUrl.match(/urn:li:(?:activity|share|ugcPost):\d+/i);
     const postUrn = urnMatch ? urnMatch[0] : `growth:${campaign_lead_id}:${Date.now()}`;
@@ -233,7 +259,7 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
     } else if (existing) {
       const { error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
-        fit_reason: whyCommented,
+        fit_reason: whyCommented, ...signalFields,
       }).eq("id", existing.id);
       queueErr = error;
     } else {
@@ -248,9 +274,8 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
         post_text: String(lead.post_content).slice(0, 5000),
         suggested_comment: commentText,
         status: "pending",
-        priority: 2,
         fit_reason: whyCommented,
-        ...(triage.kind === "milestone" ? { signal_type: "milestone" } : {}),
+        ...signalFields,
       });
       queueErr = error;
     }
