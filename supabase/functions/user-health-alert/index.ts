@@ -320,7 +320,7 @@ async function computeHealth(
 
 function buildEmailHtml(report: HealthReport, appUrl: string): { subject: string; html: string } {
   const emoji = report.status === "critical" ? "🔴" : report.status === "warn" ? "🟡" : "🟢";
-  const label = report.status === "critical" ? "Action required" : report.status === "warn" ? "Heads up" : "Pipeline healthy";
+  const label = report.status === "critical" ? "Action required" : report.status === "warn" ? "Heads up" : "All good";
   const subject = `${emoji} Olanovo — ${label} (health ${report.score}/100)`;
 
   const issueRows = report.issues.map(i => {
@@ -334,31 +334,18 @@ function buildEmailHtml(report: HealthReport, appUrl: string): { subject: string
     `;
   }).join("");
 
-  const p7 = report.metrics?.pipeline_7d || {};
-  const funnelRow = (label: string, value: any) =>
-    `<tr><td style="padding:6px 0;color:#666;font-size:13px">${label}</td><td style="padding:6px 0;text-align:right;font-weight:600">${value ?? "—"}</td></tr>`;
 
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px">
       <div style="background:#fff;border:1px solid #eee;border-radius:12px;overflow:hidden">
         <div style="background:${report.status === "critical" ? "#fef2f2" : report.status === "warn" ? "#fffbeb" : "#f0fdf4"};padding:20px 24px;border-bottom:1px solid #eee">
-          <div style="font-size:13px;text-transform:uppercase;color:#888;letter-spacing:1px">Pipeline Health</div>
+          <div style="font-size:13px;text-transform:uppercase;color:#888;letter-spacing:1px">Account health</div>
           <h2 style="margin:8px 0 0;color:#1a1a1a;font-size:22px">${emoji} ${label}</h2>
           <div style="margin-top:8px;color:#555;font-size:14px">Score: <strong>${report.score}/100</strong></div>
         </div>
 
         <div style="padding:20px 24px">
           ${report.issues.length > 0 ? `<h3 style="margin:0 0 12px;font-size:15px;color:#333">What's happening</h3>${issueRows}` : `<p style="color:#555">Everything looks healthy. No action needed.</p>`}
-
-          <h3 style="margin:20px 0 10px;font-size:15px;color:#333">Last 7 days</h3>
-          <table style="width:100%;border-top:1px solid #eee">
-            ${funnelRow("Connection requests", p7.connection_requests)}
-            ${funnelRow("Acceptances", p7.connection_accepted)}
-            ${funnelRow("Acceptance rate", p7.accept_rate_pct != null ? p7.accept_rate_pct + "%" : null)}
-            ${funnelRow("DMs sent", p7.dms_sent)}
-            ${funnelRow("Replies", p7.replies)}
-            ${funnelRow("Reply rate", p7.reply_rate_pct != null ? p7.reply_rate_pct + "%" : null)}
-          </table>
 
           ${report.auto_paused ? `
           <div style="margin-top:20px;padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:14px">
@@ -367,12 +354,12 @@ function buildEmailHtml(report: HealthReport, appUrl: string): { subject: string
           </div>` : ""}
 
           <div style="margin-top:24px;text-align:center">
-            <a href="${appUrl}/dashboard" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;font-size:15px">Open Dashboard</a>
+            <a href="${appUrl}/today" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;font-size:15px">Open Olanovo</a>
           </div>
         </div>
 
         <div style="padding:14px 24px;background:#fafafa;border-top:1px solid #eee;color:#999;font-size:12px;text-align:center">
-          You're getting this because Olanovo detected something that needs your attention.
+          ${report.issues.length > 0 ? "You're getting this because Olanovo detected something that needs your attention." : "This is a status check of your Olanovo account. Nothing needs your attention."}
         </div>
       </div>
     </div>
