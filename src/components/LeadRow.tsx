@@ -68,7 +68,12 @@ export default function LeadRow({ lead, onReview }: LeadRowProps) {
     ? (g.comment_posted_at ? `Commented ${format(new Date(g.comment_posted_at), 'MMM d')}`
       : Object.entries(GROWTH_NOTES).find(([k]) => String(g.error_message || '').includes(k))?.[1] || null)
     : null;
-  const config = STATUS[lead.status] || STATUS.waiting;
+  // People still waiting to be read share one label. A status from the retired outreach flow is shown
+  // as what it is, in neutral colors, instead of being called Waiting.
+  const WAITING = ['new', 'ready', 'imported', 'visiting_profile'];
+  const config = STATUS[lead.status] || (WAITING.includes(lead.status)
+    ? STATUS.waiting
+    : { ...STATUS.skipped, label: 'Not in the reading cycle' });
   const name = displayName(lead);
 
   return (

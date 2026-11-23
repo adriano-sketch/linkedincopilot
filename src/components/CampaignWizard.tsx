@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowLeft, ArrowRight, ListPlus, Loader2, MessageCircle, Plus, Rocket, Users, X } from 'lucide-react';
@@ -44,6 +44,9 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
   const [launching, setLaunching] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
+  // A launch that finishes after this wizard was closed must not touch the page.
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const [source, setSource] = useState<'contacts' | 'urls'>('contacts');
   const [picked, setPicked] = useState<PickedContact[]>([]);
@@ -111,11 +114,17 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
     if (!listId || !user) return;
     setLaunching(true);
     try {
-      if (importedCount === 0) {
+      // Whatever is selected now is saved, also on a retry: people already in the list are ignored by the
+      // insert, so nothing is duplicated.
+      if (picked.length + urls.length > 0) {
         const n = await savePeople();
         if (n < 0) return;
-        if (n === 0) { toast.error('Pick at least 1 contact or add a profile URL'); return; }
       }
+      // The list starts when it has people, counted in the list itself (not from this screen's memory).
+      const { count, error: countErr } = await supabase.from('campaign_leads')
+        .select('id', { count: 'exact', head: true }).eq('campaign_profile_id', listId);
+      if (countErr) throw countErr;
+      if (!count) { toast.error('Pick at least 1 contact or add a profile URL'); return; }
       // The row was created at step 0: write what may have changed there since.
       const { error } = await supabase.from('campaign_profiles')
         .update({ status: 'active', name: name.trim(), dm_tone: tone }).eq('id', listId);
@@ -123,14 +132,13 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
       queryClient.invalidateQueries({ queryKey: ['campaign_leads'] });
       queryClient.invalidateQueries({ queryKey: ['campaign_profiles'] });
       toast.success('List started.');
-      onComplete(listId);
+      if (mounted.current) onComplete(listId);
     } catch {
       toast.error('Could not start the list');
     } finally { setLaunching(false); }
   };
 
   const StepIcon = step === 0 ? ListPlus : Users;
-  const ready = importedCount > 0 || picked.length > 0 || urls.length > 0;
 
   return (
     <div className={`w-full mx-auto ${step === 1 ? 'max-w-3xl' : 'max-w-lg'}`}>
@@ -194,9 +202,11 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
                   <TabsTrigger value="urls">Paste profile URLs</TabsTrigger>
                 </TabsList>
               </Tabs>
-              {source === 'contacts' ? (
+              {/* The picker stays mounted while the other tab shows, so what was ticked is kept. */}
+              <div className={source === 'contacts' ? '' : 'hidden'}>
                 <ContactPicker campaignId={listId} onChange={onPickedChange} />
-              ) : (
+              </div>
+              {source === 'urls' && (
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground m-0">Add the LinkedIn profile URLs of the people you want in this list.</p>
                   <div className="flex gap-2">
@@ -239,7 +249,7 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
             ) : <div />}
             {step === 1 ? (
               <Button size="lg" disabled={launching || importing}
-                onClick={() => { if (ready) handleLaunch(); else toast.error('Pick at least 1 contact or add a profile URL'); }}>
+                onClick={handleLaunch}>
                 {launching ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Starting...</> : <><Rocket className="w-4 h-4 mr-1" /> Start this list</>}
               </Button>
             ) : (

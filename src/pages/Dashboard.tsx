@@ -140,6 +140,9 @@ export default function Dashboard() {
   const handleNewListComplete = (listId: string) => {
     setShowNewCampaign(false);
     setSelectedCampaignId(listId);
+    // The new list opens unfiltered, whatever was filtered in the previous one.
+    setPipelineFilter(null);
+    setPipelineStageFilter(null);
     refreshLeads();
   };
 

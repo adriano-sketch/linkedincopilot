@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Save, Trash2 } from 'lucide-react';
 import { CampaignProfile } from '@/hooks/useCampaignProfiles';
+import { isLegacyDescription } from '@/lib/addPeople';
 
 function DeleteCampaignConfirm({ campaignName, onDelete, isDeleting }: { campaignName: string; onDelete: () => void; isDeleting?: boolean }) {
   const [confirmText, setConfirmText] = useState('');
@@ -75,7 +76,7 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
       setForm({
         name: campaign.name,
         // Lists made before the description was asked carry a placeholder: show it empty.
-        icp_description: /^growth mode/i.test(campaign.icp_description || '') ? '' : (campaign.icp_description || ''),
+        icp_description: isLegacyDescription(campaign.icp_description) ? '' : (campaign.icp_description || ''),
         dm_tone: campaign.dm_tone,
       });
     }
@@ -88,7 +89,10 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
       toast.error('The list needs a name');
       return;
     }
-    onSave(campaign.id, { name: form.name.trim(), icp_description: form.icp_description || '', dm_tone: form.dm_tone });
+    // The description is sent only when it was edited, so opening and saving never erases what is stored.
+    const shown = isLegacyDescription(campaign.icp_description) ? '' : (campaign.icp_description || '');
+    const description = (form.icp_description || '') !== shown ? { icp_description: form.icp_description || '' } : {};
+    onSave(campaign.id, { name: form.name.trim(), dm_tone: form.dm_tone, ...description });
     onOpenChange(false);
   };
 
@@ -101,9 +105,9 @@ export default function CampaignEditDialog({ campaign, open, onOpenChange, onSav
         <div className="space-y-4">
           <div><Label>Name</Label><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
           <div>
-            <Label>Who belongs in this list</Label>
+            <Label htmlFor="list-description">Who belongs in this list</Label>
             <p className="text-xs text-muted-foreground mt-0.5">Used when you look for more people among your contacts.</p>
-            <Textarea value={form.icp_description || ''} onChange={e => setForm({ ...form, icp_description: e.target.value.slice(0, 500) })} rows={3} className="mt-1" />
+            <Textarea id="list-description" value={form.icp_description || ''} onChange={e => setForm({ ...form, icp_description: e.target.value.slice(0, 500) })} rows={3} className="mt-1" />
           </div>
           <div>
             <Label>Comment tone</Label>
