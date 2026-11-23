@@ -47,7 +47,7 @@ export default function SettingsPage() {
   const { user, loading } = useAuth();
   const { profile, isLoading, updateProfile } = useProfile();
   const { extensionStatus } = useExtensionStatus();
-  const { isFree, isAgency, onTrial, trialDaysLeft, isLoading: planLoading, settings: planSettings } = useUserPlan();
+  const { isFree, isAgency, onTrial, trialDaysLeft, isLoading: planLoading, settings: planSettings, loadFailed: planFailed } = useUserPlan();
   // Until the plan is known nothing is claimed about it.
   const planUnknown = planLoading || !planSettings;
   const { campaigns, templates, updateCampaign, deleteCampaign, duplicateCampaign, saveAsTemplate } = useCampaignProfiles();
@@ -215,8 +215,9 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">Current plan</p>
-                    <p className="text-xs text-muted-foreground">
-                      {planUnknown ? 'Checking your plan…'
+                    <p className="text-xs text-muted-foreground" role="status">
+                      {planFailed ? 'Your plan could not be loaded. Use Sync Plan, or reload the page.'
+                        : planUnknown ? 'Checking your plan…'
                         : !isFree ? 'Pro: everything included.'
                         : onTrial ? `Free trial: everything included. ${trialDaysLeft} ${trialDaysLeft === 1 ? 'day' : 'days'} left, no card on file.`
                         : 'Your free trial ended. Olanovo is paused until you subscribe.'}

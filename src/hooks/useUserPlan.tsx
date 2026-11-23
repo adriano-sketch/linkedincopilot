@@ -53,7 +53,7 @@ export function useUserPlan() {
   const queryClient = useQueryClient();
   const syncedRef = useRef(false);
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading, isError } = useQuery({
     queryKey: ['user_settings', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -110,6 +110,8 @@ export function useUserPlan() {
   return {
     settings,
     isLoading,
+    /** The plan could not be read (and nothing is cached). */
+    loadFailed: isError && !settings,
     onTrial,
     trialDaysLeft,
     hasAccess,
