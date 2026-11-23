@@ -143,7 +143,7 @@ export default function Landing() {
         'Comment drafts in your voice, posted by you',
         'New people in your target audience, with invitations and your note',
         'First messages for campaign leads, in the pattern you approve',
-        'Daily limits that keep your account safe',
+        'Low daily limits, inside the hours you choose',
       ],
       cta: 'Start free',
       sub: 'Cancel anytime.',
