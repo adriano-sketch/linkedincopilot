@@ -158,13 +158,19 @@ serve(async (req) => {
     const authorCompany = String(lead.company || lead.profile_current_company || "");
 
     // No comment this cycle: the lead rests and tries again with a newer post in 7 days.
-    const restLead = async (action: string, details: Record<string, unknown>) => {
+    // Returns false when the lead could not be updated, so the caller can answer with an error.
+    const restLead = async (action: string, details: Record<string, unknown>, from: string[] = ["post_liked"]): Promise<boolean> => {
       const ts = new Date().toISOString();
-      await supabase.from("campaign_leads").update({
+      const { error } = await supabase.from("campaign_leads").update({
         status: "engagement_done", comment_text: null, post_url: null, post_content: null,
         last_engagement_at: ts, next_action_at: new Date(Date.now() + 7 * 864e5).toISOString(), updated_at: ts,
-      }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "post_liked");
+      }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).in("status", from);
+      if (error) {
+        console.error(`generate-comment: could not rest lead ${campaign_lead_id}`, error);
+        return false;
+      }
       await supabase.from("activity_log").insert({ user_id: lead.user_id, campaign_lead_id, action, details });
+      return true;
     };
 
     if (!hasKnowledgeBase(facts)) {
@@ -184,7 +190,12 @@ serve(async (req) => {
       return fail("Failed to check the approval queue", 500);
     }
     if (existing && DECIDED.includes(existing.status)) {
-      await restLead("comment_skipped_already_seen", { reason: `post already ${existing.status}` });
+      // A finished post (published or skipped) also releases a lead left in comment_review by a failed
+      // clean-up below. An approved or queued post still has its publishing step, which owns the lead.
+      const from = ["posted", "dismissed"].includes(existing.status) ? ["post_liked", "comment_review"] : ["post_liked"];
+      if (!(await restLead("comment_skipped_already_seen", { reason: `post already ${existing.status}` }, from))) {
+        return fail("Failed to update the lead", 500);
+      }
       console.log(`generate-comment: lead ${campaign_lead_id} rests (post already ${existing.status})`);
       return json({ success: true, skipped: "post already decided", lead_id: campaign_lead_id });
     }
@@ -283,11 +294,19 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
     // that row gets the new draft instead of a second row.
     let queueErr: unknown = null;
     if (existing) {
-      const { error } = await supabase.from("monitored_posts").update({
+      // Drafting took several model calls: only write if the user did not decide on the row meanwhile.
+      const { data: written, error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
         fit_reason: whyCommented, ...signalFields,
-      }).eq("id", existing.id);
+      }).eq("id", existing.id).not("status", "in", `(${DECIDED.join(",")})`).select("id");
       queueErr = error;
+      if (!error && (!written || written.length === 0)) {
+        // Decided while we were drafting: their decision stands, this draft is dropped and the lead rests.
+        if (!(await restLead("comment_skipped_already_seen", { reason: "post decided while the draft was being written" }, ["comment_review"]))) {
+          return fail("Failed to update the lead", 500);
+        }
+        return json({ success: true, skipped: "post already decided", lead_id: campaign_lead_id });
+      }
     } else {
       const { error } = await supabase.from("monitored_posts").insert({
         user_id: lead.user_id,
