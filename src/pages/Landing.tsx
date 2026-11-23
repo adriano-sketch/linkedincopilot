@@ -443,12 +443,26 @@ export default function Landing() {
             <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl mb-6">
               Built by someone who <span className="text-gradient-gold">uses it</span>
             </h2>
-            <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto mb-4">
-              Olanovo is made by a B2B professional who runs it every day on his own LinkedIn account. The idea is simple: the people who already know you are worth more than a thousand strangers, and a comment from someone who understands the subject is how you stay in their mind.
-            </p>
-            <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              Olanovo is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">scan<em>to</em>sell.io</a>.
-            </p>
+            <div className="mt-2 flex flex-col sm:flex-row items-center sm:items-start gap-6 text-left max-w-2xl mx-auto">
+              <img src="/founder.jpg" alt="Adriano Camino, founder of Olanovo" width={128} height={128} loading="lazy"
+                className="w-32 h-32 rounded-2xl object-cover shrink-0 border border-border" />
+              <div>
+                <p className="font-display font-bold text-xl m-0">Adriano Camino</p>
+                <p className="text-sm text-muted-foreground mt-0.5 mb-3">
+                  Founder ·{' '}
+                  <a href="https://www.linkedin.com/in/adrianocamino" target="_blank" rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground">
+                    LinkedIn
+                  </a>
+                </p>
+                <p className="text-lg text-gray-600 leading-relaxed m-0">
+                  I sell water and sanitation technology between Brazil and the US. Deals in that world take months and start with people who already know you. I built Olanovo to stay in front of them, and I run it every day on my own LinkedIn account.
+                </p>
+                <p className="text-lg text-gray-600 leading-relaxed mt-4 mb-0">
+                  The idea is simple: the people who already know you are worth more than a thousand strangers, and a comment from someone who understands the subject is how you stay in their mind.
+                </p>
+              </div>
+            </div>
           </motion.div>
         </div>
       </section>
