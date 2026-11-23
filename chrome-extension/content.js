@@ -138,7 +138,11 @@ async function sendConnectionRequest(noteText) {
         document.querySelector('a[aria-label*="Message" i]') ||
         document.querySelector('a[href*="/messaging/compose/"]');
       if (messageElement) {
-        return { success: true, action: 'send_connection_request', note: 'already_connected' };
+        // A Message button alone does not mean "connected": 2nd and 3rd-degree profiles show one too.
+        // Only the "1st" badge next to the name does.
+        const first = Array.from(document.querySelectorAll('main span, main div'))
+          .some(el => el.children.length === 0 && /^(·\s*)?1st( degree connection)?$/i.test((el.textContent || '').trim()));
+        return { success: true, action: 'send_connection_request', note: first ? 'already_connected' : 'connect_unavailable' };
       }
 
       // Check if connection request is already pending (LinkedIn 2026: Pending can be a button OR a link)

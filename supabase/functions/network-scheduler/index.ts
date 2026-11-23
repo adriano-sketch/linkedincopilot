@@ -159,6 +159,9 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
       const { data: candidates } = await supabase.from("network_prospects")
         .select("id, icp_id, linkedin_url, full_name, fit_score, mutual_connections")
         .eq("user_id", userId).eq("status", "qualified")
+        // 3rd-degree profiles do not offer a Connect control the extension can use (2026-11-23: 6 of 6
+        // came back without one). Inviting them only spends a profile page, so they wait.
+        .or("degree.is.null,degree.not.ilike.3rd*")
         .in("icp_id", prospectingIcps.map((i) => i.id))
         .order("fit_score", { ascending: false })
         .order("mutual_connections", { ascending: false, nullsFirst: false })
@@ -184,8 +187,10 @@ async function runForUser(supabase: Supa, ext: any, icps: Icp[]) {
     }
 
     // ── 3. Refill the pool with a people search when it runs low
+    // Only prospects that can be invited count as pool (see the 3rd-degree note above); otherwise a pool
+    // made of 3rd-degree people would stop new searches while nothing could be sent.
     const { count: qualifiedPool } = await supabase.from("network_prospects").select("id", { count: "exact", head: true })
-      .eq("user_id", userId).eq("status", "qualified");
+      .eq("user_id", userId).eq("status", "qualified").or("degree.is.null,degree.not.ilike.3rd*");
     const searchesPaused = ext.searches_paused_until && new Date(ext.searches_paused_until).getTime() > now;
     const monthStart = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1)).toISOString();
     const { count: searchesThisMonth } = await supabase.from("network_search_runs").select("id", { count: "exact", head: true })
