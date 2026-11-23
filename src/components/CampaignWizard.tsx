@@ -23,6 +23,7 @@ import { parseLeadCsv } from '@/lib/csv';
 import VerticalSelector from '@/components/campaign-wizard/VerticalSelector';
 import TitleZones from '@/components/campaign-wizard/TitleZones';
 import IcpFitPreview from '@/components/IcpFitPreview';
+import { addPeopleToList } from '@/lib/addPeople';
 import ContactPicker, { type PickedContact } from '@/components/contacts/ContactPicker';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -185,37 +186,11 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
   /** Saves the chosen targets (picked contacts + pasted URLs) as Growth leads. Returns how many are in the campaign. */
   const importGrowthProfiles = async (): Promise<number> => {
     if (!createdCampaignId || !user) return 0;
-    const byUrl = new Map<string, Record<string, unknown>>();
-    for (const c of pickedContacts) {
-      byUrl.set(c.linkedin_url, {
-        user_id: user.id, campaign_profile_id: createdCampaignId, linkedin_url: c.linkedin_url,
-        full_name: c.full_name || c.linkedin_url.split('/in/')[1] || null, title: c.title, company: c.company,
-        source: 'my_contacts', status: 'ready',
-      });
-    }
-    for (const url of growthProfiles) {
-      if (byUrl.has(url)) continue;
-      const vanity = url.split('/in/')[1]?.replace(/\/$/, '') || '';
-      byUrl.set(url, {
-        user_id: user.id, campaign_profile_id: createdCampaignId, linkedin_url: url,
-        full_name: vanity.replace(/-/g, ' '), source: 'manual', status: 'ready',
-      });
-    }
-    const payload = Array.from(byUrl.values());
-    if (payload.length === 0) return 0;
+    if (pickedContacts.length + growthProfiles.length === 0) return 0;
     setGrowthImporting(true);
     try {
-      let inserted = 0;
-      for (let i = 0; i < payload.length; i += 200) {
-        const { data, error } = await supabase
-          .from('campaign_leads')
-          .upsert(payload.slice(i, i + 200) as any, { onConflict: 'user_id,linkedin_url', ignoreDuplicates: true })
-          .select('id');
-        if (error) throw error;
-        inserted += data?.length || 0;
-      }
+      const { inserted, skipped } = await addPeopleToList(user.id, createdCampaignId, pickedContacts, growthProfiles);
       setImportedCount(c => c + inserted);
-      const skipped = payload.length - inserted;
       if (skipped > 0) toast.info(`${skipped} of them are already in another list and were skipped.`);
       return inserted;
     } catch (e) {

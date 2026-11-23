@@ -1,308 +1,153 @@
 import AppShell from '@/components/app/AppShell';
-import { useState, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Loader2, Plus, UserPlus, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
-import { useProfile } from '@/hooks/useProfile';
 import { useCampaignProfiles } from '@/hooks/useCampaignProfiles';
 import { useCampaignLeads } from '@/hooks/useCampaignLeads';
-import { useUserPlan } from '@/hooks/useUserPlan';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Upload, Loader2, Rocket, Crown, Info, ChevronDown, FileSpreadsheet } from 'lucide-react';
-import { UpgradeModal } from '@/components/UpgradeModal';
-import { parseLeadCsv, normalizeLinkedInUrl } from '@/lib/csv';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ContactPicker, { type PickedContact } from '@/components/contacts/ContactPicker';
+import { addPeopleToList, profileUrlFrom } from '@/lib/addPeople';
 
+/**
+ * Add people to a list that already exists. Same two sources as when the list is created:
+ * the user's own LinkedIn connections, or profile URLs pasted by hand.
+ */
 export default function LeadSourcing() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { profile } = useProfile();
+  const [params] = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { campaigns } = useCampaignProfiles();
-  const { plan, isFree, leadsUsed, leadsLimit, leadsRemaining, cycleResetDate } = useUserPlan();
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const lists = campaigns.filter(c => !c.is_template);
+  const [listId, setListId] = useState<string>(params.get('list') || '');
+  const [source, setSource] = useState<'contacts' | 'urls'>('contacts');
+  const [picked, setPicked] = useState<PickedContact[]>([]);
+  const onPicked = useCallback((p: PickedContact[]) => setPicked(p), []);
+  const [urlInput, setUrlInput] = useState('');
+  const [urls, setUrls] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
-  // CSV state
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [csvParsed, setCsvParsed] = useState<any[]>([]);
-  const [csvImporting, setCsvImporting] = useState(false);
-  const [csvStats, setCsvStats] = useState<{ invalidRows: number; duplicateRows: number; totalRows: number } | null>(null);
+  useEffect(() => { if (!authLoading && !user) navigate('/'); }, [user, authLoading, navigate]);
+  // With a single list there is nothing to choose.
+  useEffect(() => { if (!listId && lists.length === 1) setListId(lists[0].id); }, [listId, lists]);
 
-  const { leads } = useCampaignLeads(selectedCampaignId || undefined);
-  const campaign = campaigns.find(c => c.id === selectedCampaignId);
+  const { leads } = useCampaignLeads(listId || undefined);
+  const list = lists.find(c => c.id === listId);
+  // People already in this list stay ticked in the picker: they are not counted or sent again.
+  const already = new Set(leads.map(l => l.linkedin_url));
+  const newPicked = picked.filter(p => !already.has(p.linkedin_url));
+  const newUrls = urls.filter(u => !already.has(u));
+  const total = newPicked.length + newUrls.length;
+  // Lists made before the description was asked carry a placeholder: do not prefill the picker with it.
+  const description = list?.icp_description && !/^growth mode/i.test(list.icp_description) ? list.icp_description : undefined;
 
-  // CSV parsing
-  const handleCsvFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const { rows, invalidRows, duplicateRows, totalRows, headers } = parseLeadCsv(text);
-      if (!headers.includes('linkedin_url')) {
-        toast.error('CSV must include a linkedin_url column (or similar)');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        return;
-      }
-      if (rows.length === 0) {
-        toast.error('No valid LinkedIn URLs found in the CSV');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        return;
-      }
-      if (leadsRemaining <= 0) {
-        toast.warning('You have no credits left this cycle. People are still checked against your audience, but not counted until the next cycle.');
-      }
-
-      setCsvParsed(rows);
-      setCsvStats({ invalidRows, duplicateRows, totalRows });
-      const extra = invalidRows > 0 || duplicateRows > 0
-        ? ` (${invalidRows} invalid, ${duplicateRows} duplicates)`
-        : '';
-      toast.success(`Read ${rows.length} people from the CSV${extra}`);
-    };
-    reader.readAsText(file);
+  const addUrl = () => {
+    const url = profileUrlFrom(urlInput);
+    if (!url) { toast.error('Enter a LinkedIn profile URL, for example linkedin.com/in/username'); return; }
+    if (urls.includes(url)) { toast.error('That profile is already in the box'); return; }
+    setUrls(prev => [...prev, url]);
+    setUrlInput('');
   };
 
-  const importCsv = async () => {
-    if (!selectedCampaignId || !user) { toast.error('Select a list first'); return; }
-    setCsvImporting(true);
+  const save = async () => {
+    if (!user || !listId) return;
+    if (total === 0) { toast.error('Pick at least one contact or add a profile URL'); return; }
+    setSaving(true);
     try {
-      const existingUrls = new Set(
-        leads.map(l => normalizeLinkedInUrl(l.linkedin_url)).filter(Boolean) as string[]
-      );
-      const newLeads = csvParsed.filter(r => !existingUrls.has(r.linkedin_url));
-      const dupes = csvParsed.length - newLeads.length;
-
-      if (leadsRemaining <= 0) {
-        toast.warning('You have no credits left this cycle. People are still checked against your audience, but not counted until the next cycle.');
-      }
-
-      if (newLeads.length > 0) {
-        const batchSize = 200;
-        let totalInserted = 0;
-        for (let i = 0; i < newLeads.length; i += batchSize) {
-          const batch = newLeads.slice(i, i + batchSize);
-          const payload = batch.map(r => ({
-            user_id: user.id,
-            campaign_profile_id: selectedCampaignId,
-            first_name: r.first_name || null,
-            last_name: r.last_name || null,
-            full_name: r.full_name || (r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : null),
-            title: r.title || null,
-            company: r.company || null,
-            linkedin_url: r.linkedin_url,
-            location: r.location || null,
-            source: 'csv',
-            status: 'new',
-            profile_quality_status: null,
-            profile_quality_checked_at: null,
-            profile_quality_note: null,
-          }));
-
-          const { data: inserted, error } = await supabase
-            .from('campaign_leads')
-            .upsert(payload, { onConflict: 'user_id,linkedin_url', ignoreDuplicates: true })
-            .select('id');
-          if (error) throw error;
-          totalInserted += (inserted || []).length;
-        }
-
-        queryClient.invalidateQueries({ queryKey: ['user_settings'] });
-        toast.success(`Added ${totalInserted} of ${newLeads.length} people. ${dupes} duplicates skipped.`);
-        toast.info('People added. Their profiles are checked first; empty profiles are skipped.', { duration: 8000 });
-      } else {
-        toast.success(`Added 0 people. ${dupes} duplicates skipped.`);
-      }
+      const { inserted, skipped } = await addPeopleToList(user.id, listId, newPicked, newUrls);
       queryClient.invalidateQueries({ queryKey: ['campaign_leads'] });
-      setCsvParsed([]);
-      setCsvStats(null);
+      if (inserted > 0) toast.success(`${inserted} ${inserted === 1 ? 'person' : 'people'} added to ${list?.name || 'the list'}.`);
+      if (skipped > 0) toast.info(`${skipped} already in one of your lists and skipped.`);
+      if (inserted > 0) { setUrls([]); navigate(`/dashboard?campaign=${listId}`); }
     } catch (e) {
-      toast.error('Import failed: ' + (e instanceof Error ? e.message : 'Unknown'));
-    } finally {
-      setCsvImporting(false);
-    }
+      toast.error('Could not add them: ' + (e instanceof Error ? e.message : 'unknown error'));
+    } finally { setSaving(false); }
   };
-
-  const downloadCsvTemplate = () => {
-    const template = 'linkedin_url,first_name,last_name,title,company,location,email\nhttps://www.linkedin.com/in/example,John,Doe,CPA,"Smith & Associates","Orlando FL",john@smithcpa.com\n';
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'olanovo-template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const creditsPercentage = leadsLimit > 0 ? Math.min(100, (leadsUsed / leadsLimit) * 100) : 0;
-  const isLow = leadsRemaining > 0 && leadsRemaining < 100;
-  const isExhausted = leadsRemaining <= 0;
-  const resetDateFormatted = cycleResetDate ? new Date(cycleResetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
 
   return (
     <AppShell>
       <div className="max-w-4xl space-y-4">
-        <h1 className="font-display font-bold text-4xl leading-none m-0 mb-2">Add people</h1>
-
-        {/* Lead Credits Banner */}
-        <Card className={isExhausted ? 'border-destructive/50 bg-destructive/5' : isLow ? 'border-warning/50 bg-warning/5' : ''}>
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium flex items-center gap-2">
-                {isExhausted ? '🚫' : isLow ? '⚠️' : '📊'} Credits {isFree ? '(Lifetime)' : 'This Month'}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {leadsUsed.toLocaleString()} / {leadsLimit.toLocaleString()} used
-              </span>
-            </div>
-            <Progress value={creditsPercentage} className="h-2" />
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-xs text-muted-foreground">
-                {leadsRemaining.toLocaleString()} people remaining
-                {resetDateFormatted && !isFree && ` · Resets ${resetDateFormatted}`}
-              </span>
-              {isFree && (
-                <Button variant="link" size="sm" className="text-xs h-auto p-0" onClick={() => setUpgradeOpen(true)}>
-                  <Crown className="w-3 h-3 mr-1" /> Upgrade for 1,000/month
-                </Button>
-              )}
-            </div>
-            {isExhausted && (
-              <div className="mt-3 p-3 rounded-lg bg-destructive/10 text-sm">
-                <p className="font-medium">{isFree ? 'Limit reached' : 'Monthly limit reached'}</p>
-                <p className="text-muted-foreground text-xs mt-1">
-                  The people you already added are still being processed.
-                  {resetDateFormatted && !isFree && ` The limit resets on ${resetDateFormatted}.`}
-                </p>
-                {isFree && (
-                  <Button size="sm" className="mt-2" onClick={() => setUpgradeOpen(true)}>
-                    Upgrade Plan
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Campaign selector */}
-        <div className="flex items-center gap-2">
-          <Label>List:</Label>
-          <Select value={selectedCampaignId} onValueChange={v => { setSelectedCampaignId(v); setCsvParsed([]); }}>
-            <SelectTrigger className="w-[250px]"><SelectValue placeholder="Select a list" /></SelectTrigger>
-            <SelectContent>
-              {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {selectedCampaignId && <Badge variant="outline">{leads.length} people already in it</Badge>}
+        <div className="flex flex-col gap-1">
+          <h1 className="font-display font-bold text-4xl leading-none m-0">Add people</h1>
+          <p className="text-muted-foreground m-0">Put more people in a list you already have. Olanovo starts reading their posts in the next cycle.</p>
         </div>
 
-        {!selectedCampaignId ? (
-          <Card><CardContent className="py-12 text-center text-muted-foreground">Select a list to add people to.</CardContent></Card>
+        {lists.length === 0 ? (
+          <Card><CardContent className="py-12 text-center space-y-3">
+            <p className="text-muted-foreground m-0">You have no list yet. People are chosen when you create one.</p>
+            <Link to="/dashboard?new=1"><Button><Plus className="w-4 h-4 mr-1" /> New list</Button></Link>
+          </CardContent></Card>
         ) : (
           <>
-            {/* CSV Upload */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Import a CSV of people</CardTitle>
-                <CardDescription>Upload a CSV with LinkedIn profile URLs. We'll enrich each profile, validate against your ICP, and generate personalized messages.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Where to find leads */}
-                <Collapsible>
-                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 rounded-lg border border-border bg-muted/30 hover:bg-muted/50 transition-colors text-left">
-                    <Info className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium flex-1">Where to get a CSV with LinkedIn URLs</span>
-                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-2 p-3 rounded-lg border border-border bg-muted/20 space-y-3 text-xs">
-                    <div className="flex items-start gap-2">
-                      <span>🔍</span>
-                      <div><p className="font-medium">LinkedIn Sales Navigator</p><p className="text-muted-foreground">The gold standard. Export with Evaboot or Dripify.</p></div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span>⚡</span>
-                      <div><p className="font-medium">Instantly SuperSearch</p><p className="text-muted-foreground">450M+ B2B contacts. Exports include LinkedIn URLs.</p></div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span>🔎</span>
-                      <div><p className="font-medium">Apollo.io</p><p className="text-muted-foreground">Export people with LinkedIn URLs as CSV.</p></div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span>👤</span>
-                      <div><p className="font-medium">Lusha</p><p className="text-muted-foreground">Chrome extension for quick profile capture.</p></div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span>📝</span>
-                      <div><p className="font-medium">Manual Research</p><p className="text-muted-foreground">Search LinkedIn directly, copy URLs into a spreadsheet.</p></div>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Label>List:</Label>
+              <Select value={listId} onValueChange={v => { setListId(v); setPicked([]); setUrls([]); }}>
+                <SelectTrigger className="w-[280px]"><SelectValue placeholder="Select a list" /></SelectTrigger>
+                <SelectContent>
+                  {lists.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {listId && <Badge variant="outline">{leads.length} {leads.length === 1 ? 'person' : 'people'} in it</Badge>}
+            </div>
 
-                <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCsvFile} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground file:font-medium file:cursor-pointer" />
-
-                {csvStats && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
-                      <p className="text-[10px] uppercase text-muted-foreground">Total rows</p>
-                      <p className="text-sm font-semibold">{csvStats.totalRows}</p>
-                    </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
-                      <p className="text-[10px] uppercase text-muted-foreground">Invalid</p>
-                      <p className="text-sm font-semibold">{csvStats.invalidRows}</p>
-                    </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
-                      <p className="text-[10px] uppercase text-muted-foreground">Duplicates</p>
-                      <p className="text-sm font-semibold">{csvStats.duplicateRows}</p>
-                    </div>
-                  </div>
-                )}
-
-                <Button variant="outline" size="sm" onClick={downloadCsvTemplate}>
-                  <FileSpreadsheet className="w-3 h-3 mr-1" /> Download CSV Template
-                </Button>
-
-                {csvParsed.length > 0 && (
-                  <>
-                    <p className="text-sm font-medium">Preview ({csvParsed.length} people):</p>
-                    <div className="overflow-x-auto max-h-48 border rounded-lg">
-                      <table className="w-full text-xs">
-                        <thead><tr className="bg-muted">
-                          <th className="px-2 py-1 text-left">Name</th><th className="px-2 py-1 text-left">Title</th><th className="px-2 py-1 text-left">Company</th><th className="px-2 py-1 text-left">LinkedIn</th>
-                        </tr></thead>
-                        <tbody>
-                          {csvParsed.slice(0, 5).map((r, i) => (
-                            <tr key={i} className="border-t"><td className="px-2 py-1">{r.first_name} {r.last_name}</td><td className="px-2 py-1">{r.title}</td><td className="px-2 py-1">{r.company}</td><td className="px-2 py-1 truncate max-w-[200px]">{r.linkedin_url}</td></tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <Button onClick={importCsv} disabled={csvImporting}>
-                      {csvImporting ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Importing...</> : `Add ${csvParsed.length} people`}
-                    </Button>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Summary */}
-            {leads.length > 0 && (
+            {!listId ? (
+              <Card><CardContent className="py-12 text-center text-muted-foreground">Select a list to add people to.</CardContent></Card>
+            ) : (
               <Card>
-                <CardContent className="py-6 text-center space-y-3">
-                  <p className="text-lg font-semibold">You have {leads.length} leads in {campaign?.name}</p>
-                  <div className="flex gap-3 justify-center">
-                    <Button size="lg" onClick={() => navigate(`/dashboard?campaign=${selectedCampaignId}&launch=true`)}>
-                      <Rocket className="w-4 h-4 mr-1" /> Start this list
+                <CardContent className="pt-6 space-y-4">
+                  <Tabs value={source} onValueChange={v => setSource(v as 'contacts' | 'urls')}>
+                    <TabsList className="w-full grid grid-cols-2">
+                      <TabsTrigger value="contacts">From my contacts</TabsTrigger>
+                      <TabsTrigger value="urls">Paste profile URLs</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+
+                  {source === 'contacts' ? (
+                    <ContactPicker key={listId} campaignId={listId} initialDescription={description} onChange={onPicked} />
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground m-0">Add the LinkedIn profile URLs of the people you want in this list.</p>
+                      <div className="flex gap-2">
+                        <Input placeholder="https://www.linkedin.com/in/username" value={urlInput} className="flex-1"
+                          onChange={e => setUrlInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addUrl(); } }} />
+                        <Button variant="outline" size="sm" onClick={addUrl} className="shrink-0 h-10"><Plus className="w-4 h-4 mr-1" /> Add</Button>
+                      </div>
+                      {urls.length > 0 && (
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {urls.map(url => {
+                            const vanity = url.split('/in/')[1]?.replace(/\/$/, '') || url;
+                            return (
+                              <div key={url} className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
+                                <span className="text-sm flex-1 truncate">{vanity}</span>
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={`Remove ${vanity}`} onClick={() => setUrls(prev => prev.filter(u => u !== url))}>
+                                  <X className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3 flex-wrap border-t border-border pt-4">
+                    <p className="text-sm text-muted-foreground m-0">
+                      {total > 0 ? `${total} ${total === 1 ? 'person' : 'people'} ready to add.` : 'Pick contacts or paste URLs.'}
+                      {' '}Someone already in one of your lists is skipped.
+                    </p>
+                    <Button onClick={save} disabled={saving || total === 0}>
+                      {saving ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Adding...</> : <><UserPlus className="w-4 h-4 mr-1" /> Add {total > 0 ? total : ''} {total === 1 ? 'person' : 'people'}</>}
                     </Button>
-                    <Button variant="outline" onClick={() => { setCsvParsed([]); }}>Add more people</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -310,7 +155,6 @@ export default function LeadSourcing() {
           </>
         )}
       </div>
-      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </AppShell>
   );
 }
