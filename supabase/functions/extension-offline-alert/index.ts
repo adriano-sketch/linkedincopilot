@@ -40,12 +40,12 @@ function minutesIntoActiveWindow(ext: any, nowMs: number): number {
 }
 
 function emailHtml(hoursText: string, pending: number, appUrl: string): { subject: string; html: string } {
-  const subject = `Your LinkedIn Copilot has been stopped for ${hoursText}`;
+  const subject = `Olanovo has been stopped for ${hoursText}`;
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px">
       <div style="background:#fff;border:1px solid #eee;border-radius:12px;overflow:hidden">
         <div style="background:#fffbeb;padding:20px 24px;border-bottom:1px solid #eee">
-          <h2 style="margin:0;color:#1a1a1a;font-size:20px">Your Copilot is not running</h2>
+          <h2 style="margin:0;color:#1a1a1a;font-size:20px">Olanovo is not running</h2>
         </div>
         <div style="padding:20px 24px;color:#333;font-size:15px;line-height:1.6">
           <p style="margin:0 0 12px">The Chrome extension has not checked in for ${hoursText}, during your active hours.
@@ -79,8 +79,8 @@ Deno.serve(async (req) => {
     const dryRun = body?.dry_run === true;
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "LinkedIn Copilot <notifications@linkedincopilot.io>";
-    const APP_URL = Deno.env.get("APP_URL") || "https://app.linkedincopilot.io";
+    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "Olanovo <notifications@linkedincopilot.io>";
+    const APP_URL = Deno.env.get("APP_URL") || "https://www.olanovo.com";
 
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();

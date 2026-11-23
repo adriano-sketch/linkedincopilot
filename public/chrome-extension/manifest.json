@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "LinkedIn Copilot",
-  "version": "0.6.3",
-  "description": "Stay close to your LinkedIn network: see who posted, get comment drafts in your voice, and post them yourself.",
+  "name": "Olanovo: comment drafts for your LinkedIn® network",
+  "short_name": "Olanovo",
+  "version": "0.6.4",
+  "description": "Say hello again to the people who already know you: see who posted on LinkedIn, get a comment draft, and post it yourself.",
   "permissions": [
     "storage",
     "alarms",

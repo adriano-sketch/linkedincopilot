@@ -1242,7 +1242,7 @@ serve(async (req) => {
       <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;background:white">
         <div style="background:${criticals.length > 0 ? '#fef2f2' : '#fffbeb'};padding:20px;border-radius:8px 8px 0 0">
           <h2 style="margin:0;color:${criticals.length > 0 ? '#dc2626' : '#d97706'}">
-            ${subjectEmoji} LinkedIn Copilot — Watchdog Report
+            ${subjectEmoji} Olanovo — Watchdog Report
           </h2>
           <p style="margin:8px 0 0;color:#666">${timestamp} (Horário de Brasília)</p>
         </div>
@@ -1280,7 +1280,7 @@ serve(async (req) => {
         </div>
 
         <div style="padding:15px 20px;background:#f9fafb;border-radius:0 0 8px 8px;text-align:center">
-          <p style="margin:0;font-size:11px;color:#999">Watchdog automático — LinkedIn Copilot • Executado a cada 30min</p>
+          <p style="margin:0;font-size:11px;color:#999">Watchdog automático — Olanovo • Executado a cada 30min</p>
         </div>
       </div>
     `;
@@ -1293,7 +1293,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "LinkedIn Copilot <onboarding@resend.dev>",
+          from: "Olanovo <onboarding@resend.dev>",
           to: [ALERT_EMAIL],
           subject,
           html,

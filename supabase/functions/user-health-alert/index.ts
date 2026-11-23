@@ -144,7 +144,7 @@ async function computeHealth(
           severity: "critical",
           code: "extension_offline_business_hours",
           message: `Extension offline for ${Math.round(minsSinceBeat)} min during your active hours.`,
-          detail: "Check that Chrome is running and the LinkedIn Copilot extension is installed and signed in.",
+          detail: "Check that Chrome is running and the Olanovo extension is installed and signed in.",
         });
       }
       if (ext.is_connected && !ext.linkedin_logged_in) {
@@ -321,7 +321,7 @@ async function computeHealth(
 function buildEmailHtml(report: HealthReport, appUrl: string): { subject: string; html: string } {
   const emoji = report.status === "critical" ? "🔴" : report.status === "warn" ? "🟡" : "🟢";
   const label = report.status === "critical" ? "Action required" : report.status === "warn" ? "Heads up" : "Pipeline healthy";
-  const subject = `${emoji} LinkedIn Copilot — ${label} (health ${report.score}/100)`;
+  const subject = `${emoji} Olanovo — ${label} (health ${report.score}/100)`;
 
   const issueRows = report.issues.map(i => {
     const color = i.severity === "critical" ? "#dc2626" : i.severity === "warn" ? "#d97706" : "#2563eb";
@@ -372,7 +372,7 @@ function buildEmailHtml(report: HealthReport, appUrl: string): { subject: string
         </div>
 
         <div style="padding:14px 24px;background:#fafafa;border-top:1px solid #eee;color:#999;font-size:12px;text-align:center">
-          You're getting this because LinkedIn Copilot detected something that needs your attention.
+          You're getting this because Olanovo detected something that needs your attention.
         </div>
       </div>
     </div>
@@ -391,8 +391,8 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const APP_URL = Deno.env.get("APP_URL") || "https://app.linkedincopilot.io";
-    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "LinkedIn Copilot <notifications@linkedincopilot.io>";
+    const APP_URL = Deno.env.get("APP_URL") || "https://www.olanovo.com";
+    const EMAIL_FROM = Deno.env.get("ALERT_FROM_EMAIL") || "Olanovo <notifications@linkedincopilot.io>";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = req.body ? await req.json().catch(() => ({})) : {};

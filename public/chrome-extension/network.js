@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-// LinkedIn Copilot — "Rede" module (network growth + post monitoring)
+// Olanovo — "Rede" module (network growth + post monitoring)
 // Loaded by background.js via importScripts('network.js').
 //
 // Action types (all carry action_data.module === 'network'):

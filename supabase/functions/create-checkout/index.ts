@@ -125,9 +125,9 @@ serve(async (req) => {
       session = await stripe.checkout.sessions.create({
         ...sessionParams,
         branding_settings: {
-          display_name: "LinkedIn Copilot",
+          display_name: "Olanovo",
           // The www address answers directly; the bare domain redirects, which an image fetch may not follow.
-          icon: { type: "url", url: "https://www.linkedincopilot.io/favicon.png" },
+          icon: { type: "url", url: "https://www.olanovo.com/favicon.png" },
         },
       // deno-lint-ignore no-explicit-any
       } as any, { apiVersion: "2025-09-30.clover" });

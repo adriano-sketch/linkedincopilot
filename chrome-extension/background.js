@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-// LinkedIn Copilot — Background Service Worker
+// Olanovo — Background Service Worker
 // Single-file bundle (no ES module imports)
 // ═══════════════════════════════════════════════════
 

@@ -102,7 +102,7 @@ serve(async (req) => {
 
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-        <h2 style="color:#dc2626">⚠️ LinkedIn Copilot – Alerta de Sistema</h2>
+        <h2 style="color:#dc2626">⚠️ Olanovo – Alerta de Sistema</h2>
         <p style="color:#555">Verificação em: ${timestamp} (Horário de Brasília)</p>
         <p><strong>${failures.length} problema(s) detectado(s)</strong> de ${results.length} verificações.</p>
         
@@ -118,7 +118,7 @@ serve(async (req) => {
           ${okRows}
         </table>
 
-        <p style="color:#888;margin-top:20px;font-size:12px">Enviado automaticamente pelo LinkedIn Copilot Health Check</p>
+        <p style="color:#888;margin-top:20px;font-size:12px">Enviado automaticamente pelo Olanovo Health Check</p>
       </div>
     `;
 
@@ -130,7 +130,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "LinkedIn Copilot <onboarding@resend.dev>",
+          from: "Olanovo <onboarding@resend.dev>",
           to: [ALERT_EMAIL],
           subject: `⚠️ Health Check ALERT – ${failures.length} falha(s) detectada(s)`,
           html,

@@ -1,4 +1,4 @@
-// Shared authentication helper for LinkedIn Copilot edge functions.
+// Shared authentication helper for Olanovo edge functions.
 //
 // All functions run with verify_jwt=false, so the gateway does NOT check
 // tokens. Every function must call `authenticate()` itself.

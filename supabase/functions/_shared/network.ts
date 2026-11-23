@@ -384,7 +384,7 @@ export function renderInviteNote(template: string | null | undefined, fullName: 
 }
 
 /**
- * May Copilot work for this user right now (paid plan or free trial still running)?
+ * May Olanovo work for this user right now (paid plan or free trial still running)?
  * Fails open: if the check itself breaks, nobody is stopped because of our error.
  */
 // deno-lint-ignore no-explicit-any
