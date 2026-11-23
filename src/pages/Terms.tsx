@@ -109,7 +109,8 @@ export default function Terms() {
               when you subscribe, and renews until you cancel.
             </li>
             <li>
-              You can cancel at any time from Settings. Cancelling stops future charges.
+              You can cancel at any time from Settings. You keep access until the end of the
+              period you already paid for, and you are not charged again.
             </li>
             <li>
               Prices can change. A new price applies from your next renewal, and you will be
