@@ -1,11 +1,11 @@
 // Prevent double injection — guard MUST wrap the message listener too,
 // otherwise each injection adds another listener causing duplicate execution
 if (window.__linkedinCopilotLoaded) {
-  console.log('[LinkedIn Copilot] Content script already loaded, skipping');
+  console.log('[Olanovo] Content script already loaded, skipping');
   // STOP HERE — do not register another message listener
 } else {
   window.__linkedinCopilotLoaded = true;
-  console.log('[LinkedIn Copilot] Content script loaded');
+  console.log('[Olanovo] Content script loaded');
 
   // Listen for action requests from background (registered ONCE only)
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -30,7 +30,7 @@ if (window.__linkedinCopilotLoaded) {
 }
 
 async function handleAction(action) {
-  console.log(`[LinkedIn Copilot] Executing: ${action.action_type}`);
+  console.log(`[Olanovo] Executing: ${action.action_type}`);
 
   // Wait for page to be ready
   await waitForLinkedInReady();
@@ -104,12 +104,12 @@ async function followProfile() {
 
   if (followButton) {
     followButton.click();
-    console.log('[LinkedIn Copilot] Clicked Follow button');
+    console.log('[Olanovo] Clicked Follow button');
     await sleep(1000 + Math.random() * 1000);
     return { success: true, action: 'follow_profile', followed: true };
   }
 
-  console.log('[LinkedIn Copilot] Follow button not found — may already be following');
+  console.log('[Olanovo] Follow button not found — may already be following');
   return { success: true, action: 'follow_profile', followed: false, note: 'already_following_or_not_found' };
 }
 
@@ -203,7 +203,7 @@ async function sendConnectionRequest(noteText) {
         await sleep(500 + Math.random() * 500);
 
         if (!inserted) {
-          console.warn('[LinkedIn Copilot] Note insertion incomplete. Retrying with fallback.');
+          console.warn('[Olanovo] Note insertion incomplete. Retrying with fallback.');
           const retried = await retryNoteInsertion(noteInput, noteText);
           if (!retried) {
             throw new Error('Connection note could not be fully inserted');
@@ -223,9 +223,9 @@ async function sendConnectionRequest(noteText) {
         noteInput.dispatchEvent(new Event('blur', { bubbles: true }));
         noteInput.dispatchEvent(new Event('change', { bubbles: true }));
         await sleep(300);
-        console.log('[LinkedIn Copilot] Note typed and events dispatched ✅');
+        console.log('[Olanovo] Note typed and events dispatched ✅');
       } else {
-        console.warn('[LinkedIn Copilot] Note input not found, sending without note');
+        console.warn('[Olanovo] Note input not found, sending without note');
       }
     } else {
       // Diagnostic: log dialog buttons to help debug selector issues
@@ -236,9 +236,9 @@ async function sendConnectionRequest(noteText) {
           ariaLabel: b.getAttribute('aria-label'),
           classes: b.className.substring(0, 80),
         }));
-        console.warn('[LinkedIn Copilot] Add a note button not found. Dialog buttons:', JSON.stringify(btns));
+        console.warn('[Olanovo] Add a note button not found. Dialog buttons:', JSON.stringify(btns));
       } else {
-        console.warn('[LinkedIn Copilot] Add a note button not found — no dialog present');
+        console.warn('[Olanovo] Add a note button not found — no dialog present');
       }
     }
   }
@@ -274,7 +274,7 @@ async function sendConnectionRequest(noteText) {
   // Also check for page-level limit banners (LinkedIn sometimes shows them outside dialogs)
   const pageLimitBanner = detectLinkedInLimitBanner();
   if (pageLimitBanner) {
-    console.warn('[LinkedIn Copilot] LinkedIn limit banner detected:', pageLimitBanner);
+    console.warn('[Olanovo] LinkedIn limit banner detected:', pageLimitBanner);
     // Connection was likely sent, but flag the limit for the queue to pause
     return { success: true, action: 'send_connection_request', note: 'sent_with_note', limitWarning: pageLimitBanner };
   }
@@ -311,7 +311,7 @@ async function getMyMailboxUrn() {
   // entityUrn is "urn:li:fs_miniProfile:ACoAAA..." — convert to fsd_profile
   const profileId = mini.entityUrn.replace('urn:li:fs_miniProfile:', '');
   _cachedMailboxUrn = `urn:li:fsd_profile:${profileId}`;
-  console.log('[LinkedIn Copilot] Resolved own mailboxUrn:', _cachedMailboxUrn);
+  console.log('[Olanovo] Resolved own mailboxUrn:', _cachedMailboxUrn);
   return _cachedMailboxUrn;
 }
 
@@ -365,7 +365,7 @@ async function verifyConnectionDegreeViaAPI() {
       const distValue = json?.data?.distance?.value || json?.distance?.value || null;
       if (distValue) {
         const isFirst = distValue === 'DISTANCE_1';
-        console.log(`[LinkedIn Copilot] Voyager networkinfo: ${vanityName} → distance=${distValue}, isFirstDegree=${isFirst}`);
+        console.log(`[Olanovo] Voyager networkinfo: ${vanityName} → distance=${distValue}, isFirstDegree=${isFirst}`);
         return { isFirstDegree: isFirst, distance: distValue, raw: json };
       }
     }
@@ -387,16 +387,16 @@ async function verifyConnectionDegreeViaAPI() {
         const dist = item?.distance?.value || item?.networkDistance?.value;
         if (dist) {
           const isFirst = dist === 'DISTANCE_1';
-          console.log(`[LinkedIn Copilot] Voyager dash/profiles: ${vanityName} → distance=${dist}, isFirstDegree=${isFirst}`);
+          console.log(`[Olanovo] Voyager dash/profiles: ${vanityName} → distance=${dist}, isFirstDegree=${isFirst}`);
           return { isFirstDegree: isFirst, distance: dist, raw: { source: 'dash_profiles' } };
         }
       }
     }
 
-    console.warn(`[LinkedIn Copilot] verifyConnectionDegreeViaAPI: could not determine degree for ${vanityName}`);
+    console.warn(`[Olanovo] verifyConnectionDegreeViaAPI: could not determine degree for ${vanityName}`);
     return { isFirstDegree: null, distance: null };
   } catch (err) {
-    console.warn('[LinkedIn Copilot] verifyConnectionDegreeViaAPI error:', err.message);
+    console.warn('[Olanovo] verifyConnectionDegreeViaAPI error:', err.message);
     return { isFirstDegree: null, distance: null };
   }
 }
@@ -429,7 +429,7 @@ async function sendMessageViaVoyagerAPI(recipientProfileId, messageText) {
     trackingId: generateTrackingId(),
   };
 
-  console.log('[LinkedIn Copilot] Voyager API createMessage →', recipientUrn);
+  console.log('[Olanovo] Voyager API createMessage →', recipientUrn);
   const resp = await fetch('/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage', {
     method: 'POST',
     headers: {
@@ -448,7 +448,7 @@ async function sendMessageViaVoyagerAPI(recipientProfileId, messageText) {
 
   if (!resp.ok) {
     const code = respJson?.data?.code || `HTTP_${resp.status}`;
-    console.error('[LinkedIn Copilot] Voyager createMessage failed:', resp.status, code, respText.substring(0, 300));
+    console.error('[Olanovo] Voyager createMessage failed:', resp.status, code, respText.substring(0, 300));
     // Surface specific LinkedIn limits
     if (resp.status === 429 || /RATE_LIMIT|TOO_MANY/i.test(code)) {
       throw new Error(`LINKEDIN_LIMIT: Voyager API rate limited (${resp.status} ${code})`);
@@ -467,7 +467,7 @@ async function sendMessageViaVoyagerAPI(recipientProfileId, messageText) {
     conversationUrn = convo?.entityUrn || convo?.['*entityUrn'] || null;
   } catch (_) {}
 
-  console.log('[LinkedIn Copilot] ✅ Voyager API send success. Conversation:', conversationUrn, 'Message:', messageUrn);
+  console.log('[Olanovo] ✅ Voyager API send success. Conversation:', conversationUrn, 'Message:', messageUrn);
   return {
     success: true,
     via: 'voyager_api',
@@ -512,7 +512,7 @@ async function sendMessageViaConversationUrn(threadId, messageText) {
     dedupeByClientGeneratedToken: false,
   };
 
-  console.log('[LinkedIn Copilot] Voyager API createMessage (conversationUrn) →', conversationUrn);
+  console.log('[Olanovo] Voyager API createMessage (conversationUrn) →', conversationUrn);
   const resp = await fetch('/voyager/api/voyagerMessagingDashMessengerMessages?action=createMessage', {
     method: 'POST',
     headers: {
@@ -531,7 +531,7 @@ async function sendMessageViaConversationUrn(threadId, messageText) {
 
   if (!resp.ok) {
     const code = respJson?.data?.code || `HTTP_${resp.status}`;
-    console.error('[LinkedIn Copilot] Voyager conversationUrn send failed:', resp.status, code, respText.substring(0, 300));
+    console.error('[Olanovo] Voyager conversationUrn send failed:', resp.status, code, respText.substring(0, 300));
     if (resp.status === 429 || /RATE_LIMIT|TOO_MANY/i.test(code)) {
       throw new Error(`LINKEDIN_LIMIT: Voyager API rate limited (${resp.status} ${code})`);
     }
@@ -549,7 +549,7 @@ async function sendMessageViaConversationUrn(threadId, messageText) {
     responseConversationUrn = convo?.entityUrn || convo?.['*entityUrn'] || null;
   } catch (_) {}
 
-  console.log('[LinkedIn Copilot] ✅ Voyager conversationUrn send success. Conversation:', responseConversationUrn, 'Message:', messageUrn);
+  console.log('[Olanovo] ✅ Voyager conversationUrn send success. Conversation:', responseConversationUrn, 'Message:', messageUrn);
   return {
     success: true,
     via: 'voyager_api_conversation_urn',
@@ -592,7 +592,7 @@ async function sendMessage(messageText) {
   // ── STEP 0.5: Capture the profile name from the page heading ──
   const profileH1 = document.querySelector('main h1') || document.querySelector('main h2');
   const profileName = profileH1 ? profileH1.textContent.trim().toLowerCase() : null;
-  console.log('[LinkedIn Copilot] Target profile name from heading:', profileName);
+  console.log('[Olanovo] Target profile name from heading:', profileName);
 
   // ── STEP 1: Find the Message button/link on their profile (with retry) ──
   let messageButton = null;
@@ -600,7 +600,7 @@ async function sendMessage(messageText) {
     messageButton = findMessageButton();
     if (messageButton) break;
     if (attempt % 3 === 2) {
-      console.log(`[LinkedIn Copilot] sendMessage: Message button not found yet (attempt ${attempt + 1}/10), URL: ${window.location.href}`);
+      console.log(`[Olanovo] sendMessage: Message button not found yet (attempt ${attempt + 1}/10), URL: ${window.location.href}`);
     }
     await sleep(1500);
   }
@@ -642,28 +642,28 @@ async function sendMessage(messageText) {
       try {
         const degreeCheck = await verifyConnectionDegreeViaAPI();
         if (degreeCheck.isFirstDegree === false) {
-          console.error(`[LinkedIn Copilot] PRE-FLIGHT BLOCK: Recipient is ${degreeCheck.distance}, not 1st-degree. Refusing to send DM.`);
+          console.error(`[Olanovo] PRE-FLIGHT BLOCK: Recipient is ${degreeCheck.distance}, not 1st-degree. Refusing to send DM.`);
           throw new Error(`RECIPIENT_NOT_FIRST_DEGREE_CONNECTION: Pre-flight API check shows distance=${degreeCheck.distance}. Lead is NOT actually connected.`);
         }
         if (degreeCheck.isFirstDegree === true) {
-          console.log('[LinkedIn Copilot] Pre-flight OK: Recipient confirmed as 1st-degree connection');
+          console.log('[Olanovo] Pre-flight OK: Recipient confirmed as 1st-degree connection');
         } else {
-          console.log('[LinkedIn Copilot] Pre-flight: Could not verify degree, proceeding anyway');
+          console.log('[Olanovo] Pre-flight: Could not verify degree, proceeding anyway');
         }
       } catch (preFlightErr) {
         if (/RECIPIENT_NOT_FIRST_DEGREE/i.test(preFlightErr.message)) {
           throw preFlightErr; // Rethrow the definitive block
         }
-        console.warn('[LinkedIn Copilot] Pre-flight degree check failed (non-blocking):', preFlightErr.message);
+        console.warn('[Olanovo] Pre-flight degree check failed (non-blocking):', preFlightErr.message);
       }
 
       try {
-        console.log('[LinkedIn Copilot] Message button is <a> link — using Voyager API to send directly');
+        console.log('[Olanovo] Message button is <a> link — using Voyager API to send directly');
         const apiResult = await sendMessageViaVoyagerAPI(recipientProfileId, messageText);
 
         // If InMail thread detected, bubble the retry signal up to background.js
         if (apiResult && apiResult.note === 'inmail_thread_retry_needed') {
-          console.warn('[LinkedIn Copilot] InMail retry signal — passing to background.js');
+          console.warn('[Olanovo] InMail retry signal — passing to background.js');
           return apiResult; // background.js checks for this note
         }
 
@@ -682,14 +682,14 @@ async function sendMessage(messageText) {
           },
         };
       } catch (voyagerErr) {
-        console.error('[LinkedIn Copilot] Voyager API send failed:', voyagerErr.message);
+        console.error('[Olanovo] Voyager API send failed:', voyagerErr.message);
 
         // ── InMail thread detected: return retry signal instead of throwing ──
         // background.js will navigate to /messaging/thread/new/?recipient=ID,
         // extract the threadId from the URL, and resend via conversationUrn.
         const isInmailBlock = /NOT_ALLOWED_PREMIUM_INMAIL/i.test(voyagerErr.message);
         if (isInmailBlock) {
-          console.warn('[LinkedIn Copilot] InMail thread — returning retry signal for conversationUrn flow');
+          console.warn('[Olanovo] InMail thread — returning retry signal for conversationUrn flow');
           return {
             success: false,
             note: 'inmail_thread_retry_needed',
@@ -703,7 +703,7 @@ async function sendMessage(messageText) {
         throw voyagerErr;
       }
     } else {
-      console.warn('[LinkedIn Copilot] Message <a> href has no ?recipient= param, cannot use Voyager API. href:', messageButton.href);
+      console.warn('[Olanovo] Message <a> href has no ?recipient= param, cannot use Voyager API. href:', messageButton.href);
     }
 
     // If we get here, the <a> link had no extractable recipient ID.
@@ -727,7 +727,7 @@ async function sendMessage(messageText) {
   if (profileName && messageOverlay) {
     const headerEl = messageOverlay.querySelector('.msg-overlay-bubble-header h2, .msg-overlay-bubble-header a, .msg-overlay-bubble-header span.msg-overlay-bubble-header__title');
     const conversationName = headerEl ? headerEl.textContent.trim().toLowerCase() : '';
-    console.log('[LinkedIn Copilot] Conversation header name:', conversationName);
+    console.log('[Olanovo] Conversation header name:', conversationName);
 
     // Compare: the conversation header should contain the profile name (or vice versa)
     // Use first name match as minimum since LinkedIn may abbreviate
@@ -737,11 +737,11 @@ async function sendMessage(messageText) {
     if (profileFirstName && conversationFirstName && profileFirstName.length > 1 && conversationFirstName.length > 1) {
       const nameMatches = conversationName.includes(profileFirstName) || profileName.includes(conversationFirstName);
       if (!nameMatches) {
-        console.error(`[LinkedIn Copilot] RECIPIENT MISMATCH! Profile: "${profileName}" vs Conversation: "${conversationName}". Aborting send.`);
+        console.error(`[Olanovo] RECIPIENT MISMATCH! Profile: "${profileName}" vs Conversation: "${conversationName}". Aborting send.`);
         await closeMessageOverlay(messageOverlay);
         throw new Error(`Recipient mismatch: expected "${profileName}" but chat opened for "${conversationName}". Blocked to prevent sending DM to wrong person.`);
       }
-      console.log('[LinkedIn Copilot] ✅ Recipient verified:', profileFirstName);
+      console.log('[Olanovo] ✅ Recipient verified:', profileFirstName);
     }
   }
 
@@ -798,7 +798,7 @@ async function sendMessage(messageText) {
 
     // Text still in composer — try clicking send again (first 2 attempts only)
     if (attempt < 2) {
-      console.warn(`[LinkedIn Copilot] Send verification attempt ${attempt + 1}: text still in composer, retrying send`);
+      console.warn(`[Olanovo] Send verification attempt ${attempt + 1}: text still in composer, retrying send`);
       const retryBtn = findMessageSendButton(messageOverlay);
       if (retryBtn && !retryBtn.disabled) {
         retryBtn.click();
@@ -816,12 +816,12 @@ async function sendMessage(messageText) {
       for (const b of recent) {
         if ((b.textContent || '').trim().toLowerCase().includes(snippet)) {
           sendVerified = true;
-          console.warn('[LinkedIn Copilot] ⚠️ Overlay composer not cleared but message found in thread — treating as success');
+          console.warn('[Olanovo] ⚠️ Overlay composer not cleared but message found in thread — treating as success');
           break;
         }
       }
     } catch (e) {
-      console.warn('[LinkedIn Copilot] Overlay thread-match check failed:', e.message);
+      console.warn('[Olanovo] Overlay thread-match check failed:', e.message);
     }
   }
 
@@ -906,7 +906,7 @@ async function verifyComposerIntegrity(element, expectedText, options = {}) {
     await sleep(baseDelayMs + i * incrementalDelayMs);
     const current = normalizeMessageText(readComposerText(element));
     if (current !== expected) {
-      console.error('[LinkedIn Copilot] Composer mismatch detected, blocking send', {
+      console.error('[Olanovo] Composer mismatch detected, blocking send', {
         expectedLength: expected.length,
         currentLength: current.length,
       });
@@ -1121,7 +1121,7 @@ async function findAndClickMessageButton() {
     throw new Error('Message button not found on profile page');
   }
 
-  console.log('[LinkedIn Copilot] Clicking Message button for InMail fallback:', messageButton.tagName, messageButton.href || '(button)');
+  console.log('[Olanovo] Clicking Message button for InMail fallback:', messageButton.tagName, messageButton.href || '(button)');
 
   // If it's an <a> link, navigate directly
   if (messageButton.tagName === 'A' && messageButton.href) {
@@ -1135,7 +1135,7 @@ async function findAndClickMessageButton() {
 }
 
 async function composeOnMessagingPage(messageText, expectedName) {
-  console.log('[LinkedIn Copilot] Composing on messaging page. URL:', window.location.href);
+  console.log('[Olanovo] Composing on messaging page. URL:', window.location.href);
 
   // Wait for the active thread to render AND contain a VISIBLE compose input.
   // No more "use a hidden compose element" fallback — that was the fast path
@@ -1169,7 +1169,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
     }
 
     if (attempt % 5 === 4) {
-      console.log(`[LinkedIn Copilot] Visible compose input not found yet (attempt ${attempt + 1}/30). URL: ${window.location.pathname}`);
+      console.log(`[Olanovo] Visible compose input not found yet (attempt ${attempt + 1}/30). URL: ${window.location.pathname}`);
     }
     await sleep(1000);
   }
@@ -1214,7 +1214,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
         if (headerText) break;
       }
     }
-    console.log('[LinkedIn Copilot] Active thread header:', headerText || '(empty)', 'expected:', expectedName);
+    console.log('[Olanovo] Active thread header:', headerText || '(empty)', 'expected:', expectedName);
     const expectedLower = expectedName.toLowerCase();
     const matches =
       headerText && (
@@ -1231,7 +1231,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
     if (lateBanner) {
       throw new Error(`RECIPIENT_UNABLE_TO_RECEIVE: ${lateBanner}`);
     }
-    console.log('[LinkedIn Copilot] ✅ Recipient verified strictly:', headerText);
+    console.log('[Olanovo] ✅ Recipient verified strictly:', headerText);
   }
 
   // Capture forensic telemetry that will be returned in the success result so
@@ -1278,11 +1278,11 @@ async function composeOnMessagingPage(messageText, expectedName) {
 
   // Verify text was set
   let composerText = (messageInput.textContent || '').trim();
-  console.log(`[LinkedIn Copilot] After innerHTML set, composer has ${composerText.length} chars (expected ${messageText.length})`);
+  console.log(`[Olanovo] After innerHTML set, composer has ${composerText.length} chars (expected ${messageText.length})`);
 
   // Strategy 2: If innerHTML didn't work, try insertText
   if (composerText.length < messageText.length * 0.5) {
-    console.log('[LinkedIn Copilot] innerHTML failed, trying execCommand insertText');
+    console.log('[Olanovo] innerHTML failed, trying execCommand insertText');
     messageInput.innerHTML = '';
     messageInput.focus();
     await sleep(200);
@@ -1294,7 +1294,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
 
   // Strategy 3: Try setting textContent directly
   if (composerText.length < messageText.length * 0.5) {
-    console.log('[LinkedIn Copilot] insertText failed, trying textContent');
+    console.log('[Olanovo] insertText failed, trying textContent');
     messageInput.textContent = messageText;
     messageInput.dispatchEvent(new Event('input', { bubbles: true }));
     await sleep(500);
@@ -1305,7 +1305,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
     throw new Error(`Failed to set message text in composer (got ${composerText.length} chars, expected ${messageText.length})`);
   }
 
-  console.log('[LinkedIn Copilot] Message text set successfully');
+  console.log('[Olanovo] Message text set successfully');
   await sleep(1000);
 
   // ── Find Send button SCOPED to the same thread as the compose input ──
@@ -1355,7 +1355,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
     throw new Error(`Send button not found in active thread scope (buttons=${JSON.stringify(btnTexts)})`);
   }
 
-  console.log('[LinkedIn Copilot] Clicking Send button:', sendButton.textContent.trim(), sendButton.className);
+  console.log('[Olanovo] Clicking Send button:', sendButton.textContent.trim(), sendButton.className);
   sendButton.click();
 
   // ── Robust send verification ──
@@ -1376,7 +1376,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
     }
     // On first retry, try clicking send again (scoped)
     if (attempt === 0) {
-      console.warn('[LinkedIn Copilot] Text still in composer after 3s, retrying send');
+      console.warn('[Olanovo] Text still in composer after 3s, retrying send');
       const retryBtn = sendScope.querySelector('button.msg-form__send-button') || sendButton;
       if (retryBtn && !retryBtn.disabled) {
         retryBtn.click();
@@ -1404,7 +1404,7 @@ async function composeOnMessagingPage(messageText, expectedName) {
         }
       }
     } catch (e) {
-      console.warn('[LinkedIn Copilot] Thread-match check failed:', e.message);
+      console.warn('[Olanovo] Thread-match check failed:', e.message);
     }
   }
 
@@ -1413,10 +1413,10 @@ async function composeOnMessagingPage(messageText, expectedName) {
     throw new Error('Message may not have been sent — compose input still has content and message not found in thread');
   }
   if (!composerCleared && threadMatch) {
-    console.warn('[LinkedIn Copilot] ⚠️ Composer not cleared but message found in thread — treating as success');
+    console.warn('[Olanovo] ⚠️ Composer not cleared but message found in thread — treating as success');
   }
 
-  console.log('[LinkedIn Copilot] ✅ Message sent successfully on messaging page');
+  console.log('[Olanovo] ✅ Message sent successfully on messaging page');
   return {
     success: true,
     action: 'send_dm',
@@ -1964,7 +1964,7 @@ async function findLatestPost(expectedName, opts = {}) {
   const postUrl = chosen.permalink ||
     `https://www.linkedin.com/in/${vanityName}/recent-activity/all/#lcpost=${encodeURIComponent(chosen.fingerprint)}`;
 
-  console.log(`[LinkedIn Copilot] Found latest post: ${postUrl}, author: ${chosen.actor}, age: ${chosen.ageLabel}, text: ${chosen.text.substring(0, 80)}...`);
+  console.log(`[Olanovo] Found latest post: ${postUrl}, author: ${chosen.actor}, age: ${chosen.ageLabel}, text: ${chosen.text.substring(0, 80)}...`);
 
   // Like it in this same visit, after the time it takes to read it: one page per contact instead
   // of coming back to the same page later just to click Like.
@@ -1977,7 +1977,7 @@ async function findLatestPost(expectedName, opts = {}) {
     } catch (e) {
       like = { liked: false, confirmed: false, note: 'like_failed: ' + (e && e.message ? e.message : e) };
     }
-    console.log('[LinkedIn Copilot] Like in the same visit:', JSON.stringify(like));
+    console.log('[Olanovo] Like in the same visit:', JSON.stringify(like));
   }
 
   return {
@@ -2020,7 +2020,7 @@ async function likePost(postUrl) {
   // 2026 layout: one reaction button per card, labelled "Reaction button state: <state>"
   const reaction = await lcReactOnCard(targetPost);
   if (reaction.note !== 'reaction_button_not_found') {
-    console.log(`[LinkedIn Copilot] Like post result (reaction button): ${JSON.stringify(reaction)}`);
+    console.log(`[Olanovo] Like post result (reaction button): ${JSON.stringify(reaction)}`);
     return { success: true, action: 'like_post', liked: reaction.liked, confirmed: reaction.confirmed, ...(reaction.note ? { note: reaction.note } : {}), url: window.location.href };
   }
 
@@ -2088,7 +2088,7 @@ async function likePost(postUrl) {
   const isNowActive = likeBtn.classList.contains('react-button--active') ||
                       likeBtn.getAttribute('aria-pressed') === 'true';
 
-  console.log(`[LinkedIn Copilot] Like post result: ${isNowActive ? 'liked' : 'uncertain'}`);
+  console.log(`[Olanovo] Like post result: ${isNowActive ? 'liked' : 'uncertain'}`);
 
   return {
     success: true,
@@ -2129,7 +2129,7 @@ async function waitForLinkedInReady() {
   }
 
   // Even if timeout, continue — the action handlers will fail gracefully
-  console.warn('[LinkedIn Copilot] Page may not be fully loaded after timeout, continuing anyway');
+  console.warn('[Olanovo] Page may not be fully loaded after timeout, continuing anyway');
 }
 
 // Simulate human-like profile browsing
@@ -2364,7 +2364,7 @@ async function findAddNoteButton() {
   }
 
   if (!dialog) {
-    console.warn('[LinkedIn Copilot] No dialog found for Add a note');
+    console.warn('[Olanovo] No dialog found for Add a note');
     return null;
   }
 
@@ -2405,7 +2405,7 @@ async function findAddNoteButton() {
            btn.offsetParent !== null;
   });
   if (nonPrimaryButtons.length === 1) {
-    console.log('[LinkedIn Copilot] Found likely Add a note button via class heuristic');
+    console.log('[Olanovo] Found likely Add a note button via class heuristic');
     return nonPrimaryButtons[0];
   }
 
@@ -2483,7 +2483,7 @@ async function findSendButton() {
     if (attempt >= 3 && window.location.pathname.includes('/preload/custom-invite')) {
       const textarea = dialog.querySelector('textarea');
       if (textarea && textarea.value.trim().length > 0) {
-        console.log('[LinkedIn Copilot] Send button disabled — re-triggering textarea events');
+        console.log('[Olanovo] Send button disabled — re-triggering textarea events');
         textarea.focus();
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
         textarea.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2499,7 +2499,7 @@ async function findSendButton() {
         const sendBtn = dialog.querySelector('button[aria-label*="Send" i]') ||
           dialog.querySelector('button.artdeco-button--primary');
         if (sendBtn && sendBtn.offsetParent !== null) {
-          console.warn('[LinkedIn Copilot] Force-clicking disabled Send button as last resort');
+          console.warn('[Olanovo] Force-clicking disabled Send button as last resort');
           sendBtn.disabled = false;
           sendBtn.classList.remove('artdeco-button--disabled');
           return sendBtn;
@@ -2587,7 +2587,7 @@ function findMessageButton() {
           if (el.offsetParent === null) continue;
           // For <a> elements, require a compose/thread-new href
           if (el.tagName === 'A' && !isValidMessageHref(el.href)) continue;
-          console.log('[LinkedIn Copilot] findMessageButton: found (scoped)', sel, 'href:', el.href || '(button)');
+          console.log('[Olanovo] findMessageButton: found (scoped)', sel, 'href:', el.href || '(button)');
           return el;
         }
       }
@@ -2603,7 +2603,7 @@ function findMessageButton() {
         if (!isMessageText) continue;
         // For <a>, must have a valid compose href (reject navbar inbox link)
         if (el.tagName === 'A' && !isValidMessageHref(el.href)) continue;
-        console.log('[LinkedIn Copilot] findMessageButton: found (scoped text)', 'href:', el.href || '(button)');
+        console.log('[Olanovo] findMessageButton: found (scoped text)', 'href:', el.href || '(button)');
         return el;
       }
     }
@@ -2622,7 +2622,7 @@ function findMessageButton() {
       if (el.offsetParent === null) continue;
       if (el.tagName === 'A' && !isValidMessageHref(el.href)) continue;
       if (!isInsideProfileTopCard(el)) continue;
-      console.log('[LinkedIn Copilot] findMessageButton: found (strict global)', sel, 'href:', el.href || '(button)');
+      console.log('[Olanovo] findMessageButton: found (strict global)', sel, 'href:', el.href || '(button)');
       return el;
     }
   }
@@ -2630,7 +2630,7 @@ function findMessageButton() {
   // Diagnostic: log what buttons are visible for debugging
   const allBtns = document.querySelectorAll('button, a[role="button"], a[href*="messaging"]');
   const btnTexts = Array.from(allBtns).filter(b => b.offsetParent !== null).map(b => `${b.textContent.trim().substring(0, 30)}[${b.href || ''}]`).slice(0, 10);
-  console.error('[LinkedIn Copilot] findMessageButton: FAILED. Visible clickables:', JSON.stringify(btnTexts));
+  console.error('[Olanovo] findMessageButton: FAILED. Visible clickables:', JSON.stringify(btnTexts));
 
   return null;
 }
@@ -2655,7 +2655,7 @@ async function typeNoteRobust(element, text) {
     await sleep(300);
 
     if ((element.value || '').trim() === text.trim()) {
-      console.log('[LinkedIn Copilot] Note inserted via native setter ✅');
+      console.log('[Olanovo] Note inserted via native setter ✅');
       return true;
     }
   }
@@ -2671,7 +2671,7 @@ async function typeNoteRobust(element, text) {
   await sleep(200);
 
   if ((element.value || '').trim() === text.trim()) {
-    console.log('[LinkedIn Copilot] Note inserted via execCommand ✅');
+    console.log('[Olanovo] Note inserted via execCommand ✅');
     return true;
   }
 
@@ -2688,7 +2688,7 @@ async function typeNoteRobust(element, text) {
     await sleep(200);
 
     if ((element.value || '').trim() === text.trim()) {
-      console.log('[LinkedIn Copilot] Note inserted via paste ✅');
+      console.log('[Olanovo] Note inserted via paste ✅');
       return true;
     }
   } catch (e) { /* fallthrough */ }
@@ -2711,7 +2711,7 @@ async function typeNoteRobust(element, text) {
     await sleep(80 + Math.random() * 40);
   }
   element.dispatchEvent(new Event('change', { bubbles: true }));
-  console.log('[LinkedIn Copilot] Note inserted via chunk typing');
+  console.log('[Olanovo] Note inserted via chunk typing');
   const finalValue = (element.value || '').trim();
   return finalValue.length >= text.trim().length * 0.95;
 }
@@ -2735,12 +2735,12 @@ async function retryNoteInsertion(element, text) {
 
     const result = (element.value || '').trim();
     if (result.length >= text.trim().length * 0.95) {
-      console.log(`[LinkedIn Copilot] Note retry successful: ${result.length}/${text.trim().length} chars ✅`);
+      console.log(`[Olanovo] Note retry successful: ${result.length}/${text.trim().length} chars ✅`);
       return true;
     }
   }
 
-  console.error(`[LinkedIn Copilot] Note retry failed. Proceeding with whatever was typed.`);
+  console.error(`[Olanovo] Note retry failed. Proceeding with whatever was typed.`);
   return false;
 }
 
@@ -2809,7 +2809,7 @@ async function typeHumanLike(element, text) {
     const finalText = normalizeMessageText(element.textContent || '');
 
     if (finalText !== expectedText) {
-      console.warn(`[LinkedIn Copilot] Text mismatch detected. Expected ${expectedText.length} chars, got ${finalText.length}. Attempting full replace.`);
+      console.warn(`[Olanovo] Text mismatch detected. Expected ${expectedText.length} chars, got ${finalText.length}. Attempting full replace.`);
       // Nuclear option: clear and set via single insert with proper events
       element.focus();
       element.innerHTML = '';
@@ -2830,11 +2830,11 @@ async function typeHumanLike(element, text) {
       // Final check (strict)
       const recheckText = normalizeMessageText(element.textContent || '');
       if (recheckText !== expectedText) {
-        console.error('[LinkedIn Copilot] Message integrity failure after retry. Blocking send.');
+        console.error('[Olanovo] Message integrity failure after retry. Blocking send.');
         throw new Error('Message integrity failure: typed text does not match expected DM');
       }
 
-      console.log('[LinkedIn Copilot] Text corrected via full replace');
+      console.log('[Olanovo] Text corrected via full replace');
     }
   }
 }

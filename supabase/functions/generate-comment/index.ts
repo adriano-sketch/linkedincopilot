@@ -1,4 +1,4 @@
-// LinkedIn Copilot — generate-comment edge function
+// Olanovo — generate-comment edge function
 // Generates contextual comments for Growth mode using Claude API.
 // Called by schedule-actions when a lead is in "post_liked" status. The draft goes to the
 // approval queue (monitored_posts) and the lead waits in "comment_review" until the user decides.

@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
   const DAY_ORDER = ['mon','tue','wed','thu','fri','sat','sun'];
 
-  const DASHBOARD_URL = 'https://linkedincopilot.vercel.app/dashboard';
+  const DASHBOARD_URL = 'https://www.olanovo.com/dashboard';
 
   // Check current status on popup open
   chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {

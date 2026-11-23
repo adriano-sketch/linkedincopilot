@@ -1,6 +1,6 @@
 // Comment quality guard, shared by the Network module (network-process) and Growth (generate-comment).
 //
-// The product promise: a LinkedIn Copilot comment never reads like the generic "Impressive results!"
+// The product promise: a Olanovo comment never reads like the generic "Impressive results!"
 // spam that floods LinkedIn. Every draft goes through three layers before the user sees it:
 //   1. The writer prompt (COMMENT_RULES): same language as the post, one concrete detail, no invented
 //      experience, no selling, and permission to SKIP when there is nothing worth saying.

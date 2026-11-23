@@ -1,4 +1,4 @@
-// LinkedIn Copilot — enrichment-cron (v2: Scrapin-free)
+// Olanovo — enrichment-cron (v2: Scrapin-free)
 // Instead of calling Scrapin API, this cron now pushes un-enriched leads
 // directly into the pipeline (status=ready). The Chrome extension will
 // scrape profile data from LinkedIn DOM during the visit_profile step.

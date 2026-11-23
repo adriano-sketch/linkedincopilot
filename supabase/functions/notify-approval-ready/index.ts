@@ -101,7 +101,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "LinkedIn Copilot <notifications@linkedincopilot.io>",
+        from: "Olanovo <notifications@linkedincopilot.io>",
         to: [user.email],
         subject,
         html,
