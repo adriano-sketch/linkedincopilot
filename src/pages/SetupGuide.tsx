@@ -66,7 +66,15 @@ export default function SetupGuide() {
               <p>Also in Settings. The extension works only inside them. Pick the hours when your computer is normally on.</p>
             </Step>
 
-            <Step number={6} title="Optional: describe an audience">
+            <Step number={6} title="Bring your connections and pick who matters">
+              <p>
+                In <Link to="/dashboard" className="text-primary font-medium hover:underline">Campaigns</Link>, create a list and upload the connections file LinkedIn
+                emails you (the screen shows where to ask for it). Describe who matters to you and Olanovo keeps that shortlist.
+                Run one list at a time: the daily ceiling is shared, so a second list only slows the first.
+              </p>
+            </Step>
+
+            <Step number={7} title="Optional: describe an audience">
               <p>
                 In <Link to="/network" className="text-primary font-medium hover:underline">Network</Link>, describe the people you would like to meet and write the note that goes with the invitation.
                 Sales Navigator is not required; it only makes the search more precise.

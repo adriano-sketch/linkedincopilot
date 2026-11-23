@@ -206,19 +206,24 @@ export default function HelpPage() {
 
         {/* Campaigns */}
         <section className="pb-8">
-          <h2 className="text-xl font-display font-bold tracking-tight mb-1">Campaigns (optional)</h2>
-          <p className="text-sm text-muted-foreground mb-4">For people who want to stay close to a specific list of contacts.</p>
+          <h2 className="text-xl font-display font-bold tracking-tight mb-1">Your list of contacts</h2>
+          <p className="text-sm text-muted-foreground mb-4">Where it starts: the people you already know, narrowed to the ones who matter.</p>
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground space-y-2">
               <p>
-                A campaign is a list of people you choose, from your contacts or by their LinkedIn addresses. Olanovo opens each
-                profile from time to time, reads their latest post, and writes a comment draft when the post is about your subjects.
+                In Campaigns, upload the connections file LinkedIn emails you (Settings &amp; Privacy, Data privacy, Get a copy of
+                your data, Connections) and describe who matters to you. Olanovo keeps that shortlist: out of a few thousand
+                connections, usually a few hundred. It then opens each profile from time to time, reads their latest post, and
+                writes a comment draft when the post is about your subjects.
               </p>
               <p>
                 The drafts arrive in the Inbox like any other, and you publish the ones you want. No message is sent to the people
-                in a campaign. Each profile opened counts toward the same daily ceiling.
+                in a list. Each profile opened counts toward the same daily ceiling.
               </p>
-              <p>You do not need campaigns to use the Inbox and the Network.</p>
+              <p>
+                Run one list at a time. The ceiling starts at 15 profile pages a day, shared with invitations, so a list of a few
+                hundred people takes weeks to go through once. Two lists would only split the same ceiling.
+              </p>
             </CardContent>
           </Card>
         </section>
