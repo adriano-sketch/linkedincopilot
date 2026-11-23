@@ -413,7 +413,12 @@ export default function CampaignWizard({ onComplete, onCancel, initialData, isFi
         if (n < 0) return;
         if (n === 0) { toast.error('Pick at least 1 contact or add a profile URL'); return; }
       }
-      await supabase.from('campaign_profiles').update({ status: 'active' }).eq('id', createdCampaignId);
+      // The row was created at step 0: write what the person may have changed there since.
+      const { error: launchErr } = await supabase.from('campaign_profiles').update({
+        status: 'active', name: form.name, dm_tone: form.dm_tone,
+        message_language: form.message_language, is_default: form.is_default,
+      }).eq('id', createdCampaignId);
+      if (launchErr) throw launchErr;
       
       const { data: allLeads } = await supabase.from('campaign_leads')
         .select('id')

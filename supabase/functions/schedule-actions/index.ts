@@ -801,8 +801,12 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Messages are never sent, whatever state a lead is in (see the note on retired campaigns above).
-        if (actionType === "send_dm" || actionType === "send_followup") { addSkip("messages_retired"); continue; }
+        // Messages are never sent and conversations are never opened, whatever state a lead is in (see the
+        // note on retired campaigns above). check_reply_status reads a message thread, so it is retired too:
+        // the privacy policy says the extension does not read LinkedIn messages.
+        if (actionType === "send_dm" || actionType === "send_followup" || actionType === "check_reply_status") {
+          addSkip("messages_retired"); continue;
+        }
 
         // ── Per-lead DM approval gate ──
         // DMs require approval unless the DM stage is auto-approved
