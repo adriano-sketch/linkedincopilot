@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Olanovo: comment drafts for your LinkedIn® network",
   "short_name": "Olanovo",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Say hello again to the people who already know you: see who posted on LinkedIn, get a comment draft, and post it yourself.",
   "permissions": [
     "storage",
