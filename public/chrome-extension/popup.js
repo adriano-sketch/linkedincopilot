@@ -10,7 +10,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusDot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
   const statConnections = document.getElementById('stat-connections');
-  const statMessages = document.getElementById('stat-messages');
   const statFollowups = document.getElementById('stat-followups');
   const statVisits = document.getElementById('stat-visits');
   const statFollows = document.getElementById('stat-follows');
@@ -284,7 +283,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Messaging counters
       statConnections.textContent = `${counters.connections || 0} / ${limits.connections || 40}`;
-      statMessages.textContent = `${counters.messages || 0} / ${limits.messages || 100}`;
       if (statFollowups) statFollowups.textContent = counters.followups || 0;
 
       // Queue
