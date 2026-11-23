@@ -283,11 +283,24 @@ Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comme
     // that row gets the new draft instead of a second row.
     let queueErr: unknown = null;
     if (existing) {
-      const { error } = await supabase.from("monitored_posts").update({
+      // Drafting took several model calls: only write if the user did not decide on the row meanwhile.
+      const { data: written, error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
         fit_reason: whyCommented, ...signalFields,
-      }).eq("id", existing.id);
+      }).eq("id", existing.id).not("status", "in", `(${DECIDED.join(",")})`).select("id");
       queueErr = error;
+      if (!error && (!written || written.length === 0)) {
+        // Decided while we were drafting: their decision stands, this draft is dropped and the lead rests.
+        await supabase.from("campaign_leads").update({
+          status: "engagement_done", comment_text: null, post_url: null, post_content: null,
+          last_engagement_at: now, next_action_at: new Date(Date.now() + 7 * 864e5).toISOString(), updated_at: now,
+        }).eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "comment_review");
+        await supabase.from("activity_log").insert({
+          user_id: lead.user_id, campaign_lead_id, action: "comment_skipped_already_seen",
+          details: { reason: "post decided while the draft was being written" },
+        });
+        return json({ success: true, skipped: "post already decided", lead_id: campaign_lead_id });
+      }
     } else {
       const { error } = await supabase.from("monitored_posts").insert({
         user_id: lead.user_id,
