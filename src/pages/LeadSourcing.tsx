@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ContactPicker, { type PickedContact } from '@/components/contacts/ContactPicker';
-import { addPeopleToList, profileUrlFrom } from '@/lib/addPeople';
+import { addPeopleToList, isLegacyDescription, profileUrlFrom } from '@/lib/addPeople';
 
 /**
  * Add people to a list that already exists. Same two sources as when the list is created:
@@ -49,7 +49,7 @@ export default function LeadSourcing() {
   // One person picked and also pasted counts once.
   const total = new Set([...newPicked.map(p => profileUrlFrom(p.linkedin_url) || p.linkedin_url), ...newUrls]).size;
   // Lists made before the description was asked carry a placeholder: do not prefill the picker with it.
-  const description = list?.icp_description && !/^growth mode/i.test(list.icp_description) ? list.icp_description : undefined;
+  const description = list?.icp_description && !isLegacyDescription(list.icp_description) ? list.icp_description : undefined;
 
   const addUrl = () => {
     const url = profileUrlFrom(urlInput);
@@ -113,9 +113,11 @@ export default function LeadSourcing() {
                     </TabsList>
                   </Tabs>
 
-                  {source === 'contacts' ? (
+                  {/* The picker stays mounted while the other tab shows, so what was ticked is kept. */}
+                  <div className={source === 'contacts' ? '' : 'hidden'}>
                     <ContactPicker key={listId} campaignId={listId} initialDescription={description} onChange={onPicked} />
-                  ) : (
+                  </div>
+                  {source === 'urls' && (
                     <div className="space-y-3">
                       <p className="text-sm text-muted-foreground m-0">Add the LinkedIn profile URLs of the people you want in this list.</p>
                       <div className="flex gap-2">

@@ -14,7 +14,7 @@ import LeadRow from '@/components/LeadRow';
 import PipelineStats, { STAGE_STATUS_MAP, stageLabel } from '@/components/PipelineStats';
 import CommentQueue from '@/components/network/CommentQueue';
 import CampaignSelector from '@/components/CampaignSelector';
-import CampaignWizard, { CampaignFormData } from '@/components/CampaignWizard';
+import CampaignWizard from '@/components/CampaignWizard';
 import CampaignEditDialog from '@/components/CampaignEditDialog';
 import CampaignStepper from '@/components/CampaignStepper';
 import AppShell from '@/components/app/AppShell';
@@ -26,7 +26,7 @@ import { supabase } from '@/integrations/supabase/client';
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading } = useProfile();
-  const { campaigns, createCampaign, updateCampaign, deleteCampaign } = useCampaignProfiles();
+  const { campaigns, updateCampaign, deleteCampaign } = useCampaignProfiles();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -51,7 +51,7 @@ export default function Dashboard() {
     }
   }, [campaigns, selectedCampaignId]);
 
-  const { leads, updateLeadStatus, refresh: refreshLeads } = useCampaignLeads(selectedCampaignId);
+  const { leads, refresh: refreshLeads } = useCampaignLeads(selectedCampaignId);
 
   // Two views: the comments waiting for approval and the people. Opens on the comments when there are any.
   const hasCommentsToApprove = leads.some(l => l.status === 'comment_review');
@@ -137,38 +137,13 @@ export default function Dashboard() {
     }
   };
 
-  const handleNewCampaignComplete = async (data: CampaignFormData, campaignId?: string) => {
-    if (campaignId) {
-      setShowNewCampaign(false);
-      setSelectedCampaignId(campaignId);
-      refreshLeads();
-      toast.success('List started.');
-    } else {
-      try {
-        await createCampaign.mutateAsync({
-          name: data.name,
-          campaign_objective: data.campaign_objective,
-          value_proposition: data.value_proposition,
-          proof_points: data.proof_points,
-          icp_description: data.icp_description,
-          icp_titles: data.icp_titles,
-          icp_locations: data.icp_locations,
-          icp_industries: data.icp_industries,
-          icp_employee_ranges: data.icp_employee_ranges,
-          pain_points: data.pain_points.filter(p => p.trim()),
-          dm_tone: data.dm_tone,
-          dm_example: data.dm_example,
-          is_default: data.is_default,
-          is_template: false,
-          vertical_id: data.vertical_id,
-          custom_vertical: data.custom_vertical,
-        });
-        setShowNewCampaign(false);
-        toast.success('List created.');
-      } catch {
-        toast.error('Could not create the list');
-      }
-    }
+  const handleNewListComplete = (listId: string) => {
+    setShowNewCampaign(false);
+    setSelectedCampaignId(listId);
+    // The new list opens unfiltered, whatever was filtered in the previous one.
+    setPipelineFilter(null);
+    setPipelineStageFilter(null);
+    refreshLeads();
   };
 
   if (authLoading || profileLoading) {
@@ -224,7 +199,7 @@ export default function Dashboard() {
       <AppShell>
         <div className="max-w-3xl mx-auto">
           <Button variant="ghost" onClick={closeWizard} className="mb-4">← Back to lists</Button>
-          <CampaignWizard onComplete={(...a: Parameters<typeof handleNewCampaignComplete>) => { closeWizard(); return handleNewCampaignComplete(...a); }} onCancel={closeWizard} isPending={createCampaign.isPending} />
+          <CampaignWizard onComplete={id => { closeWizard(); handleNewListComplete(id); }} onCancel={closeWizard} />
         </div>
       </AppShell>
     );
@@ -279,19 +254,12 @@ export default function Dashboard() {
 
         {/* Campaign Stepper */}
         {selectedCampaignId && (
-          <CampaignStepper
-            campaignStatus={selectedCampaign?.status || null}
-            mode="growth"
-            growthCounts={growthCounts}
-            leadsCount={leads.length}
-            pipelineCounts={{ connection_sent: 0, connected: 0, dm_ready: 0, ready_for_dm: 0, dm_sent: 0, replied: 0 }}
-          />
+          <CampaignStepper growthCounts={growthCounts} leadsCount={leads.length} />
         )}
 
         {/* Pipeline Stats */}
         {selectedCampaignId && (
           <PipelineStats
-            mode="growth"
             counts={growthStatusCounts}
             onStageClick={s => {
               setPipelineFilter(null);
@@ -369,9 +337,6 @@ export default function Dashboard() {
                           <LeadRow
                             key={lead.id}
                             lead={lead}
-                            onUpdateStatus={(id, status, extras) => updateLeadStatus.mutate({ leadId: id, status, extras })}
-                            isUpdating={updateLeadStatus.isPending}
-                            mode="growth"
                             onReview={() => { setPipelineStageFilter(null); setActiveTab('approval'); }}
                           />
                         ))}

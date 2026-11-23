@@ -15,7 +15,9 @@ export function profileUrlFrom(input: string): string | null {
   let end = text.length;
   while (start < end && text.charCodeAt(start) <= 0x20) start++;
   while (end > start && text.charCodeAt(end - 1) <= 0x20) end--;
-  const raw = text.slice(start, end).replace(/^<|>$/g, '');
+  let raw = text.slice(start, end);
+  // Angle brackets are removed only as a pair around the whole address (<https://...>), never one alone.
+  if (raw.startsWith('<') && raw.endsWith('>')) raw = raw.slice(1, -1);
   if (!raw) return null;
   let parsed: URL;
   try { parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { return null; }
@@ -29,10 +31,14 @@ export function profileUrlFrom(input: string): string | null {
   // an ASCII space or control character would change the identifier when the result is read again.
   // Other characters stay: real identifiers carry accents, emoji and signs such as ® or ’.
   // eslint-disable-next-line no-control-regex
-  if (!slug || /[/\\?#%\x00-\x20\x7f]/.test(slug)) return null;
+  if (!slug || /[/\\?#%<>\x00-\x20\x7f]/.test(slug)) return null;
   slug = slug.toLowerCase();
   return `https://www.linkedin.com/in/${slug}`;
 }
+
+/** The text older versions of the wizard stored as a list's description. It describes nobody. */
+const LEGACY_DESCRIPTION = "Growth mode — engage with target profiles' content";
+export const isLegacyDescription = (text: string | null | undefined) => (text || '').trim() === LEGACY_DESCRIPTION;
 
 /**
  * Adds people to a list: contacts picked from the user's own connections plus pasted profile URLs.
@@ -43,6 +49,9 @@ export async function addPeopleToList(
   userId: string, listId: string, picked: PickedContact[], urls: string[],
 ): Promise<{ inserted: number; skipped: number; rejected: number }> {
   const byUrl = new Map<string, Record<string, unknown>>();
+  // Due now: the reading cycle only takes people whose next_action_at is set. In a list that is not
+  // running yet this has no effect until the list is started.
+  const due = new Date().toISOString();
   // Addresses that are not a LinkedIn profile: reported apart from duplicates, which are a different thing.
   let rejected = 0;
   // Both sources are reduced to the same stored form, so one person is one row whatever was pasted.
@@ -52,7 +61,7 @@ export async function addPeopleToList(
     byUrl.set(url, {
       user_id: userId, campaign_profile_id: listId, linkedin_url: url,
       full_name: c.full_name || url.split('/in/')[1] || null, title: c.title, company: c.company,
-      source: 'my_contacts', status: 'ready',
+      source: 'my_contacts', status: 'ready', next_action_at: due,
     });
   }
   for (const typed of urls) {
@@ -62,7 +71,7 @@ export async function addPeopleToList(
     const vanity = url.split('/in/')[1] || '';
     byUrl.set(url, {
       user_id: userId, campaign_profile_id: listId, linkedin_url: url,
-      full_name: vanity.replace(/-/g, ' '), source: 'manual', status: 'ready',
+      full_name: vanity.replace(/-/g, ' '), source: 'manual', status: 'ready', next_action_at: due,
     });
   }
   const payload = Array.from(byUrl.values());

@@ -2,7 +2,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Button } from '@/components/ui/button';
 import { Plus, Settings } from 'lucide-react';
 import { CampaignProfile } from '@/hooks/useCampaignProfiles';
-import { useVerticals } from '@/hooks/useVerticals';
 
 interface CampaignSelectorProps {
   campaigns: CampaignProfile[];
@@ -15,14 +14,6 @@ interface CampaignSelectorProps {
 }
 
 export default function CampaignSelector({ campaigns, selectedCampaignId, onSelect, onNewCampaign, onEditCampaign, showDrafts, onToggleDrafts }: CampaignSelectorProps) {
-  const { verticals } = useVerticals();
-
-  const getVerticalIcon = (verticalId: string | null) => {
-    if (!verticalId) return '';
-    const v = verticals.find(v => v.id === verticalId);
-    return v ? `${v.icon} ` : '';
-  };
-
   const activeCampaigns = campaigns.filter(c => c.status === 'active' || c.status === 'paused');
   const draftCampaigns = campaigns.filter(c => !c.status || c.status === 'draft');
 
@@ -40,7 +31,7 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
               <SelectLabel className="text-xs text-muted-foreground">Active / Paused</SelectLabel>
               {activeCampaigns.map(c => (
                 <SelectItem key={c.id} value={c.id}>
-                  {(c as any).campaign_mode === 'growth' ? '📈 ' : getVerticalIcon(c.vertical_id)}{c.name} {c.status === 'paused' ? '⏸' : '🟢'} {c.is_default && '⭐'}
+                  {c.name} {c.status === 'paused' ? '(paused)' : ''}
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -50,7 +41,7 @@ export default function CampaignSelector({ campaigns, selectedCampaignId, onSele
               <SelectLabel className="text-xs text-muted-foreground">Not started</SelectLabel>
               {draftCampaigns.map(c => (
                 <SelectItem key={c.id} value={c.id}>
-                  {getVerticalIcon(c.vertical_id)}{c.name} 📝 {c.is_default && '⭐'}
+                  {c.name}
                 </SelectItem>
               ))}
             </SelectGroup>
