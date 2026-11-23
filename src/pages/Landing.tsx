@@ -181,13 +181,13 @@ export default function Landing() {
             </motion.div>
             <motion.h1
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' as const }}
-              className="font-display font-bold leading-[0.95] tracking-tight m-0"
-              style={{ fontSize: 'clamp(44px, 5.6vw, 80px)' }}
+              className="font-display font-bold leading-[1] tracking-tight m-0 [text-wrap:balance]"
+              style={{ fontSize: 'clamp(40px, 4.8vw, 68px)' }}
             >
-              Stay close to your network.<br /><span className="text-primary">You post.</span>
+              Say <span className="text-primary">hello again</span> to the people who already know you.
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[38ch] m-0">
-              Olanovo finds the recent LinkedIn posts of people you know and drafts a comment from what you actually think. You read it, edit it and publish it yourself.
+              Olanovo finds their recent LinkedIn posts and drafts a comment from what you actually think. You read it, edit it and post it yourself.
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
               No automated DMs. No fake compliments. No pretending you know someone.
