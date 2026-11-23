@@ -44,31 +44,6 @@ serve(async (req) => {
     if (error) throw new Error(error.message);
   }));
 
-  // 2/4. Apollo API: uses the platform's own key (APOLLO_API_KEY secret).
-  // Never borrow a customer's apollo_api_key from profiles.
-  const apolloKey = Deno.env.get("APOLLO_API_KEY");
-  if (apolloKey) {
-    checks.push(checkWithTimeout("Apollo API", async () => {
-      const res = await fetch("https://api.apollo.io/api/v1/auth/health", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apolloKey },
-      });
-      await res.body?.cancel();
-      if (!res.ok) {
-        // Try alt endpoint
-        const alt = await fetch("https://api.apollo.io/api/v1/mixed_people/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": apolloKey },
-          body: JSON.stringify({ per_page: 1, page: 1 }),
-        });
-        await alt.body?.cancel();
-        if (!alt.ok) throw new Error(`HTTP ${alt.status}`);
-      }
-    }));
-  } else {
-    checks.push(Promise.resolve({ name: "Apollo API", status: "skipped" as const, message: "Skipped: APOLLO_API_KEY not set" }));
-  }
-
   // 6. Active campaigns with stale leads (workflow health)
   checks.push(checkWithTimeout("Workflow: Stale Leads", async () => {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
