@@ -252,12 +252,12 @@ export default function Landing() {
           <h2 className="font-display font-bold tracking-tight !leading-[1.05] [text-wrap:balance] text-4xl sm:text-5xl md:text-6xl m-0">
             Keeping in touch is nice. <span className="text-gradient-gold">Doing business is the point.</span>
           </h2>
-          <p className="font-display font-bold tracking-tight text-2xl sm:text-3xl mt-8 mb-0">
-            Expand your network. Interact. Engage. Sell more.
+          <p className="font-display font-bold tracking-tight text-2xl sm:text-3xl mt-8 mb-0 max-w-3xl mx-auto [text-wrap:balance]">
+            Show up when they post. Be the name they think of when they need what you sell.
           </p>
           <p className="text-lg text-muted-foreground mt-4 mb-0 max-w-2xl mx-auto">
-            Deals start with people who already know your name. Olanovo keeps you in front of them, and of the new people
-            you want to meet, with something worth reading under your name.
+            Most deals start with people who already know you. Olanovo keeps you in front of them, and of a few new
+            people you want to meet, with comments worth reading.
           </p>
         </motion.div>
       </section>
