@@ -138,7 +138,7 @@ export default function LeadSourcing() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'linkedin-copilot-template.csv';
+    a.download = 'olanovo-template.csv';
     a.click();
     URL.revokeObjectURL(url);
   };

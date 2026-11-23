@@ -65,7 +65,7 @@ export default function AuthPage() {
         });
         setMode('signin');
       } else {
-        toast({ title: 'Account created', description: 'Welcome to LinkedIn Copilot.' });
+        toast({ title: 'Account created', description: 'Welcome to Olanovo.' });
       }
     }
   };
@@ -127,7 +127,7 @@ export default function AuthPage() {
             {mode === 'recovery' && 'Set a new password'}
           </h1>
           <p className="text-sm text-muted-foreground text-center mb-6">
-            {mode === 'signup' && 'Get started with LinkedIn Copilot'}
+            {mode === 'signup' && 'Get started with Olanovo'}
             {mode === 'signin' && 'Sign in to your account'}
             {mode === 'forgot' && 'We will email you a reset link'}
             {mode === 'recovery' && 'Choose a strong password to continue'}

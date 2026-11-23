@@ -60,7 +60,7 @@ function useTodaySummary() {
 
 type Reading = { drafts: number; off_topic: number; quality: number };
 
-/** What Copilot read and what it did with it (rpc reading_summary). */
+/** What Olanovo read and what it did with it (rpc reading_summary). */
 function useReadingSummary() {
   const { user } = useAuth();
   return useQuery({
@@ -91,14 +91,14 @@ function ReadingCard() {
   const total = (r: Reading) => r.drafts + r.off_topic + r.quality;
   const nothingYet = total(rows[1].r) === 0;
   return (
-    <section aria-label="What Copilot read" className="rounded-2xl border border-border bg-card p-5 sm:p-6 flex flex-col gap-3">
+    <section aria-label="What Olanovo read" className="rounded-2xl border border-border bg-card p-5 sm:p-6 flex flex-col gap-3">
       <div className="flex justify-between items-baseline gap-3 flex-wrap">
-        <h2 className="m-0 text-lg font-semibold">What Copilot read</h2>
-        <span className="text-xs text-muted-foreground">A skipped post is Copilot doing its job</span>
+        <h2 className="m-0 text-lg font-semibold">What Olanovo read</h2>
+        <span className="text-xs text-muted-foreground">A skipped post is Olanovo doing its job</span>
       </div>
       {nothingYet ? (
         <p className="m-0 text-sm text-muted-foreground">
-          No posts read in the last 7 days. Copilot reads posts while the extension is running, using the subjects and search terms in{' '}
+          No posts read in the last 7 days. Olanovo reads posts while the extension is running, using the subjects and search terms in{' '}
           <Link to="/settings" className="text-primary font-medium hover:underline">Settings</Link>.
         </p>
       ) : (
@@ -183,7 +183,7 @@ export default function Today() {
   // are things many people never use.
   const steps: { done: boolean; label: string; to: string; optional?: boolean }[] = [
     { done: extensionReady, label: 'Install the Chrome extension and sign in', to: '/setup-guide' },
-    { done: hasSubjects, label: 'Tell Copilot your subjects and search terms', to: '/settings' },
+    { done: hasSubjects, label: 'Tell Olanovo your subjects and search terms', to: '/settings' },
     { done: (s?.contacts || 0) > 0, label: 'Import your LinkedIn contacts', to: '/dashboard?new=1', optional: true },
     { done: !!s?.network_active, label: 'Describe an audience to meet new people', to: '/network?tab=icps', optional: true },
     { done: hasRunningCampaign, label: 'Start a campaign for a list of leads', to: '/dashboard?new=1', optional: true },
@@ -206,8 +206,8 @@ export default function Today() {
             <p className="text-muted-foreground text-[17px] m-0 mt-2">
               {isLoading ? 'Getting your briefing…'
                 : needs > 0 ? <>{greeting}{name ? `, ${name}` : ''}. About {minutes} min of your time.</>
-                : showSetup ? 'Two steps and Copilot starts working.'
-                : 'Nothing needs you right now. Copilot keeps working.'}
+                : showSetup ? 'Two steps and Olanovo starts working.'
+                : 'Nothing needs you right now. Olanovo keeps working.'}
             </p>
           </div>
           {needs > 0 && (
@@ -305,7 +305,7 @@ export default function Today() {
                   <span className="font-mono-label text-[11px] text-slate-400">{(tz.split('/').pop() || tz).replace(/_/g, ' ')} time</span>
                 </div>
                 {s.plan.length === 0 ? (
-                  <p className="m-0 text-sm text-slate-400">Nothing scheduled yet. Copilot plans the next actions every 20 minutes inside your active hours.</p>
+                  <p className="m-0 text-sm text-slate-400">Nothing scheduled yet. Olanovo plans the next actions every 20 minutes inside your active hours.</p>
                 ) : (
                   <ol className="list-none m-0 p-0">
                     {s.plan.slice(0, 6).map(p => (

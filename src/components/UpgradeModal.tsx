@@ -15,7 +15,7 @@ const PLANS = [
     subtitle: { month: 'per LinkedIn account, cancel any time', year: 'per LinkedIn account, two months free' },
     features: [
       'Posts from your network, picked by your subjects',
-      'Comment drafts in your voice, posted by you',
+      'Comment drafts from what you think, posted by you',
       'New people in your target audience, with invitations',
       'Low daily limits, inside the hours you choose',
     ],

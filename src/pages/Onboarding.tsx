@@ -174,7 +174,7 @@ export default function Onboarding() {
                     <div className="bg-muted/50 rounded-lg p-4 space-y-3">
                       <p className="text-sm font-medium">How to install:</p>
                       <ol className="text-sm text-muted-foreground space-y-2 list-decimal pl-4">
-                        <li>Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">LinkedIn Copilot on the Chrome Web Store</a> and click "Add to Chrome"</li>
+                        <li>Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">the Olanovo extension on the Chrome Web Store</a> (still listed there as LinkedIn Copilot) and click "Add to Chrome"</li>
                         <li>Click the extension icon in the Chrome toolbar and sign in with the same email and password you use here</li>
                         <li>Log in to LinkedIn in the same browser</li>
                       </ol>

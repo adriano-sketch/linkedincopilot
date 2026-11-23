@@ -16,7 +16,7 @@ import {
 // Keep these in step with the landing page (src/pages/Landing.tsx): same steps, same numbers.
 const flowSteps = [
   { label: 'You', icon: PenLine, desc: 'You list your subjects and, for each one, what you think and what you have seen in your work. This is what makes the drafts sound like you.' },
-  { label: 'Copilot', icon: BookOpen, desc: 'A few times a day, inside the days and hours you chose, the extension opens LinkedIn pages in your own browser and reads recent posts by people you know.' },
+  { label: 'Olanovo', icon: BookOpen, desc: 'A few times a day, inside the days and hours you chose, the extension opens LinkedIn pages in your own browser and reads recent posts by people you know.' },
   { label: 'Inbox', icon: Inbox, desc: 'When a post is about one of your subjects, or a contact announces a milestone, a draft comment waits in your Inbox next to the post. Other posts are skipped: no draft, and nothing is liked for you.' },
   { label: 'You', icon: Send, desc: 'You read the draft, change what you want, copy it, open the post and press Comment on LinkedIn. The extension has no function that posts a comment.' },
 ];
@@ -27,7 +27,7 @@ const quickGuides = [
     icon: MessageCircle,
     steps: [
       'Open the Inbox and pick a draft',
-      'Read the post, then edit the draft in the box. Edits made here teach Copilot; edits made on LinkedIn are not seen',
+      'Read the post, then edit the draft in the box. Edits made here teach Olanovo; edits made on LinkedIn are not seen',
       'Click "Copy and open post", paste the text on LinkedIn and press Comment',
       'Back in the Inbox, click "I posted it"',
       'Not for you? Click Skip and pick a reason in one click',
@@ -35,15 +35,15 @@ const quickGuides = [
     ],
   },
   {
-    title: 'Teach Copilot your subjects',
+    title: 'Teach Olanovo your subjects',
     icon: Lightbulb,
     steps: [
       'Open Settings and find the card about your subjects',
       'List the subjects you want to be known for',
       'For each one, write what you believe and what you have seen in practice',
-      'Add a few search terms: the words Copilot looks for in the posts of your connections',
+      'Add a few search terms: the words Olanovo looks for in the posts of your connections',
       'Add what you never want to say',
-      'Click Save. Without subjects no draft is written; without search terms Copilot does not search the posts of your connections',
+      'Click Save. Without subjects no draft is written; without search terms Olanovo does not search the posts of your connections',
       'After that, the comments you post and the drafts you skip keep refining it',
     ],
   },
@@ -54,7 +54,7 @@ const quickGuides = [
       'Open Network and describe an audience: job titles, region, kind of company',
       'Write the short note that goes with the invitation',
       'Set how many invitations a week you want',
-      'Copilot looks for people who fit, checks each one against your description and invites the best matches first',
+      'Olanovo looks for people who fit, checks each one against your description and invites the best matches first',
       'Invitations still unanswered after 21 days are withdrawn',
       'Sales Navigator is optional and makes the search more precise',
     ],
@@ -62,15 +62,15 @@ const quickGuides = [
 ];
 
 const faqs = [
-  { q: 'Does LinkedIn Copilot post comments for me?', a: 'No. Copilot finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn.' },
+  { q: 'Does Olanovo post comments for me?', a: 'No. Olanovo finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn.' },
   { q: 'What does the extension do by itself?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote. It does not send messages, and it does not like or comment on posts.' },
-  { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. Copilot keeps the activity low and stops when LinkedIn objects: one daily ceiling for profile pages that starts at 15, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision.' },
+  { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. Olanovo keeps the activity low and stops when LinkedIn objects: one daily ceiling for profile pages that starts at 15, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision.' },
   { q: 'Why did I get no draft today?', a: 'The usual reasons: none of the posts found were about your subjects (those are skipped on purpose), your subjects or search terms are not saved yet, Chrome was closed or the computer asleep during your active hours, or the day\'s ceiling of profile pages was already used. The Today page shows how many posts were read and how many were left alone.' },
   { q: 'Do I need to keep my computer on all day?', a: 'No. The extension works while Chrome is open and the computer is awake, inside the hours you chose. When the computer sleeps it simply pauses. When it wakes up, it waits a few minutes and continues at the normal pace; it does not rush to make up for lost time.' },
   { q: 'How long does it take to go through my whole network?', a: 'Weeks, not days. Every profile page counts toward the daily ceiling (15 a day at first, growing by 5 a week up to 40), and a contact rests for 7 days after you comment on their post. That pace is deliberate: it is what keeps the activity on your account low.' },
-  { q: 'How many invitations does it send?', a: 'You set a weekly number in Network and Copilot spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day.' },
+  { q: 'How many invitations does it send?', a: 'You set a weekly number in Network and Olanovo spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day.' },
   { q: 'Can I install the extension on two computers?', a: 'Use one copy per LinkedIn account. If you installed the extension from a .zip file in the past, remove that copy before installing from the Chrome Web Store.' },
-  { q: 'What happens when my free trial ends?', a: 'Nothing is charged. If you have not subscribed, Copilot stops looking for posts, writing drafts and sending invitations. What is already in your Inbox stays there, and everything resumes when you subscribe.' },
+  { q: 'What happens when my free trial ends?', a: 'Nothing is charged. If you have not subscribed, Olanovo stops looking for posts, writing drafts and sending invitations. What is already in your Inbox stays there, and everything resumes when you subscribe.' },
   { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. The privacy policy has the full list.' },
 ];
 
@@ -211,7 +211,7 @@ export default function HelpPage() {
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground space-y-2">
               <p>
-                A campaign is a list of people you choose, from your contacts or by their LinkedIn addresses. Copilot opens each
+                A campaign is a list of people you choose, from your contacts or by their LinkedIn addresses. Olanovo opens each
                 profile from time to time, reads their latest post, and writes a comment draft when the post is about your subjects.
               </p>
               <p>

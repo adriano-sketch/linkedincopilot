@@ -26,9 +26,9 @@ export default function PrivacyPolicy() {
         <h1 className="text-4xl font-bold text-white mb-2">Privacy Policy</h1>
         <p className="text-gray-500 mb-12 text-sm">Last updated: November 21, 2026</p>
 
-        <Section title="1. What LinkedIn Copilot Does">
+        <Section title="1. What Olanovo Does">
           <p className="mb-4">
-            LinkedIn Copilot is a web app and a Chrome extension that help a professional stay in
+            Olanovo is a web app and a Chrome extension that help a professional stay in
             touch with their LinkedIn network and reach new contacts.
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-400">
@@ -53,7 +53,7 @@ export default function PrivacyPolicy() {
 
         <Section title="2. Data We Collect">
           <p className="mb-4">
-            LinkedIn Copilot collects and processes only the data needed to do what is described
+            Olanovo collects and processes only the data needed to do what is described
             above:
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-400">
@@ -146,7 +146,7 @@ export default function PrivacyPolicy() {
             by itself if LinkedIn shows a verification or warning page.
           </p>
           <p>
-            LinkedIn Copilot is not affiliated with or endorsed by LinkedIn. LinkedIn's User
+            Olanovo is not affiliated with or endorsed by LinkedIn. LinkedIn's User
             Agreement restricts third-party tools that automate activity on its platform. Using
             the extension is your decision and may lead LinkedIn to warn or restrict your account.
           </p>
@@ -223,16 +223,16 @@ export default function PrivacyPolicy() {
           <p className="text-gray-300">
             <strong>Website:</strong>{' '}
             <a
-              href="https://www.linkedincopilot.io"
+              href="https://www.olanovo.com"
               className="text-blue-400 hover:text-blue-300 transition-colors"
             >
-              linkedincopilot.io
+              olanovo.com
             </a>
           </p>
         </div>
 
         <p className="text-center text-gray-600 text-sm mt-16">
-          &copy; {new Date().getFullYear()} LinkedIn Copilot. All rights reserved.
+          &copy; {new Date().getFullYear()} Olanovo. All rights reserved.
         </p>
       </main>
     </div>

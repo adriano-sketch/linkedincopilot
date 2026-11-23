@@ -111,7 +111,7 @@ export function PostCard({
               <p className="m-0 text-xs text-muted-foreground">
                 {opened
                   ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here.'
-                  : 'Copilot copies the draft and opens the post. You paste it and click Comment on LinkedIn.'}
+                  : 'Olanovo copies the draft and opens the post. You paste it and click Comment on LinkedIn.'}
                 {isActivityUrl(post.post_url) && ' The link opens their recent activity; the post is the one shown here.'}
               </p>
             </>
@@ -283,7 +283,7 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
       )}
       {filter === 'pending' && (
         <p className="text-xs text-muted-foreground">
-          You post every comment yourself. Copilot drafts it, copies it and opens the post; you click Comment on LinkedIn.
+          You post every comment yourself. Olanovo drafts it, copies it and opens the post; you click Comment on LinkedIn.
           {saveDraft.isPending ? ' Saving…' : ''}
         </p>
       )}
