@@ -113,38 +113,13 @@ export default function Landing() {
     { q: 'What does it cost?', a: 'You try everything free for 14 days, with no credit card. After that there is one plan: Pro, $69 a month per LinkedIn account, or $690 a year. If you do not subscribe when the trial ends, Olanovo stops looking for posts, writing drafts and sending invitations; what is already in your Inbox stays there.' },
   ];
 
-  const pricing = [
-    {
-      name: 'Free trial',
-      price: '$0',
-      period: ' for 14 days',
-      subtitle: '',
-      leads: 'Everything in Pro',
-      features: [
-        'No credit card',
-        'See drafts for real posts from your network on day one',
-        'When it ends, nothing is charged: Olanovo just pauses',
-      ],
-      cta: 'Start free',
-      sub: 'No credit card required.',
-      highlighted: false,
-    },
-    {
-      name: 'Pro',
-      price: '$69',
-      period: '/mo',
-      subtitle: 'per LinkedIn account, or $690 a year',
-      leads: 'One plan, everything included',
-      features: [
-        'Posts from your network, picked by your subjects',
-        'Comment drafts from what you think, posted by you',
-        'New people in your target audience, with invitations and your note',
-        'Low daily limits, inside the hours you choose',
-      ],
-      cta: 'Start free',
-      sub: 'Cancel anytime.',
-      highlighted: true,
-    },
+  // One plan. The trial is that same plan for 14 days, not a smaller version of it.
+  const planFeatures = [
+    'Posts from your network, picked by your subjects',
+    'Comment drafts from what you think, posted by you',
+    'Business signals: a contact with a problem you solve goes to the top',
+    'New people in your target audience, with invitations and your note',
+    'Low daily limits, inside the hours you choose',
   ];
 
   return (
@@ -398,39 +373,41 @@ export default function Landing() {
           <motion.h2 {...fadeUp} className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl mb-3">Pricing</motion.h2>
           <motion.p {...fadeUp} className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">Try it for 14 days. Pay when it is part of your week.</motion.p>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-            {pricing.map((plan, i) => (
-              <motion.div key={plan.name} {...stagger(i)}>
-                <Card className={`relative h-full rounded-2xl shadow-sm ${plan.highlighted ? 'border-2 border-primary bg-gold-bg ring-2 ring-primary/15' : 'bg-white/85 border border-gray-100'}`}>
-                  <CardContent className="p-6 md:p-8 pt-10 flex flex-col h-full">
-                    <h3 className="text-lg font-display font-bold">{plan.name}</h3>
-                    <div className="mt-2">
-                      <span className="text-5xl font-numbers font-bold">{plan.price}</span>
-                      <span className="text-muted-foreground text-sm">{plan.period}</span>
+          <motion.div {...fadeUp} className="max-w-xl mx-auto">
+            <Card className="relative rounded-2xl shadow-sm border-2 border-primary bg-gold-bg ring-2 ring-primary/15 text-left">
+              <CardContent className="p-6 md:p-9">
+                <div className="font-mono-label text-xs text-gold-dark">One plan</div>
+                <h3 className="font-display font-bold tracking-tight text-3xl md:text-4xl mt-2 mb-0 !leading-[1.1]">14 days free, with everything.</h3>
+                <p className="text-base text-muted-foreground mt-3 mb-0">
+                  No credit card. The trial is the full product, not a smaller version of it.
+                </p>
+                <ul className="space-y-3 text-sm mt-6 list-none p-0">
+                  {planFeatures.map((f) => (
+                    <li key={f} className="flex items-start gap-2">
+                      <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-7 pt-6 border-t border-border flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">After the trial</div>
+                    <div>
+                      <span className="text-4xl font-numbers font-bold">$69</span>
+                      <span className="text-muted-foreground text-sm">/mo per LinkedIn account</span>
                     </div>
-                    {plan.subtitle && <p className="text-xs text-muted-foreground mt-1">{plan.subtitle}</p>}
-                    <p className="font-semibold text-sm mt-4 mb-2 text-left">{plan.leads}</p>
-                    <ul className="space-y-3 text-sm text-left flex-1 mt-2">
-                      {plan.features.map((f) => (
-                        <li key={f} className="flex items-start gap-2">
-                          <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                          <span>{f}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      onClick={handleCTA}
-                      className={`mt-6 w-full font-semibold rounded-xl ${plan.highlighted ? 'bg-primary text-primary-foreground hover:bg-gold-dark' : ''}`}
-                      variant={plan.highlighted ? 'default' : 'outline'}
-                    >
-                      {plan.cta}
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-2">{plan.sub}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+                    <div className="text-xs text-muted-foreground mt-1">or $690 a year. Cancel anytime.</div>
+                  </div>
+                  <Button onClick={handleCTA} className="font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-gold-dark h-12 px-7">
+                    Start free
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-5 mb-0">
+                  If you do not subscribe when the 14 days end, nothing is charged: Olanovo pauses and your Inbox stays where it is.
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </section>
 

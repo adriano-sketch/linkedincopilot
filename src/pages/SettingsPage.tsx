@@ -47,7 +47,7 @@ export default function SettingsPage() {
   const { user, loading } = useAuth();
   const { profile, isLoading, updateProfile } = useProfile();
   const { extensionStatus } = useExtensionStatus();
-  const { plan, leadsLimit, isFree, isAgency } = useUserPlan();
+  const { isFree, isAgency, onTrial, trialDaysLeft, hasAccess } = useUserPlan();
   const { campaigns, templates, updateCampaign, deleteCampaign, duplicateCampaign, saveAsTemplate } = useCampaignProfiles();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -213,13 +213,18 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">Current plan</p>
-                    <p className="text-xs text-muted-foreground">Plan: {plan.toUpperCase()} · People limit: {leadsLimit.toLocaleString()}/cycle</p>
+                    <p className="text-xs text-muted-foreground">
+                      {!isFree ? 'Pro: everything included.'
+                        : onTrial ? `Free trial: everything included. ${trialDaysLeft} ${trialDaysLeft === 1 ? 'day' : 'days'} left, no card on file.`
+                        : hasAccess ? 'Everything included.'
+                        : 'Your free trial ended. Olanovo is paused until you subscribe.'}
+                    </p>
                   </div>
-                  <Badge variant={isFree ? 'secondary' : 'default'}>{isFree ? 'Free' : isAgency ? 'Agency' : 'Pro'}</Badge>
+                  <Badge variant={isFree && !onTrial ? 'secondary' : 'default'}>{!isFree ? (isAgency ? 'Agency' : 'Pro') : onTrial ? 'Free trial' : hasAccess ? 'Pro' : 'Paused'}</Badge>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {isFree && (
-                    <Button size="sm" onClick={() => setUpgradeOpen(true)}>Upgrade Plan</Button>
+                    <Button size="sm" onClick={() => setUpgradeOpen(true)}>Subscribe</Button>
                   )}
                   {!isFree && (
                     <Button size="sm" variant="outline" onClick={handleBillingPortal} disabled={billingLoading}>
