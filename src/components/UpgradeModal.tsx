@@ -63,9 +63,6 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       } catch {
         throw new Error('The app is not configured correctly. Please contact support.');
       }
-      if (/\s/.test(supabaseAnonRaw)) {
-        
-      }
       if (!supabaseUrl.startsWith('https://')) {
         throw new Error('The app is not configured correctly. Please contact support.');
       }
