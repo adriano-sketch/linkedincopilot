@@ -1,6 +1,28 @@
 {
   "redirects": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.linkedincopilot.io"
+        }
+      ],
+      "destination": "https://www.olanovo.com/",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "linkedincopilot.io"
+        }
+      ],
+      "destination": "https://www.olanovo.com/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [
         {
