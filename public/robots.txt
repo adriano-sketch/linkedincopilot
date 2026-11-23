@@ -25,4 +25,4 @@ Disallow: /onboarding
 Disallow: /settings
 Disallow: /leads
 
-Sitemap: https://linkedincopilot.io/sitemap.xml
+Sitemap: https://www.linkedincopilot.io/sitemap.xml

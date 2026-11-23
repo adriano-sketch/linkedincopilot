@@ -10,7 +10,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import {
-  ArrowRight, Check, Star, MessageCircle, Radar, MessageSquare,
+  ArrowRight, Check, MessageCircle, Radar, MessageSquare,
   Gauge, Clock, ShieldAlert, Hand,
 } from 'lucide-react';
 import BrandMark from '@/components/BrandMark';
@@ -337,11 +337,6 @@ export default function Landing() {
             {pricing.map((plan, i) => (
               <motion.div key={plan.name} {...stagger(i)}>
                 <Card className={`relative h-full rounded-2xl shadow-sm ${plan.highlighted ? 'border-2 border-primary bg-gold-bg ring-2 ring-primary/15' : 'bg-white/85 border border-gray-100'}`}>
-                  {plan.highlighted && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1">
-                      <Star className="w-3 h-3" /> Most popular
-                    </div>
-                  )}
                   <CardContent className="p-6 md:p-8 pt-10 flex flex-col h-full">
                     <h3 className="text-lg font-display font-bold">{plan.name}</h3>
                     <div className="mt-2">
