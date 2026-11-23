@@ -246,6 +246,22 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* THE POINT: business. Staying in touch is the means. */}
+      <section className="py-16 md:py-24 px-4 section-white border-t border-border/60" aria-label="What it is for">
+        <motion.div {...fadeUp} className="container mx-auto max-w-4xl text-center">
+          <h2 className="font-display font-bold tracking-tight !leading-[1.05] [text-wrap:balance] text-4xl sm:text-5xl md:text-6xl m-0">
+            Keeping in touch is nice. <span className="text-gradient-gold">Doing business is the point.</span>
+          </h2>
+          <p className="font-display font-bold tracking-tight text-2xl sm:text-3xl mt-8 mb-0">
+            Expand your network. Interact. Engage. Sell more.
+          </p>
+          <p className="text-lg text-muted-foreground mt-4 mb-0 max-w-2xl mx-auto">
+            Deals start with people who already know your name. Olanovo keeps you in front of them, and of the new people
+            you want to meet, with something worth reading under your name.
+          </p>
+        </motion.div>
+      </section>
+
       {/* WHY IT IS DIFFERENT */}
       <section id="why" className="py-20 md:py-28 px-4 section-cream border-t border-border/40">
         <div className="container mx-auto max-w-5xl">
@@ -255,7 +271,7 @@ export default function Landing() {
               Three things it does <span className="text-gradient-gold">on purpose</span>
             </h2>
             <p className="text-lg text-muted-foreground mt-4 mb-0 max-w-2xl mx-auto">
-              Use the network you already have. Expand it. Interact, engage, sell more. Without sounding like everyone else in the inbox.
+              You can do all of that and still not sound like everyone else in the inbox.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-3 gap-5">
