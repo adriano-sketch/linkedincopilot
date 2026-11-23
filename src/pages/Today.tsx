@@ -58,6 +58,66 @@ function useTodaySummary() {
   });
 }
 
+type Reading = { drafts: number; off_topic: number; quality: number };
+
+/** What Copilot read and what it did with it (rpc reading_summary). */
+function useReadingSummary() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['reading-summary', user?.id],
+    enabled: !!user,
+    refetchInterval: 5 * 60000,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc('reading_summary');
+      if (error) throw error;
+      return data as { today?: Reading; week?: Reading };
+    },
+  });
+}
+
+/**
+ * The answer to "why did I get no draft?": how many posts were read, how many were left alone because
+ * they were not about the person's subjects, and how many drafts were held back for having nothing
+ * specific to say. Skipping is the product working, so it is shown as such.
+ */
+function ReadingCard() {
+  const { data, isError } = useReadingSummary();
+  if (isError || !data) return null;
+  const rows: { label: string; r: Reading }[] = [
+    { label: 'Today', r: data.today || { drafts: 0, off_topic: 0, quality: 0 } },
+    { label: 'Last 7 days', r: data.week || { drafts: 0, off_topic: 0, quality: 0 } },
+  ];
+  const total = (r: Reading) => r.drafts + r.off_topic + r.quality;
+  const nothingYet = total(rows[1].r) === 0;
+  return (
+    <section aria-label="What Copilot read" className="rounded-2xl border border-border bg-card p-5 sm:p-6 flex flex-col gap-3">
+      <div className="flex justify-between items-baseline gap-3 flex-wrap">
+        <h2 className="m-0 text-lg font-semibold">What Copilot read</h2>
+        <span className="text-xs text-muted-foreground">A skipped post is Copilot doing its job</span>
+      </div>
+      {nothingYet ? (
+        <p className="m-0 text-sm text-muted-foreground">
+          No posts read in the last 7 days. Copilot reads posts while the extension is running, using the subjects and search terms in{' '}
+          <Link to="/settings" className="text-primary font-medium hover:underline">Settings</Link>.
+        </p>
+      ) : (
+        <div className="grid gap-2">
+          {rows.map(({ label, r }) => (
+            <div key={label} className="grid grid-cols-[90px_1fr] sm:grid-cols-[110px_repeat(4,minmax(0,1fr))] gap-x-4 gap-y-1 items-baseline text-sm">
+              <span className="text-muted-foreground">{label}</span>
+              <span><strong className="tabular-nums">{total(r)}</strong> {total(r) === 1 ? 'post read' : 'posts read'}</span>
+              <span className="col-start-2 sm:col-start-auto"><strong className="tabular-nums">{r.off_topic}</strong> not about your subjects</span>
+              <span className="col-start-2 sm:col-start-auto"><strong className="tabular-nums">{r.quality}</strong> with nothing worth adding</span>
+              <span className="col-start-2 sm:col-start-auto"><strong className="tabular-nums text-gold-dark">{r.drafts}</strong> {r.drafts === 1 ? 'draft' : 'drafts'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 const timeIn = (iso: string, tz: string) => {
   try { return new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(new Date(iso)); }
   catch { return ''; }
@@ -206,6 +266,8 @@ export default function Today() {
                 )}
               </section>
             )}
+
+            <ReadingCard />
 
             <div className="grid gap-5 lg:grid-cols-2 items-start">
               <section className="rounded-2xl border border-border bg-card p-5 sm:p-6 flex flex-col">

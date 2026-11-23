@@ -10,7 +10,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import {
-  ArrowRight, Check, MessageCircle, Radar, MessageSquare,
+  ArrowRight, Check, MessageCircle, VolumeX, Users, MousePointerClick, Radar, MessageSquare,
   Gauge, Clock, ShieldAlert, Hand,
 } from 'lucide-react';
 import BrandMark from '@/components/BrandMark';
@@ -81,6 +81,12 @@ export default function Landing() {
       desc: 'When someone in a campaign accepts, Copilot writes a first message from their public profile, in the pattern you approved.',
       bullets: ['You review and approve the first messages of each kind', 'After that, the rest go out on their own, inside the daily limits', 'The sequence stops as soon as a reply is detected'],
     },
+  ];
+
+  const differences = [
+    { icon: VolumeX, title: 'It knows when to stay quiet', desc: 'If a post is not about your subjects, there is no draft. Copilot would rather skip a post than put a generic comment under your name. A contact\'s new role or anniversary still gets a short congratulation.' },
+    { icon: Users, title: 'Your network, one price', desc: 'It searches recent posts from your connections for your subjects, instead of only following a short list of people you picked. One plan, with no charge per contact.' },
+    { icon: MousePointerClick, title: 'You press Comment', desc: 'Copilot writes the draft and opens the post. You adjust it, paste it and publish. The extension has no function that posts a comment.' },
   ];
 
   const howSteps = [
@@ -241,11 +247,32 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* WHY IT IS DIFFERENT */}
+      <section id="why" className="py-20 md:py-28 px-4 section-cream border-t border-border/40">
+        <div className="container mx-auto max-w-5xl">
+          <motion.div {...fadeUp} className="text-center mb-12">
+            <div className="font-mono-label text-xs text-gold-dark mb-3">01 // Why it is different</div>
+            <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl">
+              Three things it does <span className="text-gradient-gold">on purpose</span>
+            </h2>
+          </motion.div>
+          <div className="grid md:grid-cols-3 gap-5">
+            {differences.map((d, i) => (
+              <motion.article key={d.title} {...stagger(i)} className="rounded-2xl bg-card border border-border p-6 flex flex-col gap-3">
+                <d.icon className="w-7 h-7 text-gold-dark" strokeWidth={1.5} />
+                <h3 className="font-display font-bold text-lg m-0">{d.title}</h3>
+                <p className="text-sm text-muted-foreground m-0">{d.desc}</p>
+              </motion.article>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* WHAT IT DOES */}
       <section ref={productRef} id="product" className="py-20 md:py-28 section-white border-t border-border/60">
         <div className="max-w-[1240px] mx-auto px-4 sm:px-6 flex flex-col gap-12">
           <motion.div {...fadeUp} className="flex flex-col items-center text-center gap-3 max-w-3xl mx-auto">
-            <div className="font-mono-label text-xs text-gold-dark">01 // What it does</div>
+            <div className="font-mono-label text-xs text-gold-dark">02 // What it does</div>
             <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl m-0">
               Be present when the people you know speak
             </h2>
@@ -276,7 +303,7 @@ export default function Landing() {
       <section ref={howRef} id="how-it-works" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-12">
-            <div className="font-mono-label text-xs text-gold-dark mb-3">02 // How it works</div>
+            <div className="font-mono-label text-xs text-gold-dark mb-3">03 // How it works</div>
             <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl">
               Four steps. <span className="text-gradient-gold">The last one is yours.</span>
             </h2>
@@ -301,7 +328,7 @@ export default function Landing() {
       <section ref={limitsRef} id="limits" className="py-20 md:py-28 px-4 bg-navy relative overflow-hidden">
         <div className="container mx-auto max-w-5xl relative z-10">
           <motion.div {...fadeUp} className="text-center mb-12">
-            <div className="font-mono-label text-xs text-primary mb-3">03 // Limits</div>
+            <div className="font-mono-label text-xs text-primary mb-3">04 // Limits</div>
             <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl text-white mb-4">
               Built to do less, <span className="text-gradient-gold">on purpose.</span>
             </h2>
@@ -329,7 +356,7 @@ export default function Landing() {
       {/* PRICING */}
       <section ref={pricingRef} id="pricing" className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-5xl text-center relative z-10">
-          <motion.div {...fadeUp} className="font-mono-label text-xs text-gold-dark mb-3">04 // Plans</motion.div>
+          <motion.div {...fadeUp} className="font-mono-label text-xs text-gold-dark mb-3">05 // Plans</motion.div>
           <motion.h2 {...fadeUp} className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl mb-3">Pricing</motion.h2>
           <motion.p {...fadeUp} className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">Try it for 14 days. Pay when it is part of your week.</motion.p>
 
@@ -372,7 +399,7 @@ export default function Landing() {
       {/* FAQ */}
       <section id="faq" className="py-20 md:py-28 px-4 section-white section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-2xl relative z-10">
-          <motion.div {...fadeUp} className="font-mono-label text-xs text-gold-dark text-center mb-3">05 // Questions</motion.div>
+          <motion.div {...fadeUp} className="font-mono-label text-xs text-gold-dark text-center mb-3">06 // Questions</motion.div>
           <motion.h2 {...fadeUp} className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl text-center mb-10">
             Questions people <span className="text-gradient-gold">ask first</span>
           </motion.h2>
@@ -397,7 +424,7 @@ export default function Landing() {
       <section className="py-20 md:py-28 px-4 section-cream section-textured relative border-t border-border/40">
         <div className="container mx-auto max-w-3xl relative z-10">
           <motion.div {...fadeUp} className="text-center">
-            <div className="font-mono-label text-xs text-gold-dark mb-3">06 // About</div>
+            <div className="font-mono-label text-xs text-gold-dark mb-3">07 // About</div>
             <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl mb-6">
               Built by someone who <span className="text-gradient-gold">uses it</span>
             </h2>
