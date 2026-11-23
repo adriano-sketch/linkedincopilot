@@ -448,7 +448,13 @@ export default function Landing() {
                 className="w-32 h-32 rounded-2xl object-cover shrink-0 border border-border" />
               <div>
                 <p className="font-display font-bold text-xl m-0">Adriano Camino</p>
-                <p className="text-sm text-muted-foreground mt-0.5 mb-3">Founder</p>
+                <p className="text-sm text-muted-foreground mt-0.5 mb-3">
+                  Founder ·{' '}
+                  <a href="https://www.linkedin.com/in/adrianocamino" target="_blank" rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground">
+                    LinkedIn
+                  </a>
+                </p>
                 <p className="text-lg text-gray-600 leading-relaxed m-0">
                   I sell water and sanitation technology between Brazil and the US. Deals in that world take months and start with people who already know you. I built Olanovo to stay in front of them, and I run it every day on my own LinkedIn account.
                 </p>
