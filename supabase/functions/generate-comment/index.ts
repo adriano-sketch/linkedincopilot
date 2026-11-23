@@ -85,6 +85,9 @@ serve(async (req) => {
         topics: k.comment_topics, avoid: k.comment_avoid, examples: k.comment_examples, views: k.comment_views,
       };
       const t = await triagePost(body.triage_only.slice(0, 2000), { name: body.author || null, title: body.author_title || null }, f);
+      // triagePost answers "off_topic / triage unavailable" when the model call fails (so that no comment is
+      // written). Here that must not be read as a verdict.
+      if (t.reason === "triage unavailable") return json({ success: false, unavailable: true }, 503);
       return json({ success: true, triage: t });
     }
 
