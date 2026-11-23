@@ -85,7 +85,7 @@ export default function Landing() {
 
   const differences = [
     { icon: VolumeX, title: 'It knows when to stay quiet', desc: 'If a post is not about your subjects, there is no draft. Copilot would rather skip a post than put a generic comment under your name. A contact\'s new role or anniversary still gets a short congratulation.' },
-    { icon: Users, title: 'Your whole network, one price', desc: 'It searches the recent posts of all your connections for your subjects, instead of following a short list of people. One plan, with no charge per contact.' },
+    { icon: Users, title: 'Your network, one price', desc: 'It searches recent posts from your connections for your subjects, instead of only following a short list of people you picked. One plan, with no charge per contact.' },
     { icon: MousePointerClick, title: 'You press Comment', desc: 'Copilot writes the draft and opens the post. You adjust it, paste it and publish. The extension has no function that posts a comment.' },
   ];
 

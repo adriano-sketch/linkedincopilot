@@ -98,7 +98,7 @@ function ReadingCard() {
       </div>
       {nothingYet ? (
         <p className="m-0 text-sm text-muted-foreground">
-          No posts read yet. Drafts need the extension running and your subjects and search terms saved in{' '}
+          No posts read in the last 7 days. Copilot reads posts while the extension is running, using the subjects and search terms in{' '}
           <Link to="/settings" className="text-primary font-medium hover:underline">Settings</Link>.
         </p>
       ) : (
