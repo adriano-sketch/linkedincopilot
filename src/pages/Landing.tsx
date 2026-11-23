@@ -10,7 +10,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import {
-  ArrowRight, Check, MessageCircle, VolumeX, Users, MousePointerClick, Radar, MessageSquare,
+  ArrowRight, Check, MessageCircle, VolumeX, Users, MousePointerClick, Radar, Handshake,
   Gauge, Clock, ShieldAlert, Hand,
 } from 'lucide-react';
 import BrandMark from '@/components/BrandMark';
@@ -75,11 +75,11 @@ export default function Landing() {
       bullets: ['Each person is checked against your audience first', 'A few invitations a day, never a burst', 'Sales Navigator is optional and makes the search more precise'],
     },
     {
-      icon: MessageSquare,
-      title: 'Start conversations',
+      icon: Handshake,
+      title: 'No scripted messages',
       featured: false,
-      desc: 'When someone in a campaign accepts, Copilot writes a first message from their public profile, in the pattern you approved.',
-      bullets: ['You review and approve the first messages of each kind', 'After that, the rest go out on their own, inside the daily limits', 'The sequence stops as soon as a reply is detected'],
+      desc: 'No compliment from a stranger, no pitch in the second message. When someone accepts your invitation, Copilot does not send them anything.',
+      bullets: ['New connections become part of the network Copilot reads', 'Their posts about your subjects can come up with a comment draft', 'The conversation starts from something they actually said'],
     },
   ];
 
@@ -100,7 +100,7 @@ export default function Landing() {
     { icon: Gauge, title: 'One daily ceiling', desc: 'Every profile page the extension opens counts toward a single daily ceiling: contact checks and invitations together. It starts at 15 pages a day and grows by 5 a week, up to 40.' },
     { icon: Clock, title: 'Your days and hours', desc: 'It works only inside the days and hours you choose. After your computer sleeps, it waits a few minutes and resumes at the normal pace instead of catching up in a burst.' },
     { icon: ShieldAlert, title: 'Stops on a warning', desc: 'If LinkedIn shows a verification page or logs you out, everything pauses. Nothing restarts by itself: only you resume.' },
-    { icon: Hand, title: 'You are in charge', desc: 'Comments are always posted by you. Invitations and messages follow the notes and samples you approved. One pause button stops everything.' },
+    { icon: Hand, title: 'You are in charge', desc: 'Comments are always posted by you. Invitations go out with the note you wrote. One pause button stops everything.' },
   ];
 
   const faqs = [
@@ -142,7 +142,6 @@ export default function Landing() {
         'Posts from your network, picked by your subjects',
         'Comment drafts in your voice, posted by you',
         'New people in your target audience, with invitations and your note',
-        'First messages for campaign leads, in the pattern you approve',
         'Low daily limits, inside the hours you choose',
       ],
       cta: 'Start free',
