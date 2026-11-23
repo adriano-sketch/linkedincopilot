@@ -53,10 +53,11 @@ export default function SetupGuide() {
               <p>The extension reads LinkedIn through your own session. It never sees or stores your LinkedIn password.</p>
             </Step>
 
-            <Step number={4} title="Tell Copilot your subjects">
+            <Step number={4} title="Tell Copilot your subjects and search terms">
               <p>
                 In <Link to="/settings" className="text-primary font-medium hover:underline">Settings</Link>, list the subjects you want to be known for and, for each one, what you think and what you
-                have seen in your work. Until this is filled in, no comment is drafted.
+                have seen in your work. Then add a few search terms: the words Copilot looks for in the posts of your
+                connections. Until both are filled in, no draft appears.
               </p>
             </Step>
 

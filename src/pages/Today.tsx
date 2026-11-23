@@ -112,13 +112,18 @@ export default function Today() {
 
   const extensionReady = !!extensionStatus && !!extensionStatus.last_heartbeat_at;
   const hasRunningCampaign = !!s?.campaigns.some(c => c.status === 'active');
-  // Subjects are what every draft is built from: without them nothing is drafted.
-  const hasSubjects = !!String((profile as { comment_topics?: string | null } | null | undefined)?.comment_topics || '').trim();
-  // Only the first two are needed for drafts to appear. The others are optional paths and must not
-  // keep this card on screen: campaigns and audiences are things many people never use.
+  // Drafts need two things from the person: subjects (what every draft is built from) and at least
+  // one search term (what the "my network" search in network-scheduler looks for in the posts of
+  // their connections; with no term that search is off). With the extension running and those two
+  // saved, drafts can appear with no campaign and no audience.
+  const kb = profile as { comment_topics?: string | null; comment_search_terms?: string[] | null } | null | undefined;
+  const hasSubjects = !!String(kb?.comment_topics || '').trim()
+    && Array.isArray(kb?.comment_search_terms) && kb.comment_search_terms.some(t => String(t).trim());
+  // The others are optional paths and must not keep this card on screen: campaigns and audiences
+  // are things many people never use.
   const steps: { done: boolean; label: string; to: string; optional?: boolean }[] = [
     { done: extensionReady, label: 'Install the Chrome extension and sign in', to: '/setup-guide' },
-    { done: hasSubjects, label: 'Tell Copilot your subjects', to: '/settings' },
+    { done: hasSubjects, label: 'Tell Copilot your subjects and search terms', to: '/settings' },
     { done: (s?.contacts || 0) > 0, label: 'Import your LinkedIn contacts', to: '/dashboard?new=1', optional: true },
     { done: !!s?.network_active, label: 'Describe an audience to meet new people', to: '/network?tab=icps', optional: true },
     { done: hasRunningCampaign, label: 'Start a campaign for a list of leads', to: '/dashboard?new=1', optional: true },
