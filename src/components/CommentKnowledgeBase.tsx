@@ -90,7 +90,7 @@ export default function CommentKnowledgeBase() {
           <Label htmlFor="kb-terms">Search terms for posts of your connections (one per line)</Label>
           <Textarea id="kb-terms" rows={4} value={form.comment_search_terms} onChange={set('comment_search_terms')}
             placeholder={"water loss\nleak detection\npredictive maintenance"} />
-          <p className="text-xs text-muted-foreground">A few times a day Copilot searches last week's posts of your 1st-degree connections for one of these terms. Leave empty to turn it off.</p>
+          <p className="text-xs text-muted-foreground">A few times a day Olanovo searches last week's posts of your 1st-degree connections for one of these terms. Leave empty to turn it off.</p>
         </div>
         <Button size="sm" onClick={save} disabled={updateProfile.isPending}><Save className="w-3 h-3 mr-1" /> Save</Button>
       </CardContent>

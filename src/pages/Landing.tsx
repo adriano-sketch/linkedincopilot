@@ -63,32 +63,32 @@ export default function Landing() {
     {
       icon: MessageCircle,
       title: 'Stay close',
-      desc: 'Copilot finds recent posts by people you already know, about the subjects you care about, and drafts a comment from your point of view.',
+      desc: 'Olanovo finds recent posts by people you already know, about the subjects you care about, and drafts a comment from your point of view.',
       bullets: ['You tell it once what you think about each subject', 'A draft waits for you in the Inbox', 'You open the post and publish the comment yourself'],
     },
     {
       icon: Radar,
       title: 'Meet new people',
-      desc: 'Describe the audience you want to know. Copilot looks for people who fit and sends them a connection invitation with the note you wrote.',
+      desc: 'Describe the audience you want to know. Olanovo looks for people who fit and sends them a connection invitation with the note you wrote.',
       bullets: ['Each person is checked against your audience first', 'A few invitations a day, never a burst', 'Sales Navigator is optional and makes the search more precise'],
     },
     {
       icon: Handshake,
       title: 'No scripted messages',
-      desc: 'No compliment from a stranger, no pitch in the second message. When someone accepts your invitation, Copilot does not send them anything.',
-      bullets: ['New connections become part of the network Copilot reads', 'Their posts about your subjects can come up with a comment draft', 'The conversation starts from something they actually said'],
+      desc: 'No compliment from a stranger, no pitch in the second message. When someone accepts your invitation, Olanovo does not send them anything.',
+      bullets: ['New connections become part of the network Olanovo reads', 'Their posts about your subjects can come up with a comment draft', 'The conversation starts from something they actually said'],
     },
   ];
 
   const differences = [
-    { icon: VolumeX, title: 'It knows when to stay quiet', desc: 'If a post is not about your subjects, there is no draft. Copilot would rather skip a post than put a generic comment under your name. A contact\'s new role or anniversary still gets a short congratulation.' },
+    { icon: VolumeX, title: 'It knows when to stay quiet', desc: 'If a post is not about your subjects, there is no draft. Olanovo would rather skip a post than put a generic comment under your name. A contact\'s new role or anniversary still gets a short congratulation.' },
     { icon: Users, title: 'Your network, one price', desc: 'It searches recent posts from your connections for your subjects, instead of only following a short list of people you picked. One plan, with no charge per contact.' },
-    { icon: MousePointerClick, title: 'You press Comment', desc: 'Copilot writes the draft and opens the post. You adjust it and publish it yourself: the extension has no function that posts a comment. The edits you make in the Inbox, and the drafts you reject, shape the next ones.' },
+    { icon: MousePointerClick, title: 'You press Comment', desc: 'Olanovo writes the draft and opens the post. You adjust it and publish it yourself: the extension has no function that posts a comment. The edits you make in the Inbox, and the drafts you reject, shape the next ones.' },
   ];
 
   const howSteps = [
     { num: '1', title: 'Say what you think', desc: 'List your subjects and, for each one, what you believe and what you have seen in practice. This is what makes the drafts sound like you.' },
-    { num: '2', title: 'Copilot reads LinkedIn', desc: 'A few times a day, during the hours you set, the extension looks for recent posts by your connections on those subjects.' },
+    { num: '2', title: 'Olanovo reads LinkedIn', desc: 'A few times a day, during the hours you set, the extension looks for recent posts by your connections on those subjects.' },
     { num: '3', title: 'Drafts wait in your Inbox', desc: 'One draft per post, next to the post itself. Off-topic posts are skipped. You edit freely.' },
     { num: '4', title: 'You publish', desc: 'One click copies the draft and opens the post. You paste it and press Comment on LinkedIn. It is your comment, posted by you.' },
   ];
@@ -101,16 +101,16 @@ export default function Landing() {
   ];
 
   const faqs = [
-    { q: 'Does LinkedIn Copilot post comments for me?', a: 'No. Copilot finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn. The extension has no function that posts a comment.' },
+    { q: 'Does Olanovo post comments for me?', a: 'No. Olanovo finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn. The extension has no function that posts a comment.' },
     { q: 'What does the extension do by itself, then?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote. It does not send messages. All of it inside daily limits and inside the hours you choose.' },
-    { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. What Copilot does is keep the activity low and stop when LinkedIn objects: a single daily ceiling for profile pages that starts at 15, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision. If you want no risk at all, do not use any tool of this kind.' },
+    { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. What Olanovo does is keep the activity low and stop when LinkedIn objects: a single daily ceiling for profile pages that starts at 15, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision. If you want no risk at all, do not use any tool of this kind.' },
     { q: 'Why are the limits so low?', a: 'Because LinkedIn does not publish its limits, and the numbers other tools advertise are their own guesses. We run every limit on our own account first. When LinkedIn objected to the volume of profile pages on that account, we lowered the ceiling for everyone and made it a single budget shared by all features.' },
     { q: 'How does it know what I would say?', a: 'You write it down once: your subjects, what you think about each one, what you have seen in your work, and what you never want to say. Drafts are built from that and from the post. If a post is not about your subjects, there is no draft.' },
     { q: 'Do I need Sales Navigator?', a: 'No. Finding posts by your own connections and drafting comments works with a free LinkedIn account. Sales Navigator is recommended only if you want to find new people by audience, because its filters (job title, seniority, region, company size) make that search much more precise.' },
-    { q: 'How many invitations does it send?', a: 'You set a weekly number and Copilot spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day. The best matches for your audience go first.' },
+    { q: 'How many invitations does it send?', a: 'You set a weekly number and Olanovo spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day. The best matches for your audience go first.' },
     { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. Drafts are written with AI by Anthropic. The data is not sold and is not used to train AI models. The privacy policy has the full list.' },
-    { q: 'Can I edit or reject what it writes?', a: 'Every comment is a draft you post yourself: edit it, skip it or ignore it. Invitation notes are written by you. Copilot does not write or send messages.' },
-    { q: 'What does it cost?', a: 'You try everything free for 14 days, with no credit card. After that there is one plan: Pro, $69 a month per LinkedIn account, or $690 a year. If you do not subscribe when the trial ends, Copilot stops looking for posts, writing drafts and sending invitations; what is already in your Inbox stays there.' },
+    { q: 'Can I edit or reject what it writes?', a: 'Every comment is a draft you post yourself: edit it, skip it or ignore it. Invitation notes are written by you. Olanovo does not write or send messages.' },
+    { q: 'What does it cost?', a: 'You try everything free for 14 days, with no credit card. After that there is one plan: Pro, $69 a month per LinkedIn account, or $690 a year. If you do not subscribe when the trial ends, Olanovo stops looking for posts, writing drafts and sending invitations; what is already in your Inbox stays there.' },
   ];
 
   const pricing = [
@@ -123,7 +123,7 @@ export default function Landing() {
       features: [
         'No credit card',
         'See drafts for real posts from your network on day one',
-        'When it ends, nothing is charged: Copilot just pauses',
+        'When it ends, nothing is charged: Olanovo just pauses',
       ],
       cta: 'Start free',
       sub: 'No credit card required.',
@@ -152,9 +152,9 @@ export default function Landing() {
       {/* -- NAVBAR -- */}
       <nav className="fixed top-0 w-full z-50 bg-navy/95 backdrop-blur border-b border-white/[0.06]" aria-label="Main navigation" role="navigation">
         <div className="max-w-[1240px] mx-auto flex items-center justify-between h-[72px] px-4 sm:px-6 gap-4">
-          <Link to="/" className="flex items-center gap-3 text-white" aria-label="LinkedIn Copilot home">
+          <Link to="/" className="flex items-center gap-1.5 text-white" aria-label="Olanovo home">
             <BrandMark className="w-8 h-8" />
-            <span className="font-display font-bold text-lg sm:text-xl tracking-[0.06em] whitespace-nowrap"><span className="hidden sm:inline">LinkedIn </span>Copilot</span>
+            <span className="font-display font-bold text-xl sm:text-2xl tracking-tight whitespace-nowrap">Olanovo</span>
           </Link>
           <div className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-300">
             <button onClick={() => scrollTo(productRef)} className="hover:text-white transition-colors">What it does</button>
@@ -187,7 +187,7 @@ export default function Landing() {
               Stay close to your network.<br /><span className="text-primary">You post.</span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[38ch] m-0">
-              LinkedIn Copilot finds the recent posts of people you know and drafts a comment from what you actually think. You read it, edit it and publish it yourself.
+              Olanovo finds the recent LinkedIn posts of people you know and drafts a comment from what you actually think. You read it, edit it and publish it yourself.
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
               No automated DMs. No fake compliments. No pretending you know someone.
@@ -276,7 +276,7 @@ export default function Landing() {
               Be present when the people you know speak
             </h2>
             <p className="text-lg text-muted-foreground m-0 max-w-2xl mx-auto">
-              Most business on LinkedIn comes from people who already know you. Copilot keeps you in front of them with comments worth reading, and helps you meet a few new people the same way.
+              Most business on LinkedIn comes from people who already know you. Olanovo keeps you in front of them with comments worth reading, and helps you meet a few new people the same way.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-3 gap-5">
@@ -347,7 +347,7 @@ export default function Landing() {
             ))}
           </div>
           <motion.p {...fadeUp} className="text-center text-slate-400 text-sm mt-10 max-w-2xl mx-auto">
-            We run every limit on our own account before it reaches yours. LinkedIn Copilot is not affiliated with or endorsed by LinkedIn.
+            We run every limit on our own account before it reaches yours. Olanovo is not affiliated with or endorsed by LinkedIn.
           </motion.p>
         </div>
       </section>
@@ -428,10 +428,10 @@ export default function Landing() {
               Built by someone who <span className="text-gradient-gold">uses it</span>
             </h2>
             <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto mb-4">
-              LinkedIn Copilot is made by a B2B professional who runs it every day on his own LinkedIn account. The idea is simple: the people who already know you are worth more than a thousand strangers, and a comment from someone who understands the subject is how you stay in their mind.
+              Olanovo is made by a B2B professional who runs it every day on his own LinkedIn account. The idea is simple: the people who already know you are worth more than a thousand strangers, and a comment from someone who understands the subject is how you stay in their mind.
             </p>
             <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              LinkedIn Copilot is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">scan<em>to</em>sell.io</a>.
+              Olanovo is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">scan<em>to</em>sell.io</a>.
             </p>
           </motion.div>
         </div>
@@ -447,7 +447,7 @@ export default function Landing() {
                 A few minutes a day with the people who matter.
               </h2>
               <p className="text-slate-300 text-lg mb-8 max-w-lg mx-auto">
-                Tell Copilot what you think once. Open your Inbox, read the drafts, and post the ones you would sign.
+                Tell Olanovo what you think once. Open your Inbox, read the drafts, and post the ones you would sign.
               </p>
               <Button
                 onClick={handleCTA}
@@ -471,7 +471,7 @@ export default function Landing() {
             <div className="md:w-2/5">
               <Logo tone="dark" className="text-xl mb-5" markClassName="w-9 h-9" />
               <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
-                LinkedIn Copilot helps you stay close to your professional network: it finds posts by people you know and drafts comments from your point of view, for you to post.
+                Olanovo helps you stay close to your professional network: it finds LinkedIn posts by people you know and drafts comments from your point of view, for you to post.
               </p>
             </div>
             <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-8">
@@ -502,7 +502,7 @@ export default function Landing() {
           </div>
           <div className="border-t border-white/10 mt-10 pt-6 text-center">
             <p className="text-sm text-gray-500 mb-2">
-              LinkedIn Copilot is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-gold-light hover:text-primary transition-colors font-medium">scan<em>to</em>sell.io</a>. Not affiliated with or endorsed by LinkedIn.
+              Olanovo is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-gold-light hover:text-primary transition-colors font-medium">scan<em>to</em>sell.io</a>. Not affiliated with or endorsed by LinkedIn.
             </p>
             <p className="text-xs text-gray-500">&copy; 2026 scan<em>to</em>sell.io &middot; All rights reserved.</p>
           </div>

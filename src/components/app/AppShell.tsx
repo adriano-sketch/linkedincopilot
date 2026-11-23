@@ -91,9 +91,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col gap-6 px-3.5 py-5">
-      <Link to="/today" onClick={onNavigate} className="flex items-center gap-2.5 px-2 text-white">
+      <Link to="/today" onClick={onNavigate} className="flex items-center gap-1.5 px-2 text-white">
         <BrandMark className="w-8 h-8" />
-        <span className="font-display font-bold text-lg tracking-[0.06em]">Copilot</span>
+        <span className="font-display font-bold text-xl tracking-tight">Olanovo</span>
       </Link>
       <nav aria-label="Main" className="flex flex-col gap-0.5">
         {nav.map(item => {
@@ -178,7 +178,7 @@ function TrialBanner() {
       ended ? 'bg-attention/10 border-attention/30' : 'bg-gold-bg border-border')}>
       <span className="flex-1 min-w-[220px]">
         {ended
-          ? 'Your free trial ended. Copilot is paused: no new posts, drafts or invitations. What is in your Inbox is still here.'
+          ? 'Your free trial ended. Olanovo is paused: no new posts, drafts or invitations. What is in your Inbox is still here.'
           : `Free trial: ${trialDaysLeft} ${trialDaysLeft === 1 ? 'day' : 'days'} left. No card on file, nothing is charged when it ends.`}
       </span>
       <button onClick={() => setOpen(true)} className="h-9 px-4 rounded-full bg-primary text-primary-foreground font-semibold hover:bg-gold-dark">

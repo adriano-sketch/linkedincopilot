@@ -20,9 +20,9 @@ const LABELS: Record<Tab, string> = {
 };
 const SUBTITLES: Record<Tab, string> = {
   connections: 'People who fit your ICPs and accepted your invite.',
-  icps: 'Describe who you want to meet. Copilot searches LinkedIn for them and watches what they post.',
+  icps: 'Describe who you want to meet. Olanovo searches LinkedIn for them and watches what they post.',
   history: 'Comments that are scheduled, posted or skipped. New drafts wait for you in the Inbox.',
-  limits: 'Copilot stays inside these limits and pauses itself if LinkedIn pushes back.',
+  limits: 'Olanovo stays inside these limits and pauses itself if LinkedIn pushes back.',
 };
 
 export default function Network() {

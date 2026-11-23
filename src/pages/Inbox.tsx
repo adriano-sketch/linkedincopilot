@@ -83,7 +83,7 @@ export default function InboxPage() {
   const hide = (keys: string[]) => setHandled(prev => { const n = new Set(prev); keys.forEach(k => n.add(k)); return n; });
   const unhide = (keys: string[]) => setHandled(prev => { const n = new Set(prev); keys.forEach(k => n.delete(k)); return n; });
 
-  // Comments are posted by the person on LinkedIn. Copilot copies the draft and opens the post.
+  // Comments are posted by the person on LinkedIn. Olanovo copies the draft and opens the post.
   const doOpenPost = async (item: InboxItem) => {
     if (!textOf(item).trim()) { toast.error('The text is empty'); return; }
     const { copied } = await openPostWithDraft(item.postUrl, textOf(item));
@@ -119,7 +119,7 @@ export default function InboxPage() {
     hide([item.key]);
     try {
       await dismiss.mutateAsync({ item, reason });
-      toast.success(item.kind === 'comment' ? (reason ? 'Skipped. Copilot will take that into account.' : 'Skipped') : item.kind === 'message' ? 'A new draft is being written' : 'Marked as handled');
+      toast.success(item.kind === 'comment' ? (reason ? 'Skipped. Olanovo will take that into account.' : 'Skipped') : item.kind === 'message' ? 'A new draft is being written' : 'Marked as handled');
     } catch (e) {
       unhide([item.key]);
       toast.error(errText(e, 'Something went wrong. Try again.'));
@@ -290,7 +290,7 @@ export default function InboxPage() {
                       onChange={e => setEdits(prev => ({ ...prev, [current.key]: e.target.value }))}
                       className="w-full rounded-xl border-2 border-primary bg-card px-4 py-3 text-base leading-relaxed text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-ring" />
                     {current.kind === 'comment' && (
-                      <span className="font-normal">Change it here, before copying. Copilot learns from your edits; changes made on LinkedIn are not seen.</span>
+                      <span className="font-normal">Change it here, before copying. Olanovo learns from your edits; changes made on LinkedIn are not seen.</span>
                     )}
                   </label>
                 )}
@@ -329,7 +329,7 @@ export default function InboxPage() {
                 </div>
                 {current.kind === 'comment' && reasonsFor === current.key && (
                   <div role="group" aria-label="Why are you skipping this draft?" className="rounded-xl border border-border bg-background/60 p-3.5 flex flex-col gap-2.5">
-                    <div className="text-[13px] font-medium">Why are you skipping it? One click, and Copilot writes fewer drafts like this.</div>
+                    <div className="text-[13px] font-medium">Why are you skipping it? One click, and Olanovo writes fewer drafts like this.</div>
                     <div className="flex flex-wrap gap-2">
                       {DISMISS_REASONS.map((r, n) => (
                         <button key={r.key} onClick={() => doSecondary(current, r.key)} disabled={busy}
@@ -344,7 +344,7 @@ export default function InboxPage() {
                   <p className="m-0 text-[13px] text-muted-foreground">
                     {opened.has(current.key)
                       ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here with "I posted it".'
-                      : 'You post every comment yourself: Copilot copies the draft and opens the post, you paste it and click Comment on LinkedIn.'}
+                      : 'You post every comment yourself: Olanovo copies the draft and opens the post, you paste it and click Comment on LinkedIn.'}
                     {isActivityUrl(current.postUrl) && ` The link opens ${current.name.split(' ')[0]}'s recent activity; the post is the one shown above.`}
                   </p>
                 )}

@@ -1,7 +1,7 @@
 // LinkedIn does not allow comments posted by an extension or script: the person has to click
-// "Comment" on LinkedIn. Copilot only hands the draft over: it copies the text and opens the post.
+// "Comment" on LinkedIn. Olanovo only hands the draft over: it copies the text and opens the post.
 
-/** The post URL without Copilot's internal "#lcpost=" marker. */
+/** The post URL without Olanovo's internal "#lcpost=" marker. */
 export const cleanPostUrl = (url: string | null | undefined) => (url || '').replace(/#lcpost=.*$/, '');
 
 /** True when the link leads to the person's recent activity (the post is in that list), not to the post itself. */

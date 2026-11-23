@@ -39,26 +39,26 @@ export default function SetupGuide() {
           <CardContent className="space-y-4">
             <Step number={1} title="Add the extension to Chrome">
               <p>
-                Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">LinkedIn Copilot on the Chrome Web Store</a> and
+                Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">the Olanovo extension on the Chrome Web Store</a> (still listed there as LinkedIn Copilot) and
                 click <strong>Add to Chrome</strong>. Chrome keeps it up to date on its own.
               </p>
               <p>Keep one copy only. If you installed the extension from a .zip file in the past, remove that copy first.</p>
             </Step>
 
             <Step number={2} title="Sign in to the extension">
-              <p>Click the puzzle icon in the Chrome toolbar, pin LinkedIn Copilot, click its icon and sign in with the same email and password you use on this site.</p>
+              <p>Click the puzzle icon in the Chrome toolbar, pin the extension (shown as LinkedIn Copilot for now), click its icon and sign in with the same email and password you use on this site.</p>
             </Step>
 
             <Step number={3} title="Be signed in to LinkedIn in the same Chrome">
               <p>The extension reads LinkedIn through your own session. It never sees or stores your LinkedIn password.</p>
             </Step>
 
-            <Step number={4} title="Tell Copilot your subjects and search terms">
+            <Step number={4} title="Tell Olanovo your subjects and search terms">
               <p>
                 In <Link to="/settings" className="text-primary font-medium hover:underline">Settings</Link>, list the subjects you want to be known for and, for each one, what you think and what you
-                have seen in your work. Then add a few search terms: the words Copilot looks for in the posts of your
+                have seen in your work. Then add a few search terms: the words Olanovo looks for in the posts of your
                 connections. Click <strong>Save</strong>. Until your subjects are saved, no draft is written; without search terms,
-                Copilot does not search the posts of your connections (contacts you put in a campaign are still checked).
+                Olanovo does not search the posts of your connections (contacts you put in a campaign are still checked).
               </p>
             </Step>
 
