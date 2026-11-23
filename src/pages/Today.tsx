@@ -38,7 +38,6 @@ const PLAN_LABEL: Record<string, string> = {
   network_withdraw_invites: 'Withdraw stale invites',
 };
 const SIGNAL_LABEL: Record<string, string> = { business_opportunity: 'Business signal', hiring: 'Hiring', pain_point: 'Pain point' };
-const MODE_LABEL: Record<string, string> = { growth: 'Stay top of mind', outreach: 'Start conversations', network: 'Grow my network' };
 
 function useTodaySummary() {
   const { user } = useAuth();
@@ -343,7 +342,7 @@ export default function Today() {
                     className="grid grid-cols-[minmax(0,2fr)_auto] sm:grid-cols-[minmax(0,2fr)_110px_minmax(0,2fr)_60px] gap-x-4 gap-y-1 items-center py-3.5 border-t border-border/70 first-of-type:border-t-0 hover:bg-background/50 -mx-2 px-2 rounded-lg">
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{c.name}</div>
-                      <div className="text-[13px] text-muted-foreground">{MODE_LABEL[c.mode] || c.mode} · {c.people} people</div>
+                      <div className="text-[13px] text-muted-foreground">{c.people} people</div>
                     </div>
                     <span className={cn('justify-self-start text-xs font-semibold px-2.5 py-1 rounded-full', c.status === 'active' ? 'bg-[#E3F3EA] text-success' : 'bg-secondary')}>
                       {c.status === 'active' ? 'Running' : 'Paused'}
