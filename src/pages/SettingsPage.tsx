@@ -47,7 +47,9 @@ export default function SettingsPage() {
   const { user, loading } = useAuth();
   const { profile, isLoading, updateProfile } = useProfile();
   const { extensionStatus } = useExtensionStatus();
-  const { isFree, isAgency, onTrial, trialDaysLeft, hasAccess } = useUserPlan();
+  const { isFree, isAgency, onTrial, trialDaysLeft, isLoading: planLoading, settings: planSettings } = useUserPlan();
+  // Until the plan is known nothing is claimed about it.
+  const planUnknown = planLoading || !planSettings;
   const { campaigns, templates, updateCampaign, deleteCampaign, duplicateCampaign, saveAsTemplate } = useCampaignProfiles();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -214,19 +216,19 @@ export default function SettingsPage() {
                   <div>
                     <p className="text-sm font-medium">Current plan</p>
                     <p className="text-xs text-muted-foreground">
-                      {!isFree ? 'Pro: everything included.'
+                      {planUnknown ? 'Checking your plan…'
+                        : !isFree ? 'Pro: everything included.'
                         : onTrial ? `Free trial: everything included. ${trialDaysLeft} ${trialDaysLeft === 1 ? 'day' : 'days'} left, no card on file.`
-                        : hasAccess ? 'Everything included.'
                         : 'Your free trial ended. Olanovo is paused until you subscribe.'}
                     </p>
                   </div>
-                  <Badge variant={isFree && !onTrial ? 'secondary' : 'default'}>{!isFree ? (isAgency ? 'Agency' : 'Pro') : onTrial ? 'Free trial' : hasAccess ? 'Pro' : 'Paused'}</Badge>
+                  {!planUnknown && <Badge variant={isFree && !onTrial ? 'secondary' : 'default'}>{!isFree ? (isAgency ? 'Agency' : 'Pro') : onTrial ? 'Free trial' : 'Paused'}</Badge>}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {isFree && (
+                  {isFree && !planUnknown && (
                     <Button size="sm" onClick={() => setUpgradeOpen(true)}>Subscribe</Button>
                   )}
-                  {!isFree && (
+                  {!isFree && !planUnknown && (
                     <Button size="sm" variant="outline" onClick={handleBillingPortal} disabled={billingLoading}>
                       {billingLoading ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Loading...</> : 'Manage Billing'}
                     </Button>

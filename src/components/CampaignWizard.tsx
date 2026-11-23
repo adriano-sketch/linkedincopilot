@@ -189,7 +189,9 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
           )}
 
           {step === 1 && (
-            <>
+            // While people are being saved the selection is frozen: a change made then would be left out.
+            <fieldset disabled={launching || importing} aria-busy={launching || importing}
+              className={`space-y-4 border-0 p-0 m-0 min-w-0 ${launching || importing ? 'opacity-60 pointer-events-none' : ''}`}>
               {importedCount > 0 && (
                 <div className="bg-gold-bg border border-border rounded-lg p-3">
                   <p className="text-sm font-medium m-0">{importedCount} people added</p>
@@ -238,12 +240,12 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
                   ? `${picked.length + urls.length} ${picked.length + urls.length === 1 ? 'person' : 'people'} will be added when you start the list.`
                   : 'Pick contacts or paste URLs, then start the list.'}
               </p>
-            </>
+            </fieldset>
           )}
 
           <div className="flex justify-between pt-4">
             {step > 0 ? (
-              <Button variant="ghost" onClick={() => setStep(0)}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
+              <Button variant="ghost" onClick={() => setStep(0)} disabled={launching || importing}><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
             ) : onCancel ? (
               <Button variant="ghost" onClick={onCancel}>Cancel</Button>
             ) : <div />}
