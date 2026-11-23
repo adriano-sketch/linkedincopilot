@@ -199,7 +199,10 @@ Deno.serve(async (req) => {
     for (const uid of new Set((allActiveCampaigns || []).map((c: any) => c.user_id as string))) {
       accessByUser.set(uid, await hasProductAccess(supabase, uid));
     }
-    const activeCampaigns = (allActiveCampaigns || []).filter((c: any) => accessByUser.get(c.user_id) !== false);
+    // Message campaigns ("outreach") were retired on 2026-11-22: the product does not send messages
+    // after a connection. Only comment campaigns ("growth") are scheduled.
+    const activeCampaigns = (allActiveCampaigns || []).filter((c: any) =>
+      accessByUser.get(c.user_id) !== false && c.campaign_mode === "growth");
 
     const activeCampaignIds = (activeCampaigns || []).map(c => c.id);
     const campaignAutoApprove = new Map(
@@ -797,6 +800,9 @@ Deno.serve(async (req) => {
             .eq("id", lead.id);
           continue;
         }
+
+        // Messages are never sent, whatever state a lead is in (see the note on retired campaigns above).
+        if (actionType === "send_dm" || actionType === "send_followup") { addSkip("messages_retired"); continue; }
 
         // ── Per-lead DM approval gate ──
         // DMs require approval unless the DM stage is auto-approved

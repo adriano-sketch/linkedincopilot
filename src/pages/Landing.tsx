@@ -10,7 +10,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import {
-  ArrowRight, Check, MessageCircle, VolumeX, Users, MousePointerClick, Radar, MessageSquare,
+  ArrowRight, Check, MessageCircle, VolumeX, Users, MousePointerClick, Radar, Handshake,
   Gauge, Clock, ShieldAlert, Hand,
 } from 'lucide-react';
 import BrandMark from '@/components/BrandMark';
@@ -75,11 +75,11 @@ export default function Landing() {
       bullets: ['Each person is checked against your audience first', 'A few invitations a day, never a burst', 'Sales Navigator is optional and makes the search more precise'],
     },
     {
-      icon: MessageSquare,
-      title: 'Start conversations',
+      icon: Handshake,
+      title: 'No scripted messages',
       featured: false,
-      desc: 'When someone in a campaign accepts, Copilot writes a first message from their public profile, in the pattern you approved.',
-      bullets: ['You review and approve the first messages of each kind', 'After that, the rest go out on their own, inside the daily limits', 'The sequence stops as soon as a reply is detected'],
+      desc: 'No compliment from a stranger, no pitch in the second message. When someone accepts your invitation, Copilot does not send them anything.',
+      bullets: ['New connections become part of the network Copilot reads', 'Their posts about your subjects can come up with a comment draft', 'The conversation starts from something they actually said'],
     },
   ];
 
@@ -100,19 +100,19 @@ export default function Landing() {
     { icon: Gauge, title: 'One daily ceiling', desc: 'Every profile page the extension opens counts toward a single daily ceiling: contact checks and invitations together. It starts at 15 pages a day and grows by 5 a week, up to 40.' },
     { icon: Clock, title: 'Your days and hours', desc: 'It works only inside the days and hours you choose. After your computer sleeps, it waits a few minutes and resumes at the normal pace instead of catching up in a burst.' },
     { icon: ShieldAlert, title: 'Stops on a warning', desc: 'If LinkedIn shows a verification page or logs you out, everything pauses. Nothing restarts by itself: only you resume.' },
-    { icon: Hand, title: 'You are in charge', desc: 'Comments are always posted by you. Invitations and messages follow the notes and samples you approved. One pause button stops everything.' },
+    { icon: Hand, title: 'You are in charge', desc: 'Comments are always posted by you. Invitations go out with the note you wrote. One pause button stops everything.' },
   ];
 
   const faqs = [
     { q: 'Does LinkedIn Copilot post comments for me?', a: 'No. Copilot finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn. The extension has no function that posts a comment.' },
-    { q: 'What does the extension do by itself, then?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote, and, in campaigns, sends messages once you have approved the first ones of each kind. All of it inside daily limits and inside the hours you choose.' },
+    { q: 'What does the extension do by itself, then?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote. It does not send messages. All of it inside daily limits and inside the hours you choose.' },
     { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. What Copilot does is keep the activity low and stop when LinkedIn objects: a single daily ceiling for profile pages that starts at 15, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision. If you want no risk at all, do not use any tool of this kind.' },
     { q: 'Why are the limits so low?', a: 'Because LinkedIn does not publish its limits, and the numbers other tools advertise are their own guesses. We run every limit on our own account first. When LinkedIn objected to the volume of profile pages on that account, we lowered the ceiling for everyone and made it a single budget shared by all features.' },
     { q: 'How does it know what I would say?', a: 'You write it down once: your subjects, what you think about each one, what you have seen in your work, and what you never want to say. Drafts are built from that and from the post. If a post is not about your subjects, there is no draft.' },
     { q: 'Do I need Sales Navigator?', a: 'No. Finding posts by your own connections and drafting comments works with a free LinkedIn account. Sales Navigator is recommended only if you want to find new people by audience, because its filters (job title, seniority, region, company size) make that search much more precise.' },
     { q: 'How many invitations does it send?', a: 'You set a weekly number and Copilot spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day. The best matches for your audience go first.' },
     { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. Drafts are written with AI by Anthropic. The data is not sold and is not used to train AI models. The privacy policy has the full list.' },
-    { q: 'Can I edit or reject what it writes?', a: 'Every comment is a draft you post yourself: edit it, skip it or ignore it. Invitation notes are written by you. In campaigns, you review and edit the first messages of each kind; once you approve them, the rest are sent in the same pattern without asking again.' },
+    { q: 'Can I edit or reject what it writes?', a: 'Every comment is a draft you post yourself: edit it, skip it or ignore it. Invitation notes are written by you. Copilot does not write or send messages.' },
     { q: 'What does it cost?', a: 'You try everything free for 14 days, with no credit card. After that there is one plan: Pro, $69 a month per LinkedIn account, or $690 a year. If you do not subscribe when the trial ends, Copilot stops looking for posts, writing drafts and sending invitations; what is already in your Inbox stays there.' },
   ];
 
@@ -142,7 +142,6 @@ export default function Landing() {
         'Posts from your network, picked by your subjects',
         'Comment drafts in your voice, posted by you',
         'New people in your target audience, with invitations and your note',
-        'First messages for campaign leads, in the pattern you approve',
         'Low daily limits, inside the hours you choose',
       ],
       cta: 'Start free',

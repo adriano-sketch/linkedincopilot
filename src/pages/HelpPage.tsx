@@ -63,7 +63,7 @@ const quickGuides = [
 
 const faqs = [
   { q: 'Does LinkedIn Copilot post comments for me?', a: 'No. Copilot finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn.' },
-  { q: 'What does the extension do by itself?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote, and sends campaign messages you approved. It does not like or comment on posts.' },
+  { q: 'What does the extension do by itself?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote. It does not send messages, and it does not like or comment on posts.' },
   { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. Copilot keeps the activity low and stops when LinkedIn objects: one daily ceiling for profile pages that starts at 15, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision.' },
   { q: 'Why did I get no draft today?', a: 'The usual reasons: none of the posts found were about your subjects (those are skipped on purpose), your subjects or search terms are not saved yet, Chrome was closed or the computer asleep during your active hours, or the day\'s ceiling of profile pages was already used. The Today page shows how many posts were read and how many were left alone.' },
   { q: 'Do I need to keep my computer on all day?', a: 'No. The extension works while Chrome is open and the computer is awake, inside the hours you chose. When the computer sleeps it simply pauses. When it wakes up, it waits a few minutes and continues at the normal pace; it does not rush to make up for lost time.' },
@@ -207,17 +207,16 @@ export default function HelpPage() {
         {/* Campaigns */}
         <section className="pb-8">
           <h2 className="text-xl font-display font-bold tracking-tight mb-1">Campaigns (optional)</h2>
-          <p className="text-sm text-muted-foreground mb-4">For people who also want to start conversations with a list of leads.</p>
+          <p className="text-sm text-muted-foreground mb-4">For people who want to stay close to a specific list of contacts.</p>
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground space-y-2">
               <p>
-                A campaign takes a list of people you bring (a file with LinkedIn addresses, or a search), checks each one against the
-                profile you described, and prepares a connection note, a first message and a follow-up for the ones who fit.
+                A campaign is a list of people you choose, from your contacts or by their LinkedIn addresses. Copilot opens each
+                profile from time to time, reads their latest post, and writes a comment draft when the post is about your subjects.
               </p>
               <p>
-                You review samples of each stage in the campaign before anything goes out. When you approve a stage, the remaining
-                messages of that stage are sent without asking again, inside the same daily limits. Copilot checks for a reply
-                before each message and stops the sequence as soon as it sees one.
+                The drafts arrive in the Inbox like any other, and you publish the ones you want. No message is sent to the people
+                in a campaign. Each profile opened counts toward the same daily ceiling.
               </p>
               <p>You do not need campaigns to use the Inbox and the Network.</p>
             </CardContent>
