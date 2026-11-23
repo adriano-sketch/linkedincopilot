@@ -137,7 +137,7 @@ export default function Landing() {
       leads: 'One plan, everything included',
       features: [
         'Posts from your network, picked by your subjects',
-        'Comment drafts in your voice, posted by you',
+        'Comment drafts from what you think, posted by you',
         'New people in your target audience, with invitations and your note',
         'Low daily limits, inside the hours you choose',
       ],
@@ -187,7 +187,10 @@ export default function Landing() {
               Stay close to your network.<br /><span className="text-primary">You post.</span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[38ch] m-0">
-              LinkedIn Copilot finds the recent posts of people you know and drafts a comment in your voice. You read it, edit it and publish it yourself.
+              LinkedIn Copilot finds the recent posts of people you know and drafts a comment from what you actually think. You read it, edit it and publish it yourself.
+            </motion.p>
+            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
+              No automated DMs. No fake compliments. No pretending you know someone.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }} className="flex flex-wrap items-center gap-4">
               <Button onClick={handleCTA} size="lg" className="bg-primary text-primary-foreground hover:bg-gold-dark font-semibold text-base rounded-xl h-14 px-6">
@@ -468,7 +471,7 @@ export default function Landing() {
             <div className="md:w-2/5">
               <Logo tone="dark" className="text-xl mb-5" markClassName="w-9 h-9" />
               <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
-                LinkedIn Copilot helps you stay close to your professional network: it finds posts by people you know and drafts comments in your voice, for you to post.
+                LinkedIn Copilot helps you stay close to your professional network: it finds posts by people you know and drafts comments from your point of view, for you to post.
               </p>
             </div>
             <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-8">
