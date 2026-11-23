@@ -58,7 +58,7 @@ export default function SetupGuide() {
                 In <Link to="/settings" className="text-primary font-medium hover:underline">Settings</Link>, list the subjects you want to be known for and, for each one, what you think and what you
                 have seen in your work. Then add a few search terms: the words Copilot looks for in the posts of your
                 connections. Click <strong>Save</strong>. Until your subjects are saved, no draft is written; without search terms,
-                Copilot does not look at the posts of your connections.
+                Copilot does not search the posts of your connections (contacts you put in a campaign are still checked).
               </p>
             </Step>
 
