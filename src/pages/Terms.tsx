@@ -28,6 +28,7 @@ export default function Terms() {
 
         <Section title="1. The Agreement">
           <p>
+            Olanovo is a product of scantosell.io, operated by Nortech LLC ("Olanovo", "we").
             These terms apply to the Olanovo web app at olanovo.com and to the Olanovo Chrome
             extension. By creating an account or installing the extension you agree to them. If
             you do not agree, do not use Olanovo.
@@ -115,6 +116,11 @@ export default function Terms() {
               told before it does.
             </li>
             <li>
+              Payments are not refunded, including for a period you did not finish, except
+              where the law requires it. The free trial is there so you can test everything
+              before you pay.
+            </li>
+            <li>
               For a question about a charge, write to{' '}
               <a href="mailto:support@olanovo.com" className="text-blue-400 hover:text-blue-300 transition-colors">support@olanovo.com</a>.
             </li>
@@ -155,7 +161,15 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section title="12. Changes to These Terms">
+        <Section title="12. Governing Law">
+          <p>
+            These terms are governed by the laws of the State of Florida, United States. Any
+            dispute about them or about Olanovo will be brought in the state or federal courts
+            located in Florida.
+          </p>
+        </Section>
+
+        <Section title="13. Changes to These Terms">
           <p>
             These terms can be updated. Changes are posted on this page with a new date.
             Continuing to use Olanovo after a change means you accept the updated terms.
@@ -163,7 +177,7 @@ export default function Terms() {
         </Section>
 
         <div className="mt-12 p-6 rounded-xl border border-white/10 bg-white/5">
-          <h2 className="text-xl font-semibold text-white mb-3">13. Contact</h2>
+          <h2 className="text-xl font-semibold text-white mb-3">14. Contact</h2>
           <p className="text-gray-400">Questions about these terms:</p>
           <p className="mt-3 text-gray-300">
             <strong>Email:</strong>{' '}
