@@ -112,14 +112,20 @@ export default function Today() {
 
   const extensionReady = !!extensionStatus && !!extensionStatus.last_heartbeat_at;
   const hasRunningCampaign = !!s?.campaigns.some(c => c.status === 'active');
-  const steps = [
-    { done: extensionReady, label: 'Install the Chrome extension and log in', to: '/setup-guide' },
-    { done: hasRunningCampaign, label: 'Launch your first campaign', to: '/dashboard?new=1' },
-    { done: !!s?.network_active, label: 'Describe an ICP so Copilot can grow your network', to: '/network?tab=icps' },
-    { done: (s?.contacts || 0) > 0, label: 'Import your LinkedIn contacts', to: '/dashboard?new=1' },
+  // Subjects are what every draft is built from: without them nothing is drafted.
+  const hasSubjects = !!String((profile as { comment_topics?: string | null } | null | undefined)?.comment_topics || '').trim();
+  // Only the first two are needed for drafts to appear. The others are optional paths and must not
+  // keep this card on screen: campaigns and audiences are things many people never use.
+  const steps: { done: boolean; label: string; to: string; optional?: boolean }[] = [
+    { done: extensionReady, label: 'Install the Chrome extension and sign in', to: '/setup-guide' },
+    { done: hasSubjects, label: 'Tell Copilot your subjects', to: '/settings' },
+    { done: (s?.contacts || 0) > 0, label: 'Import your LinkedIn contacts', to: '/dashboard?new=1', optional: true },
+    { done: !!s?.network_active, label: 'Describe an audience to meet new people', to: '/network?tab=icps', optional: true },
+    { done: hasRunningCampaign, label: 'Start a campaign for a list of leads', to: '/dashboard?new=1', optional: true },
   ];
-  const setupDone = steps.filter(x => x.done).length;
-  const showSetup = !!s && setupDone < steps.length;
+  const required = steps.filter(x => !x.optional);
+  const setupDone = required.filter(x => x.done).length;
+  const showSetup = !!s && setupDone < required.length;
 
   return (
     <AppShell>
@@ -135,7 +141,7 @@ export default function Today() {
             <p className="text-muted-foreground text-[17px] m-0 mt-2">
               {isLoading ? 'Getting your briefing…'
                 : needs > 0 ? <>{greeting}{name ? `, ${name}` : ''}. About {minutes} min of your time.</>
-                : showSetup ? 'A few steps and your copilot is flying.'
+                : showSetup ? 'Two steps and Copilot starts working.'
                 : 'Nothing needs you right now. Copilot keeps working.'}
             </p>
           </div>
@@ -156,15 +162,15 @@ export default function Today() {
               <section className="rounded-2xl border border-border bg-card p-5 sm:p-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <h2 className="m-0 text-lg font-semibold">Get set up</h2>
-                  <span className="text-sm text-muted-foreground tabular-nums">{setupDone} of {steps.length} done</span>
+                  <span className="text-sm text-muted-foreground tabular-nums">{setupDone} of {required.length} done</span>
                 </div>
-                <div className="h-1.5 rounded bg-secondary"><div className="h-1.5 rounded bg-primary" style={{ width: `${(setupDone / steps.length) * 100}%` }} /></div>
+                <div className="h-1.5 rounded bg-secondary"><div className="h-1.5 rounded bg-primary" style={{ width: `${(setupDone / required.length) * 100}%` }} /></div>
                 <ol className="list-none m-0 p-0 grid sm:grid-cols-2 gap-2">
                   {steps.map(step => (
                     <li key={step.label}>
                       <Link to={step.to} className={cn('flex items-center gap-3 rounded-xl px-3 py-3 border', step.done ? 'border-transparent text-muted-foreground' : 'border-border hover:border-foreground/30 bg-background/50')}>
                         {step.done ? <Check className="w-5 h-5 text-success shrink-0" /> : <Circle className="w-5 h-5 text-muted-foreground shrink-0" />}
-                        <span className={cn('flex-1', step.done && 'line-through')}>{step.label}</span>
+                        <span className={cn('flex-1', step.done && 'line-through')}>{step.label}{step.optional && !step.done && <span className="text-muted-foreground"> (optional)</span>}</span>
                         {!step.done && <ArrowRight className="w-4 h-4 text-gold-dark" />}
                       </Link>
                     </li>

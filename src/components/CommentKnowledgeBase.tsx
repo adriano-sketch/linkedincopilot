@@ -15,7 +15,7 @@ const LIMITS: Record<keyof Kb, number> = { comment_topics: 600, comment_avoid: 4
  * something to say about, the ones they stay out of, what they think and have seen on those subjects
  * (so drafts state a point of view instead of asking questions), a few comments they wrote
  * themselves, and the terms used to look for posts of their own connections.
- * A post that is not about one of the subjects gets a like and no comment.
+ * A post that is not about one of the subjects is skipped: no draft, and nothing is liked.
  */
 export default function CommentKnowledgeBase() {
   const { profile, updateProfile } = useProfile();
