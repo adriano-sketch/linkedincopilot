@@ -18,7 +18,8 @@ export function profileUrlFrom(input: string): string | null {
   let slug = m[1];
   try { slug = decodeURIComponent(slug); } catch { /* keep as typed */ }
   slug = slug.trim().toLowerCase();
-  if (!slug) return null;
+  // A decoded identifier that carries a delimiter would change meaning when read again: not a profile.
+  if (!slug || /[/?#%\s]/.test(slug)) return null;
   return `https://www.linkedin.com/in/${slug}`;
 }
 
