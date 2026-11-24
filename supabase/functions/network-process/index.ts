@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type PostKind, type SenderFacts,
+  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, outageTries, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray, parseWriterReply,
@@ -142,7 +142,7 @@ Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "
 async function processPosts(supabase: Supa, userId: string, icps: Map<string, Icp>) {
   const { data: posts, error } = await supabase
     .from("monitored_posts")
-    .select("id, icp_id, campaign_lead_id, post_urn, author_name, author_headline, author_degree, post_text, reactions_count, comments_count, icp_fit, signal_type, signal_reason")
+    .select("id, icp_id, campaign_lead_id, post_urn, author_name, author_headline, author_degree, post_text, reactions_count, comments_count, icp_fit, signal_type, signal_reason, last_error")
     .eq("user_id", userId)
     .eq("status", "new")
     .order("created_at", { ascending: true })
@@ -174,6 +174,20 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
   const isMyNetwork = (p: any) => !p.icp_id && !p.campaign_lead_id && String(p.post_urn || "").startsWith("lc:");
   let kbDrafted = 0;
   let kbSkipped = 0;
+  // The model could not be reached or its answer could not be read: no decision is recorded, the post
+  // stays 'new' for the next run, and the try is counted. After OUTAGE_MAX_TRIES it is given up, so a
+  // post the model can never answer for is not retried for ever.
+  let waiting = 0;
+  // deno-lint-ignore no-explicit-any
+  const tryLater = async (p: any, step: string) => {
+    const tries = outageTries(p.last_error) + 1;
+    const update = tries >= OUTAGE_MAX_TRIES
+      ? { status: "ignored", last_error: `${step} unavailable, gave up after ${tries} tries` }
+      : { last_error: `unavailable: ${tries}` };
+    const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", p.id).eq("status", "new");
+    if (upErr) console.error("could not record an unavailable step:", upErr);
+    waiting++;
+  };
   for (const p of posts.filter(isMyNetwork)) {
     classified++;
     const ignore = (why: string) => supabase.from("monitored_posts").update({
@@ -183,6 +197,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
     if (!p.post_text || p.post_text.trim().length < 40) { await ignore("Post too short to comment meaningfully"); kbSkipped++; continue; }
     try {
       const triage = await triagePost(String(p.post_text), { name: p.author_name, title: p.author_headline }, facts);
+      if (triageUnavailable(triage)) { await tryLater(p, "triage"); continue; }
       if (triage.kind === "off_topic") { await ignore(`Off topic: ${triage.reason}`); kbSkipped++; continue; }
       const item = [{ post: p, signal: triage.kind, reason: triage.topic || "", language: triage.language }];
       const topic = triage.topic || "one of the subjects listed above";
@@ -190,12 +205,15 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
       let rev = { ok: false, reason: draft.skip || "" };
       if (!draft.skip) {
         [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: draft.comment, language: triage.language }], facts, triage.kind);
+        if (reviewUnavailable(rev)) { await tryLater(p, "review"); continue; }
         if (!rev.ok) {
           const [second] = await writeComments(item, facts, [{ previous: draft.comment, feedback: rev.reason }], triage.kind, topic, triage.signalReason);
           draft = second;
-          rev = second.skip
-            ? { ok: false, reason: second.skip }
-            : (await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: second.comment, language: triage.language }], facts, triage.kind))[0];
+          if (second.skip) rev = { ok: false, reason: second.skip };
+          else {
+            [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: second.comment, language: triage.language }], facts, triage.kind);
+            if (reviewUnavailable(rev)) { await tryLater(p, "review"); continue; }
+          }
         }
       }
       if (!draft.skip && rev.ok && !isSkip(draft.comment)) {
@@ -216,8 +234,9 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
         kbSkipped++;
       }
     } catch (e) {
-      // Stays 'new': the next run tries again.
+      // Stays 'new': the next run tries again, a counted number of times.
       console.error("my-network post failed:", e instanceof Error ? e.message : e);
+      await tryLater(p, "drafting");
     }
   }
 
@@ -279,7 +298,9 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
         results = parseJsonArray(text);
       } catch (e) {
         console.error("post classification failed:", e instanceof Error ? e.message : e);
-        continue; // fail closed: stays 'new'
+        // Fail closed: they stay 'new' for the next run, a counted number of times.
+        for (const p of batch) await tryLater(p, "classification");
+        continue;
       }
 
       for (const r of results) {
@@ -315,13 +336,17 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
       drafts = await writeComments(batch, facts, null);
     } catch (e) {
       console.error("comment drafting failed:", e instanceof Error ? e.message : e);
-      continue; // Posts stay 'new' with their classification; next run retries the draft.
+      // Posts stay 'new' with their classification; the next run retries the draft, a counted number of times.
+      for (const d of batch) await tryLater(d.post, "drafting");
+      continue;
     }
 
     const review = await reviewComments(batch.map((d, k) => ({
       post: String(d.post.post_text), author: d.post.author_name, comment: drafts[k].comment, language: d.language,
     })), facts);
-    const retryIdx = batch.map((_, k) => k).filter((k) => !drafts[k].skip && !review[k].ok);
+    // Drafts whose review could not be read are not judged: they wait for the next run.
+    const down = new Set<number>(batch.map((_, k) => k).filter((k) => !drafts[k].skip && reviewUnavailable(review[k])));
+    const retryIdx = batch.map((_, k) => k).filter((k) => !drafts[k].skip && !review[k].ok && !down.has(k));
     if (retryIdx.length) {
       try {
         const again = await writeComments(retryIdx.map((k) => batch[k]), facts, retryIdx.map((k) => ({
@@ -332,7 +357,11 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
         })), facts);
         retryIdx.forEach((k, j) => {
           drafts[k] = again[j];
-          review[k] = again[j].skip ? { ok: false, reason: again[j].skip } : review2[j];
+          if (again[j].skip) review[k] = { ok: false, reason: again[j].skip };
+          else {
+            review[k] = review2[j];
+            if (reviewUnavailable(review2[j])) down.add(k);
+          }
         });
       } catch (e) {
         console.error("comment rewrite failed:", e instanceof Error ? e.message : e);
@@ -341,6 +370,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
 
     for (let k = 0; k < batch.length; k++) {
       const d = batch[k];
+      if (down.has(k)) { await tryLater(d.post, "review"); continue; }
       const good = !drafts[k].skip && review[k].ok && !isSkip(drafts[k].comment);
       const update = good
         ? { suggested_comment: drafts[k].comment, status: "pending", last_error: null }
@@ -351,7 +381,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
       else skipped++;
     }
   }
-  return { classified, drafted, skipped_for_quality: skipped };
+  return { classified, drafted, skipped_for_quality: skipped, waiting_for_retry: waiting };
 }
 
 Deno.serve(async (req) => {

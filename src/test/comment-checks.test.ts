@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanLanguage, languageLine, localIssues, readVerdicts } from '../../supabase/functions/_shared/comment-quality.ts';
+import { cleanLanguage, languageLine, localIssues, outageTries, readVerdicts, reviewUnavailable, REVIEW_UNAVAILABLE, triageUnavailable, TRIAGE_UNAVAILABLE } from '../../supabase/functions/_shared/comment-quality.ts';
 
 describe('cleanLanguage', () => {
   it('accepts a language name in any script', () => {
@@ -82,5 +82,32 @@ describe('readVerdicts', () => {
 
   it('approves only on ok: true', () => {
     expect(readVerdicts([{ index: 0, ok: 'true' }], 1)[0].ok).toBe(false);
+  });
+});
+
+describe('an outage is not a verdict', () => {
+  it('tells an unreachable triage from an off-topic post', () => {
+    expect(triageUnavailable({ kind: 'off_topic', reason: TRIAGE_UNAVAILABLE })).toBe(true);
+    expect(triageUnavailable({ kind: 'off_topic', reason: 'about football' })).toBe(false);
+    expect(triageUnavailable({ kind: 'on_topic', reason: TRIAGE_UNAVAILABLE })).toBe(false);
+  });
+
+  it('tells an unreadable review from a rejection', () => {
+    expect(reviewUnavailable({ ok: false, reason: REVIEW_UNAVAILABLE })).toBe(true);
+    expect(reviewUnavailable({ ok: false, reason: 'generic praise' })).toBe(false);
+    expect(reviewUnavailable({ ok: true, reason: '' })).toBe(false);
+  });
+
+  it('does not let the reviewer write the outage marker itself', () => {
+    const [v] = readVerdicts([{ index: 0, ok: false, reason: REVIEW_UNAVAILABLE }], 1);
+    expect(v.ok).toBe(false);
+    expect(reviewUnavailable(v)).toBe(false);
+  });
+
+  it('counts tries from last_error and nothing else', () => {
+    expect(outageTries(null)).toBe(0);
+    expect(outageTries('unavailable: 3')).toBe(3);
+    expect(outageTries('quality skip: generic')).toBe(0);
+    expect(outageTries('review unavailable, gave up after 6 tries')).toBe(0);
   });
 });

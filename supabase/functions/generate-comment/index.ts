@@ -13,7 +13,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type SenderFacts, type Triage,
+  commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, reviewComments, reviewUnavailable, triagePost,
+  triageUnavailable, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
 
@@ -135,7 +136,7 @@ serve(async (req) => {
       const t = await triagePost(body.triage_only.slice(0, 2000), { name: body.author || null, title: body.author_title || null }, f, (m) => { models.triage = m; });
       // triagePost answers "off_topic / triage unavailable" when the model call fails (so that no comment is
       // written). Here that must not be read as a verdict.
-      if (t.reason === "triage unavailable") return json({ success: false, unavailable: true }, 503);
+      if (triageUnavailable(t)) return json({ success: false, unavailable: true }, 503);
       // With draft: true the writer and the reviewer run as well, on this text only. Still nothing is
       // stored. Used to check what a post in a given language gets before trusting it.
       // It is a check, not the production path: no learned examples, no angle, no company, no rewrite.
@@ -294,7 +295,33 @@ serve(async (req) => {
       }
     }
 
+    // The model could not be reached, or its answer could not be read. That says nothing about the post
+    // or the draft, so no decision is recorded: the lead stays where it is and the scheduler asks again.
+    // Each try is logged and the next one waits an hour. After OUTAGE_MAX_TRIES the lead rests like after
+    // any other skip, so a post the model can never answer for does not keep it busy for ever.
+    const unavailable = async (step: "triage" | "review") => {
+      const since = new Date(Date.now() - 3 * 864e5).toISOString();
+      const { count, error: countErr } = await supabase.from("activity_log").select("id", { count: "exact", head: true })
+        .eq("user_id", lead.user_id).eq("campaign_lead_id", campaign_lead_id).eq("action", "comment_unavailable").gte("created_at", since);
+      // Without the count the tries cannot be bounded: treat it as the last one.
+      const tries = countErr ? OUTAGE_MAX_TRIES : (count || 0) + 1;
+      if (countErr) console.error("generate-comment: could not count earlier tries", countErr);
+      if (tries >= OUTAGE_MAX_TRIES) {
+        if (!(await restLead("comment_skipped_unavailable", { reason: `${step} unavailable, gave up after ${tries} tries` }))) return fail("Failed to update the lead", 500);
+        console.log(`generate-comment: lead ${campaign_lead_id} rests (${step} unavailable, ${tries} tries)`);
+        return json({ success: true, skipped: "unavailable", lead_id: campaign_lead_id });
+      }
+      const { error: waitErr } = await supabase.from("campaign_leads")
+        .update({ next_action_at: new Date(Date.now() + 3600e3).toISOString() })
+        .eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "post_liked");
+      if (waitErr) console.error(`generate-comment: could not postpone lead ${campaign_lead_id}`, waitErr);
+      await supabase.from("activity_log").insert({ user_id: lead.user_id, campaign_lead_id, action: "comment_unavailable", details: { step, tries } });
+      console.error(`generate-comment: ${step} unavailable for lead ${campaign_lead_id} (try ${tries}), will be tried again`);
+      return json({ success: false, unavailable: step, lead_id: campaign_lead_id }, 503);
+    };
+
     const triage = await triagePost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
+    if (triageUnavailable(triage)) return await unavailable("triage");
     if (triage.kind === "off_topic") {
       await restLead("comment_skipped_off_topic", { reason: triage.reason });
       console.log(`generate-comment: lead ${campaign_lead_id} liked only (off topic: ${triage.reason})`);
@@ -309,20 +336,26 @@ serve(async (req) => {
       writeDraft({ facts, triage, postText, author, authorTitle, authorCompany, hint: variant.hint, feedback });
 
     let draft: Draft;
+    let reviewDown = false;
     try {
       draft = await write(null);
       if (!draft.skip) {
         let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment, language: triage.language }], facts, triage.kind);
-        if (!rev.ok) {
+        // An unreadable review is not feedback to rewrite from, and not a reason to skip the post.
+        if (reviewUnavailable(rev)) reviewDown = true;
+        else if (!rev.ok) {
           const second = await write({ previous: draft.comment, why: rev.reason });
           if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment, language: triage.language }], facts, triage.kind);
-          draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
+          if (!second.skip && reviewUnavailable(rev)) reviewDown = true;
+          else draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
         }
       }
     } catch (e) {
       console.error("generate-comment: drafting failed", e instanceof Error ? e.message : e);
       return fail("Comment generation failed", 502);
     }
+
+    if (reviewDown) return await unavailable("review");
 
     // Nothing worth saying on this post: no comment this cycle, the lead tries again with a newer post in 7 days.
     if (draft.skip || !draft.comment) {

@@ -163,6 +163,27 @@ export function learnedFor(l: Learned | null | undefined, kind: PostKind, maxPos
 export type PostKind = "on_topic" | "milestone" | "off_topic";
 /** A post in which the author shows a need the sender's work addresses. "none" for everything else. */
 export type PostSignal = "opportunity" | "pain" | "none";
+/**
+ * What triagePost and reviewComments answer when the model could not be reached or its reply could not
+ * be read. Both still answer "no" (off topic, not approved) so that nothing is written by mistake, but
+ * this is not a judgement of the post or of the draft: callers must try again later, not record a
+ * decision. Test with triageUnavailable / reviewUnavailable.
+ */
+export const TRIAGE_UNAVAILABLE = "triage unavailable";
+export const REVIEW_UNAVAILABLE = "review unavailable";
+export const triageUnavailable = (t: { kind: string; reason: string }): boolean => t.kind === "off_topic" && t.reason === TRIAGE_UNAVAILABLE;
+export const reviewUnavailable = (r: { ok: boolean; reason: string }): boolean => !r.ok && r.reason === REVIEW_UNAVAILABLE;
+/**
+ * How many times a post is tried again after an outage before it is given up. A post that fails every
+ * time (its text makes the model answer in a way that cannot be read) must not be retried for ever.
+ */
+export const OUTAGE_MAX_TRIES = 6;
+/** Posts found by the network search count their tries in last_error, as "unavailable: <n>". */
+export function outageTries(lastError: string | null | undefined): number {
+  const m = /^unavailable: (\d+)$/.exec(String(lastError || ""));
+  return m ? Number(m[1]) : 0;
+}
+
 export type Triage = { kind: PostKind; topic: string; reason: string; signal: PostSignal; signalReason: string; language: string };
 
 /** True when the user told us what they work on. Without it there is no basis to judge relevance. */
@@ -220,10 +241,12 @@ Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<fo
     const signalReason = String(r.signal_reason || "").trim().slice(0, 200);
     // A signal needs a stated reason; without one it is not shown as a signal.
     const signal: PostSignal = kind === "on_topic" && signalReason && (r.signal === "opportunity" || r.signal === "pain") ? r.signal : "none";
-    return { kind, topic: String(r.topic || "").slice(0, 60), reason: String(r.reason || "").slice(0, 140), signal, signalReason: signal === "none" ? "" : signalReason, language: cleanLanguage(r.language) };
+    // The model's own words can never be the outage marker.
+    const reason = String(r.reason || "").slice(0, 140);
+    return { kind, topic: String(r.topic || "").slice(0, 60), reason: reason === TRIAGE_UNAVAILABLE ? "off topic" : reason, signal, signalReason: signal === "none" ? "" : signalReason, language: cleanLanguage(r.language) };
   } catch (e) {
     console.error("post triage failed:", e instanceof Error ? e.message : e);
-    return { kind: "off_topic", topic: "", reason: "triage unavailable", signal: "none", signalReason: "", language: "" };
+    return { kind: "off_topic", topic: "", reason: TRIAGE_UNAVAILABLE, signal: "none", signalReason: "", language: "" };
   }
 }
 
@@ -390,7 +413,7 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
     toCheck.forEach((it, idx) => { out[it.i] = verdicts[idx]; });
   } catch (e) {
     console.error("comment review failed:", e instanceof Error ? e.message : e);
-    toCheck.forEach((it) => { out[it.i] = { ok: false, reason: "review unavailable" }; });
+    toCheck.forEach((it) => { out[it.i] = { ok: false, reason: REVIEW_UNAVAILABLE }; });
   }
   return out;
 }
@@ -416,7 +439,9 @@ export function readVerdicts(res: unknown, count: number): { ok: boolean; reason
     // Two verdicts for one draft: the reply is not what was asked for, so none of it is trusted.
     if (seen.has(r.index)) throw new Error("review reply judges a draft twice");
     seen.add(r.index);
-    out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: String(r.reason || "generic").slice(0, 200) };
+    // The reviewer's own words can never be the outage marker.
+    const reason = String(r.reason || "generic").slice(0, 200);
+    out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: reason === REVIEW_UNAVAILABLE ? "generic" : reason };
   }
   return out.map((v) => v ?? { ok: false, reason: "not reviewed" });
 }
