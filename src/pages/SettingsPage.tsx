@@ -91,6 +91,8 @@ export default function SettingsPage() {
   // Fields the person has changed and not saved yet. The row is refetched every few seconds (and
   // changes on each heartbeat), so the form must not be rebuilt over what is being typed.
   const dirtyLimits = useRef(new Set<string>());
+  const latestLimits = useRef(extensionLimits);
+  latestLimits.current = extensionLimits;
   const editLimits = (patch: Partial<typeof extensionLimits>) => {
     Object.keys(patch).forEach(k => dirtyLimits.current.add(k));
     setExtensionLimits(prev => ({ ...prev, ...patch }));
@@ -125,6 +127,7 @@ export default function SettingsPage() {
 
   const handleSaveExtension = async () => {
     if (!user || !extensionStatus) return;
+    const sent = extensionLimits;
     try {
       // A zone saved here is the person's choice: it is never replaced by the browser's.
       let { error } = await supabase.from('extension_status')
@@ -134,7 +137,13 @@ export default function SettingsPage() {
         ({ error } = await supabase.from('extension_status').update(extensionLimits).eq('user_id', user.id));
       }
       if (error) throw error;
-      dirtyLimits.current.clear();
+      // Saved fields are no longer pending. A field changed again while the request was on its way
+      // was not in it, so it stays pending.
+      (Object.keys(sent) as (keyof typeof sent)[]).forEach(k => {
+        if (JSON.stringify(latestLimits.current[k]) === JSON.stringify(sent[k])) dirtyLimits.current.delete(k);
+      });
+      // Drop any fetch that read the row before this save, so it cannot put the old values back.
+      await queryClient.invalidateQueries({ queryKey: ['extension-status'] });
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
   };
