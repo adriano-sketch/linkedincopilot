@@ -7,6 +7,29 @@ export const cleanPostUrl = (url: string | null | undefined) => (url || '').repl
 /** True when the link leads to the person's recent activity (the post is in that list), not to the post itself. */
 export const isActivityUrl = (url: string | null | undefined) => /\/recent-activity\//.test(url || '');
 
+/** Copies without waiting, so that it can run inside the click itself. False when the browser refuses. */
+function copyNow(text: string): boolean {
+  // Selecting the hidden field takes the focus; it goes back to where the person was (the draft
+  // being edited, or the button) once the copy is done.
+  const before = document.activeElement as HTMLElement | null;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  } finally {
+    try { before?.focus?.({ preventScroll: true }); } catch { /* nothing to restore */ }
+  }
+}
+
 async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
@@ -31,9 +54,13 @@ async function copyText(text: string): Promise<boolean> {
 
 /** Copies the draft and opens the post in a new tab. Returns whether the copy worked. */
 export async function openPostWithDraft(postUrl: string | null | undefined, text: string): Promise<{ copied: boolean; opened: boolean }> {
-  const copied = await copyText(text.trim());
+  // Copy and open both happen inside the click, with no waiting in between: a tab opened after a wait
+  // is blocked by some browsers, and a copy attempted after the new tab took the focus can fail.
+  const draft = text.trim();
+  let copied = copyNow(draft);
   const url = cleanPostUrl(postUrl);
   let opened = false;
   if (url) { window.open(url, '_blank', 'noopener,noreferrer'); opened = true; }
+  if (!copied) copied = await copyText(draft);
   return { copied, opened };
 }

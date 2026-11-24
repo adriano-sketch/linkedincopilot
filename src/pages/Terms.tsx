@@ -192,7 +192,7 @@ export default function Terms() {
         </div>
 
         <p className="text-center text-gray-600 text-sm mt-16">
-          &copy; {new Date().getFullYear()} Olanovo. All rights reserved.
+          &copy; {new Date().getFullYear()} Nortech LLC. Olanovo is a product of scantosell.io. Not affiliated with or endorsed by LinkedIn.
         </p>
       </main>
     </div>

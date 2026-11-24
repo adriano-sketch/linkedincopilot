@@ -169,7 +169,8 @@ export default function SettingsPage() {
       const { data, error } = await supabase.functions.invoke('customer-portal');
       if (error) throw error;
       if (data?.url) {
-        window.open(data.url, '_blank');
+        // Same tab: a tab opened after waiting for the server is blocked by some browsers.
+        window.location.assign(data.url);
       }
     } catch {
       toast.error('Failed to open billing portal');

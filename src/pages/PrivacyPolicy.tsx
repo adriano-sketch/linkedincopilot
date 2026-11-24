@@ -27,12 +27,14 @@ export default function PrivacyPolicy() {
       {/* Content */}
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold text-white mb-2">Privacy Policy</h1>
-        <p className="text-gray-500 mb-12 text-sm">Last updated: November 21, 2026</p>
+        <p className="text-gray-500 mb-12 text-sm">Last updated: November 24, 2026</p>
 
         <Section title="1. What Olanovo Does">
           <p className="mb-4">
             Olanovo is a web app and a Chrome extension that help a professional stay in
-            touch with their LinkedIn network and reach new contacts.
+            touch with their LinkedIn network and reach new contacts. It is a product of
+            scantosell.io, operated by Nortech LLC, which is responsible for the data described in
+            this policy.
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>
@@ -148,7 +150,11 @@ export default function PrivacyPolicy() {
             The extension works inside your own browser, using your existing LinkedIn session. It
             opens LinkedIn pages, reads them, and sends the invitations described in
             section 1. It keeps to low daily limits, works only in the hours you choose, and pauses
-            by itself if LinkedIn shows a verification or warning page.
+            by itself if LinkedIn shows a verification or warning page. The extension also calls
+            LinkedIn's own web endpoints inside your session, the same ones LinkedIn's site uses:
+            to read facts about your own account, such as whether it has a paid LinkedIn plan,
+            and, in Sales Navigator, to read the search results and the public profile addresses
+            for the audiences you define.
           </p>
           <p>
             Olanovo is not affiliated with or endorsed by LinkedIn. LinkedIn's User
@@ -237,7 +243,7 @@ export default function PrivacyPolicy() {
         </div>
 
         <p className="text-center text-gray-600 text-sm mt-16">
-          &copy; {new Date().getFullYear()} Olanovo. All rights reserved.
+          &copy; {new Date().getFullYear()} Nortech LLC. Olanovo is a product of scantosell.io. Not affiliated with or endorsed by LinkedIn.
         </p>
       </main>
     </div>
