@@ -182,7 +182,7 @@ export default function ContactPicker({
           rows={3}
           value={description}
           onChange={e => setDescription(e.target.value)}
-          placeholder="e.g. Maintenance managers, reliability engineers and people responsible for energy efficiency in industrial plants"
+          placeholder="e.g. Finance directors, controllers and people responsible for purchasing in mid-size manufacturers"
         />
       </div>
 

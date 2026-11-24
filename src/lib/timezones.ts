@@ -9,6 +9,8 @@ const COMMON = [
   'Australia/Sydney', 'Pacific/Auckland',
 ];
 
+const NOT_A_PLACE = new Set(['UTC', 'Etc/UTC', 'Etc/Unknown', 'GMT', 'Etc/GMT']);
+
 function isValidTimezone(tz: unknown): tz is string {
   if (typeof tz !== 'string' || !tz || tz.length > 64) return false;
   try {
@@ -23,7 +25,9 @@ function isValidTimezone(tz: unknown): tz is string {
 export function browserTimezone(): string | null {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return isValidTimezone(tz) ? tz : null;
+    // Privacy modes report UTC for everyone; that says nothing about where the person is.
+    if (!isValidTimezone(tz) || NOT_A_PLACE.has(tz)) return null;
+    return tz;
   } catch {
     return null;
   }
@@ -46,6 +50,11 @@ export function timezoneOptions(current?: string | null): string[] {
   if (here) set.add(here);
   if (isValidTimezone(current)) set.add(current);
   return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+/** Hour and date parts in a zone; falls back to New York when this runtime does not know the zone. */
+export function safeTimezone(tz: string | null | undefined): string {
+  return isValidTimezone(tz) ? tz : 'America/New_York';
 }
 
 export function timezoneLabel(tz: string): string {

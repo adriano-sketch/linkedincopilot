@@ -196,7 +196,7 @@ Classify the post as exactly one of:
 When a post is both a milestone and on topic, answer "on_topic". When in doubt, answer "off_topic": no comment is better than a comment with nothing behind it.
 
 Then, ONLY for an "on_topic" post, say whether the AUTHOR personally shows an OPEN need that this person's work addresses. This is rare: most on-topic posts are "none". All three must be true:
-1. The author is on the side that HAS the problem or will BUY: they operate, manage or own the thing (a company, a factory, a clinic, a public agency, or the team that runs the operation). An author who sells, advises or promotes in this subject (supplier, vendor, consultant, business development, a company page, someone whose role or headline is about offering these services) is describing other people's problems to attract them: always "none".
+1. The author is on the side that HAS the problem or will BUY: they operate, manage or own the thing (a manufacturer, a hospital, a retailer, a public agency, or the team that runs the operation). An author who sells, advises or promotes in this subject (supplier, vendor, consultant, business development, a company page, someone whose role or headline is about offering these services) is describing other people's problems to attract them: always "none".
 2. The need is theirs and specific: something they are looking for, deciding, or failing at now.
 3. It is still open. A contract signed, a project started, a centre inaugurated, a result achieved, a partnership announced: these are things already solved or under way, always "none". So is any project the person's own company takes part in.
 Then pick:
