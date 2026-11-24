@@ -54,7 +54,7 @@ Reply ONLY with a JSON array, one object per person, in the same order:
 [{"i": <index>, "score": <0-100>, "reason": "<max 12 words, in English>"}]`;
 
 const SYSTEM_KEYWORDS = `You turn a description of target people into LinkedIn people-search keywords.
-Return 4 to 8 short job-title or responsibility terms, in the description's own language. When the description points to a country where another language is spoken, add the terms in that language too.
+Return 4 to 8 short job-title or responsibility terms, in the description's own language, and always include the common English title as well. When the description points to a country where another language is spoken, add the terms in that language too.
 Prefer terms people put in their LinkedIn title (e.g. "head of finance", "CFO", "diretor financeiro").
 Reply ONLY with a JSON array of strings.`;
 
