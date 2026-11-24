@@ -8,7 +8,7 @@ describe('samePost', () => {
     expect(samePost(post, '  EM DOIS ANOS reduzimos as perdas de água 🚀 da nossa rede, de 18 para 11 por cento…')).toBe(true);
   });
 
-  it('recognizes a reading that was cut short by the search page', () => {
+  it('recognizes a reading cut short at a word, but not one cut mid-word with a "more" label left in', () => {
     expect(samePost(post, 'Em dois anos reduzimos as perdas de água da nossa …more')).toBe(false);
     expect(samePost(post, 'Em dois anos reduzimos as perdas de água da nossa rede')).toBe(true);
   });

@@ -75,8 +75,9 @@ describe('readVerdicts', () => {
     expect(() => readVerdicts({ index: 0, ok: true }, 1)).toThrow();
   });
 
-  it('ignores a verdict for a draft that does not exist', () => {
-    expect(readVerdicts([{ index: 5, ok: true }, { index: -1, ok: true }], 1)).toEqual([{ ok: false, reason: 'not reviewed' }]);
+  it('refuses the whole reply when a verdict names a draft that was not sent (numbering from 1)', () => {
+    expect(() => readVerdicts([{ index: 1, ok: true }, { index: 2, ok: false }], 2)).toThrow();
+    expect(() => readVerdicts([{ index: -1, ok: true }], 1)).toThrow();
   });
 
   it('approves only on ok: true', () => {

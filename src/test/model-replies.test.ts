@@ -116,6 +116,10 @@ describe('repaired writer replies: index and leftover keys', () => {
     refused('[{"index":0,"skip":false,"comment":"Treat "x" as a delimiter. ", "skip_reason": ""}]');
   });
 
+  it('refuses a skip that is not true or false', () => {
+    refused('[{"index":0,"comment":"Says "x" twice", "skip": "no"}]');
+  });
+
   it('refuses a key repeated under another spelling', () => {
     refused('[{"index":0,"\\u0069ndex":1,"comment":"Says "x" twice"}]', 2);
   });

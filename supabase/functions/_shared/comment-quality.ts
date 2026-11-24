@@ -399,7 +399,7 @@ type ReviewVerdict = { index: number; ok: boolean; reason?: string };
 /**
  * Turns the reviewer's reply into one verdict per draft, in order. A draft is approved only by a
  * single verdict that says ok:true for its index. No verdict, or two for the same draft, is a
- * rejection. An index that is not a whole number ("0", 0.5, missing) is not a verdict for any draft,
+ * rejection. An index outside the drafts that were sent, or one that is not a whole number ("0", 0.5, missing) is not a verdict for any draft,
  * and "0" beside 0 would let a second verdict overwrite the first, so the whole reply is refused
  * (throws) and the caller rejects every draft. Exported for tests.
  */
@@ -409,7 +409,9 @@ export function readVerdicts(res: unknown, count: number): { ok: boolean; reason
   const seen = new Set<number>();
   for (const r of res as ReviewVerdict[]) {
     if (!r || typeof r !== "object" || !Number.isInteger(r.index)) throw new Error("review reply has an index that is not a whole number");
-    if (r.index < 0 || r.index >= count) continue;
+    // A verdict for a draft that was not sent means the numbering is off (counting from 1, say), and
+    // then every verdict may belong to another draft.
+    if (r.index < 0 || r.index >= count) throw new Error("review reply names a draft that was not sent");
     if (seen.has(r.index)) { out[r.index] = { ok: false, reason: "reviewed twice" }; continue; }
     seen.add(r.index);
     out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: String(r.reason || "generic").slice(0, 200) };

@@ -448,6 +448,8 @@ export function parseWriterReply(text: string, expected: number): WriterEntry[] 
         // comment was cut where its own text looked like the next key.
         if (hasComment && (e.skip === true || "skip_reason" in e)) throw first;
         if (!hasComment && e.skip !== true) throw first;
+        // "skip" is true or false; anything else after a repair is a piece of the comment.
+        if ("skip" in e && typeof e.skip !== "boolean") throw first;
       }
       return repaired as WriterEntry[];
     } catch {

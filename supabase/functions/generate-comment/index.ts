@@ -251,7 +251,7 @@ serve(async (req) => {
     const authorUrl = normalizeProfileUrl(lead.linkedin_url);
     if (authorUrl) {
       const { data: theirs, error: theirsErr } = await supabase.from("monitored_posts")
-        .select("id, status, post_text, commented_at")
+        .select("id, status, post_text, commented_at, created_at")
         .eq("user_id", lead.user_id).in("author_profile_url", [...new Set([authorUrl, String(lead.linkedin_url)])])
         .order("created_at", { ascending: false }).limit(60);
       if (theirsErr) {
@@ -260,12 +260,17 @@ serve(async (req) => {
       }
       const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
       const WAITING = ["new", "pending", "approved", "queued"];
+      // "Busy" has an age limit, so a draft nobody ever decides cannot keep an author out for good:
+      // a draft counts while it is at most 14 days old, a post not yet classified for 2 days.
+      const since = (days: number) => new Date(Date.now() - days * 864e5).toISOString();
+      // deno-lint-ignore no-explicit-any
+      const waitingNow = (r: any) => r.status === "new" ? r.created_at >= since(2) : WAITING.includes(r.status) && r.created_at >= since(14);
       // deno-lint-ignore no-explicit-any
       const other = (theirs || []).filter((r: any) => r.id !== existing?.id);
       // deno-lint-ignore no-explicit-any
       const sameOne = other.find((r: any) => [...WAITING, "posted", "dismissed"].includes(r.status) && samePost(r.post_text, postText));
       // deno-lint-ignore no-explicit-any
-      const busy = other.find((r: any) => WAITING.includes(r.status) || (r.status === "posted" && r.commented_at && r.commented_at >= weekAgo));
+      const busy = other.find((r: any) => waitingNow(r) || (r.status === "posted" && r.commented_at && r.commented_at >= weekAgo));
       const hit = sameOne || busy;
       if (hit) {
         const why = sameOne ? `same post already ${hit.status} (found by the network search)` : `author already has a comment ${hit.status}`;
@@ -376,7 +381,8 @@ serve(async (req) => {
         post_url: postUrl || null,
         author_name: lead.full_name || null,
         author_headline: lead.profile_headline || lead.title || null,
-        author_profile_url: lead.linkedin_url || null,
+        // Stored in the one form the search looks authors up by.
+        author_profile_url: authorUrl || lead.linkedin_url || null,
         post_text: String(lead.post_content).slice(0, 5000),
         suggested_comment: commentText,
         status: "pending",
