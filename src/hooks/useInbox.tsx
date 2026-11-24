@@ -127,7 +127,9 @@ export function useInbox() {
 
   const loading = comments.isLoading;
   // A failed load with nothing cached must not look like an empty Inbox.
-  const failed = comments.isError && !comments.data;
+  // Offline with nothing loaded is the same case: the query waits ("paused") and is neither loading
+  // nor in error, which would otherwise show "all caught up" for an Inbox that was never read.
+  const failed = !loading && !comments.data && (comments.isError || comments.fetchStatus === 'paused');
   return { items, loading, failed, retrying: failed && comments.isFetching, retry: comments.refetch, approve, dismiss };
 }
 

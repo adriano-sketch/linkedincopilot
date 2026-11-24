@@ -386,22 +386,35 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
   try {
     const system = kind === "milestone" ? milestoneSystem : topicSystem;
     const text = await callClaude({ model: modelFast(), system, user, maxTokens: 1200, temperature: 0, onModel });
-    const res = parseJsonArray<{ index: number; ok: boolean; reason?: string }>(text);
-    const seen = new Set<number>();
-    for (const r of res) {
-      const it = toCheck[r.index];
-      if (!it) continue;
-      // Two verdicts for one draft: the reply is not what was asked for, so the draft is not approved.
-      if (seen.has(r.index)) { out[it.i] = { ok: false, reason: "reviewed twice" }; continue; }
-      seen.add(r.index);
-      out[it.i] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: String(r.reason || "generic").slice(0, 200) };
-    }
-    toCheck.forEach((it, idx) => { if (!seen.has(idx)) out[it.i] = { ok: false, reason: "not reviewed" }; });
+    const verdicts = readVerdicts(parseJsonArray<ReviewVerdict>(text), toCheck.length);
+    toCheck.forEach((it, idx) => { out[it.i] = verdicts[idx]; });
   } catch (e) {
     console.error("comment review failed:", e instanceof Error ? e.message : e);
     toCheck.forEach((it) => { out[it.i] = { ok: false, reason: "review unavailable" }; });
   }
   return out;
+}
+
+type ReviewVerdict = { index: number; ok: boolean; reason?: string };
+/**
+ * Turns the reviewer's reply into one verdict per draft, in order. A draft is approved only by a
+ * single verdict that says ok:true for its index. No verdict, or two for the same draft, is a
+ * rejection. An index that is not a whole number ("0", 0.5, missing) is not a verdict for any draft,
+ * and "0" beside 0 would let a second verdict overwrite the first, so the whole reply is refused
+ * (throws) and the caller rejects every draft. Exported for tests.
+ */
+export function readVerdicts(res: unknown, count: number): { ok: boolean; reason: string }[] {
+  if (!Array.isArray(res)) throw new Error("review reply is not a list");
+  const out: ({ ok: boolean; reason: string } | undefined)[] = new Array(count).fill(undefined);
+  const seen = new Set<number>();
+  for (const r of res as ReviewVerdict[]) {
+    if (!r || typeof r !== "object" || !Number.isInteger(r.index)) throw new Error("review reply has an index that is not a whole number");
+    if (r.index < 0 || r.index >= count) continue;
+    if (seen.has(r.index)) { out[r.index] = { ok: false, reason: "reviewed twice" }; continue; }
+    seen.add(r.index);
+    out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: String(r.reason || "generic").slice(0, 200) };
+  }
+  return out.map((v) => v ?? { ok: false, reason: "not reviewed" });
 }
 
 /** True when the writer chose to skip ("SKIP", empty, or a JSON skip flag already unwrapped to ""). */
