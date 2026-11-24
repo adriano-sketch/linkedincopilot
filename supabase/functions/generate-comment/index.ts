@@ -13,7 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, reviewComments, reviewUnavailable, triagePost,
+  commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, reviewComments, reviewUnavailable, triagePost,
   triageUnavailable, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
@@ -326,6 +326,25 @@ serve(async (req) => {
       console.error(`generate-comment: ${step} unavailable for lead ${campaign_lead_id} (try ${tries}), will be tried again`);
       return json({ success: false, unavailable: step, lead_id: campaign_lead_id }, 503);
     };
+
+    // The hour between tries is kept by the log itself, not only by the lead's next_action_at: if that
+    // update failed, the scheduler would call again within minutes and the tries would be used up in
+    // an hour. A call that arrives too early does nothing and counts nothing. (Five minutes of slack,
+    // so the scheduler's own tick an hour later is not turned away.)
+    {
+      const { data: lastTry, error: lastTryErr } = await supabase.from("activity_log").select("created_at")
+        .eq("user_id", lead.user_id).eq("campaign_lead_id", campaign_lead_id).eq("action", "comment_unavailable")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (lastTryErr) {
+        console.error(`generate-comment: could not read the last try for lead ${campaign_lead_id}`, lastTryErr);
+        return json({ success: false, unavailable: "waiting", lead_id: campaign_lead_id }, 503);
+      }
+      const last = lastTry?.created_at ? Date.parse(String(lastTry.created_at)) : NaN;
+      if (Number.isFinite(last) && Date.now() - last < OUTAGE_WAIT_MS - 5 * 60e3) {
+        console.log(`generate-comment: lead ${campaign_lead_id} tried less than an hour ago, waiting`);
+        return json({ success: false, unavailable: "waiting", lead_id: campaign_lead_id }, 503);
+      }
+    }
 
     const triage = await triagePost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
     if (triageUnavailable(triage)) return await unavailable("triage");
