@@ -9,7 +9,7 @@
 //      or if it paraphrases the post, invents facts, or pitches, it is rejected.
 // A rejected draft is rewritten once with the reviewer's feedback; if it fails again the post is
 // skipped. Three good comments a day beat twenty forgettable ones.
-import { callClaude, modelFast, parseJsonArray } from "./network.ts";
+import { callClaude, modelFast, parseJsonArray, repairJsonStrings } from "./network.ts";
 
 /**
  * The post's language as an English name ("German", "Portuguese"), judged by the model that reads the
@@ -181,6 +181,7 @@ export async function triagePost(
   post: string,
   author: { name?: string | null; title?: string | null; company?: string | null },
   f: SenderFacts,
+  onModel?: (model: string) => void,
 ): Promise<Triage> {
   const system = `You decide whether a LinkedIn post deserves a comment from this person. You do not write the comment.
 
@@ -209,9 +210,12 @@ Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<fo
     `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,
   ].join("\n\n");
   try {
-    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 290, temperature: 0 });
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 290, temperature: 0, onModel });
     const m = text.match(/\{[\s\S]*\}/);
-    const r = JSON.parse(m ? m[0] : text) as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string; language?: string };
+    const raw = m ? m[0] : text;
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { parsed = JSON.parse(repairJsonStrings(raw)); }
+    const r = parsed as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string; language?: string };
     const kind: PostKind = r.kind === "on_topic" || r.kind === "milestone" ? r.kind : "off_topic";
     const signalReason = String(r.signal_reason || "").trim().slice(0, 200);
     // A signal needs a stated reason; without one it is not shown as a signal.
@@ -336,6 +340,7 @@ export async function reviewComments(
   items: { post: string; comment: string; author?: string | null; language?: string | null }[],
   f: SenderFacts,
   kind: PostKind = "on_topic",
+  onModel?: (model: string) => void,
 ): Promise<Review[]> {
   const out: Review[] = items.map((it) => {
     const local = localIssues(it.comment, kind);
@@ -380,7 +385,7 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
 
   try {
     const system = kind === "milestone" ? milestoneSystem : topicSystem;
-    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 1200, temperature: 0 });
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 1200, temperature: 0, onModel });
     const res = parseJsonArray<{ index: number; ok: boolean; reason?: string }>(text);
     const seen = new Set<number>();
     for (const r of res) {

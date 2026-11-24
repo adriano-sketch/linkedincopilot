@@ -38,7 +38,7 @@ export default function InboxPage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const { items, loading, approve, dismiss } = useInbox();
+  const { items, loading, failed, approve, dismiss } = useInbox();
 
   const filter = (FILTERS.some(f => f.key === params.get('type')) ? params.get('type') : 'all') as Filter;
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -149,7 +149,7 @@ export default function InboxPage() {
           <div>
             <h1 className="font-display font-extrabold text-4xl leading-none m-0">Inbox{countOf('all') > 0 && <span className="text-attention"> {countOf('all')}</span>}</h1>
             <p className="text-muted-foreground m-0 mt-1.5">
-              {loading ? 'Loading…' : open.length === 0 ? 'You are all caught up.'
+              {loading ? 'Loading…' : failed ? 'Your Inbox could not be loaded.' : open.length === 0 ? 'You are all caught up.'
                 : `${open.length} to review. About ${minutes} min.`}
             </p>
           </div>

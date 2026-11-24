@@ -335,16 +335,6 @@ function requestBody(model: string, opts: { system: string; user: string; maxTok
   return body;
 }
 
-/** The model that answered the last call in this invocation (after any fallback). For checks only. */
-let lastModel = "";
-export function lastModelUsed(): string {
-  return lastModel;
-}
-/** Clears the read-out, so a step that made no call reports nothing instead of the previous step's model. */
-export function resetLastModel(): void {
-  lastModel = "";
-}
-
 async function callOnce(apiKey: string, model: string, opts: { system: string; user: string; maxTokens?: number; temperature?: number }): Promise<{ ok: true; text: string } | { ok: false; status: number; detail: string }> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -362,7 +352,6 @@ async function callOnce(apiKey: string, model: string, opts: { system: string; u
   // No text means the model declined (stop_reason "refusal") or ran out of tokens before answering.
   // Callers treat a throw as "no answer" and fail closed; an empty string would look like an answer.
   if (!text) return { ok: false, status: 200, detail: `no text (stop_reason: ${String(data.stop_reason || "unknown")})` };
-  lastModel = model;
   return { ok: true, text };
 }
 
@@ -372,11 +361,13 @@ export async function callClaude(opts: {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  /** Told which model answered (after any fallback). For checks; not used in production paths. */
+  onModel?: (model: string) => void;
 }): Promise<string> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
   const first = await callOnce(apiKey, opts.model, opts);
-  if (first.ok) return first.text;
+  if (first.ok) { opts.onModel?.(opts.model); return first.text; }
   // A request the current model rejects outright (unknown model for this key, a parameter it does not
   // accept) must not stop drafting for everyone: answer with the earlier model of the same tier and
   // say so in the log. Rate limits, overloads and refusals are not retried here.
@@ -384,7 +375,7 @@ export async function callClaude(opts: {
   if (fallback && (first.status === 400 || first.status === 404)) {
     console.error(`Anthropic ${first.status} on ${opts.model}, answering with ${fallback}: ${first.detail}`);
     const second = await callOnce(apiKey, fallback, opts);
-    if (second.ok) return second.text;
+    if (second.ok) { opts.onModel?.(fallback); return second.text; }
     throw new Error(`Anthropic ${second.status}: ${second.detail.slice(0, 200)}`);
   }
   throw new Error(`Anthropic ${first.status}: ${first.detail.slice(0, 200)}`);
@@ -397,7 +388,36 @@ export function parseJsonArray<T = any>(text: string): T[] {
   const start = s.indexOf("[");
   const end = s.lastIndexOf("]");
   if (start === -1 || end === -1 || end < start) throw new Error("No JSON array in model reply");
-  return JSON.parse(s.slice(start, end + 1));
+  const body = s.slice(start, end + 1);
+  try {
+    return JSON.parse(body);
+  } catch (first) {
+    // The usual cause: a text value with a plain double quote or a line break inside it (a quoted
+    // word in a comment, common in languages that quote with „…" or «…»). Escape those and try once.
+    try {
+      return JSON.parse(repairJsonStrings(body));
+    } catch {
+      throw first;
+    }
+  }
+}
+
+const TEXT_KEYS = "comment|skip_reason|reason|fit_reason|signal_reason|topic|note";
+/**
+ * Escapes unescaped double quotes, line breaks and tabs inside the text values of a model's JSON reply.
+ * A value is taken to end at the quote that is followed by `,"key":`, `}` or `]`, so quotes inside the
+ * text are kept as text. Exported for tests.
+ */
+export function repairJsonStrings(json: string): string {
+  const value = new RegExp(`("(?:${TEXT_KEYS})"\\s*:\\s*")([\\s\\S]*?)"(?=\\s*(?:,\\s*"[A-Za-z_]+"\\s*:|[}\\]]))`, "g");
+  return json.replace(value, (_m, head: string, text: string) => {
+    const fixed = text
+      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
+      .replace(/(?<!\\)"/g, '\\"')
+      .replace(/\r?\n/g, "\\n")
+      .replace(/\t/g, "\\t");
+    return `${head}${fixed}"`;
+  });
 }
 
 export function modelFast(): string {

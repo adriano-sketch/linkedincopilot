@@ -126,7 +126,9 @@ export function useInbox() {
   });
 
   const loading = comments.isLoading;
-  return { items, loading, approve, dismiss };
+  // A failed load with nothing cached must not look like an empty Inbox.
+  const failed = comments.isError && !comments.data;
+  return { items, loading, failed, retry: comments.refetch, approve, dismiss };
 }
 
 /** Lightweight count for the sidebar badge. */
@@ -138,6 +140,8 @@ export function useInboxCount() {
     refetchInterval: 60000,
     queryFn: async () => {
       const c = await supabase.from('monitored_posts').select('id', { count: 'exact', head: true }).eq('user_id', user!.id).eq('status', 'pending');
+      // On a failure keep the last count instead of showing zero.
+      if (c.error) throw c.error;
       return c.count || 0;
     },
   });

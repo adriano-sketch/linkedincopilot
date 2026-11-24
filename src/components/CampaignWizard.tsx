@@ -194,7 +194,7 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
               className={`space-y-4 border-0 p-0 m-0 min-w-0 ${launching || importing ? 'opacity-60 pointer-events-none' : ''}`}>
               {importedCount > 0 && (
                 <div className="bg-gold-bg border border-border rounded-lg p-3">
-                  <p className="text-sm font-medium m-0">{importedCount} people added</p>
+                  <p className="text-sm font-medium m-0">{importedCount} {importedCount === 1 ? 'person' : 'people'} added</p>
                   <p className="text-xs text-muted-foreground mt-1 mb-0">Olanovo checks their latest post from time to time. Comment drafts wait for you in the Inbox.</p>
                 </div>
               )}

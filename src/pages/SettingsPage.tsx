@@ -125,8 +125,11 @@ export default function SettingsPage() {
     } catch { toast.error('Failed to save'); }
   };
 
+  const [savingLimits, setSavingLimits] = useState(false);
   const handleSaveExtension = async () => {
-    if (!user || !extensionStatus) return;
+    // One save at a time: a second request on its way would confuse which fields are still unsaved.
+    if (!user || !extensionStatus || savingLimits) return;
+    setSavingLimits(true);
     const sent = extensionLimits;
     try {
       // A zone saved here is the person's choice: it is never replaced by the browser's.
@@ -146,6 +149,7 @@ export default function SettingsPage() {
       await queryClient.invalidateQueries({ queryKey: ['extension-status'] });
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
+    finally { setSavingLimits(false); }
   };
 
   const handleTogglePause = async () => {
@@ -395,7 +399,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={handleSaveExtension}><Save className="w-3 h-3 mr-1" /> Save Limits</Button>
+                  <Button size="sm" onClick={handleSaveExtension} disabled={savingLimits}><Save className="w-3 h-3 mr-1" /> {savingLimits ? 'Saving…' : 'Save Limits'}</Button>
                   {extensionStatus && (
                     <Button size="sm" variant={extensionStatus.is_paused ? 'default' : 'secondary'} onClick={handleTogglePause}>
                       {extensionStatus.is_paused ? <><Play className="w-3 h-3 mr-1" /> Resume</> : <><Pause className="w-3 h-3 mr-1" /> Pause</>}
