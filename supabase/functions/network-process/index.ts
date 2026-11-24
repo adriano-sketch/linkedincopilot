@@ -10,7 +10,7 @@ import {
   commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type PostKind, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
-  callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray,
+  callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray, parseWriterReply,
 } from "../_shared/network.ts";
 
 const PROSPECT_BATCH = 15;
@@ -128,12 +128,13 @@ async function writeComments(
 Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "comment": "..."}] or
 [{"index": n, "skip": true, "skip_reason": "<max 12 words>"}]`;
   const text = await callClaude({ model: modelWriter(), system, user: items, maxTokens: 1800, temperature: 0.6 });
-  const res = parseJsonArray<{ index: number; skip?: boolean; skip_reason?: string; comment?: string }>(text);
+  const res = parseWriterReply(text, batch.length);
   const out = batch.map(() => ({ comment: "", skip: "no draft returned" as string | null }));
   for (const r of res) {
-    if (!out[r.index]) continue;
-    if (r.skip === true || isSkip(r.comment)) out[r.index] = { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
-    else out[r.index] = { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
+    const i = typeof r.index === "number" ? r.index : -1;
+    if (!out[i]) continue;
+    if (r.skip === true || isSkip(r.comment)) out[i] = { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
+    else out[i] = { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
   }
   return out;
 }

@@ -15,7 +15,7 @@ import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
   commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
-import { callClaude, cleanComment, lastModelUsed, modelWriter, parseJsonArray, resetLastModel } from "../_shared/network.ts";
+import { callClaude, cleanComment, modelWriter, parseWriterReply } from "../_shared/network.ts";
 
 // Deployed with verify_jwt=false: authentication is enforced here.
 //  - service callers (schedule-actions, pg_cron) may target any lead.
@@ -64,6 +64,7 @@ async function writeDraft(a: {
   facts: SenderFacts; triage: Triage; postText: string;
   author: string | null; authorTitle: string; authorCompany: string; hint: string;
   feedback: { previous: string; why: string } | null;
+  onModel?: (model: string) => void;
 }): Promise<Draft> {
   const user = [
     `POST AUTHOR: ${a.author || "Unknown"} (${a.authorTitle || "role unknown"}${a.authorCompany ? `, ${a.authorCompany}` : ""})`,
@@ -75,8 +76,8 @@ async function writeDraft(a: {
   const system = `${commentRules(a.facts, a.triage.kind, a.triage.topic || "one of the subjects listed above", a.triage.signalReason)}
 
 Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
-  const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6 });
-  const r = parseJsonArray<{ skip?: boolean; skip_reason?: string; comment?: string }>(text)[0] || {};
+  const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6, onModel: a.onModel });
+  const r = parseWriterReply(text, 1)[0] || {};
   if (r.skip === true || isSkip(r.comment)) return { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
   return { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
 }
@@ -129,7 +130,9 @@ serve(async (req) => {
         about: [k.company_description, k.proof_points].filter(Boolean).join(" "), tone: k.dm_tone,
         topics: k.comment_topics, avoid: k.comment_avoid, examples: k.comment_examples, views: k.comment_views,
       };
-      const t = await triagePost(body.triage_only.slice(0, 2000), { name: body.author || null, title: body.author_title || null }, f);
+      // Which model answered each step, reported by the call itself (no shared state between requests).
+      const models: { triage: string | null; writer: string | null; reviewer: string | null } = { triage: null, writer: null, reviewer: null };
+      const t = await triagePost(body.triage_only.slice(0, 2000), { name: body.author || null, title: body.author_title || null }, f, (m) => { models.triage = m; });
       // triagePost answers "off_topic / triage unavailable" when the model call fails (so that no comment is
       // written). Here that must not be read as a verdict.
       if (t.reason === "triage unavailable") return json({ success: false, unavailable: true }, 503);
@@ -139,18 +142,15 @@ serve(async (req) => {
       if (body.draft === true && t.kind !== "off_topic") {
         const postText = body.triage_only.slice(0, 2000);
         const author = typeof body.author === "string" ? body.author : "";
-        const triageModel = lastModelUsed();
-        resetLastModel();
         const d = await writeDraft({
           facts: f, triage: t, postText, author,
           authorTitle: typeof body.author_title === "string" ? body.author_title : "", authorCompany: "", hint: "", feedback: null,
+          onModel: (m) => { models.writer = m; },
         });
-        const writerModel = lastModelUsed();
-        resetLastModel();
-        const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language }], f, t.kind);
-        return json({ success: true, triage: t, draft: d, review, models: { triage: triageModel, writer: writerModel, reviewer: lastModelUsed() || null } });
+        const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language }], f, t.kind, (m) => { models.reviewer = m; });
+        return json({ success: true, triage: t, draft: d, review, models });
       }
-      return json({ success: true, triage: t, models: { triage: lastModelUsed() } });
+      return json({ success: true, triage: t, models });
     }
 
     const campaign_lead_id: unknown = body.campaign_lead_id;

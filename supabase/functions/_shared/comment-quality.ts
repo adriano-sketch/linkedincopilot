@@ -181,6 +181,7 @@ export async function triagePost(
   post: string,
   author: { name?: string | null; title?: string | null; company?: string | null },
   f: SenderFacts,
+  onModel?: (model: string) => void,
 ): Promise<Triage> {
   const system = `You decide whether a LinkedIn post deserves a comment from this person. You do not write the comment.
 
@@ -209,9 +210,12 @@ Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<fo
     `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,
   ].join("\n\n");
   try {
-    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 290, temperature: 0 });
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 290, temperature: 0, onModel });
     const m = text.match(/\{[\s\S]*\}/);
-    const r = JSON.parse(m ? m[0] : text) as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string; language?: string };
+    const raw = m ? m[0] : text;
+    // A verdict is never repaired: a reply that does not parse is "triage unavailable" (below).
+    const parsed: unknown = JSON.parse(raw);
+    const r = parsed as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string; language?: string };
     const kind: PostKind = r.kind === "on_topic" || r.kind === "milestone" ? r.kind : "off_topic";
     const signalReason = String(r.signal_reason || "").trim().slice(0, 200);
     // A signal needs a stated reason; without one it is not shown as a signal.
@@ -336,6 +340,7 @@ export async function reviewComments(
   items: { post: string; comment: string; author?: string | null; language?: string | null }[],
   f: SenderFacts,
   kind: PostKind = "on_topic",
+  onModel?: (model: string) => void,
 ): Promise<Review[]> {
   const out: Review[] = items.map((it) => {
     const local = localIssues(it.comment, kind);
@@ -380,12 +385,14 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
 
   try {
     const system = kind === "milestone" ? milestoneSystem : topicSystem;
-    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 1200, temperature: 0 });
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 1200, temperature: 0, onModel });
     const res = parseJsonArray<{ index: number; ok: boolean; reason?: string }>(text);
     const seen = new Set<number>();
     for (const r of res) {
       const it = toCheck[r.index];
       if (!it) continue;
+      // Two verdicts for one draft: the reply is not what was asked for, so the draft is not approved.
+      if (seen.has(r.index)) { out[it.i] = { ok: false, reason: "reviewed twice" }; continue; }
       seen.add(r.index);
       out[it.i] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: String(r.reason || "generic").slice(0, 200) };
     }

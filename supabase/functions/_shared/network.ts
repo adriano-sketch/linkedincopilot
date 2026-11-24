@@ -335,16 +335,6 @@ function requestBody(model: string, opts: { system: string; user: string; maxTok
   return body;
 }
 
-/** The model that answered the last call in this invocation (after any fallback). For checks only. */
-let lastModel = "";
-export function lastModelUsed(): string {
-  return lastModel;
-}
-/** Clears the read-out, so a step that made no call reports nothing instead of the previous step's model. */
-export function resetLastModel(): void {
-  lastModel = "";
-}
-
 async function callOnce(apiKey: string, model: string, opts: { system: string; user: string; maxTokens?: number; temperature?: number }): Promise<{ ok: true; text: string } | { ok: false; status: number; detail: string }> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -362,7 +352,6 @@ async function callOnce(apiKey: string, model: string, opts: { system: string; u
   // No text means the model declined (stop_reason "refusal") or ran out of tokens before answering.
   // Callers treat a throw as "no answer" and fail closed; an empty string would look like an answer.
   if (!text) return { ok: false, status: 200, detail: `no text (stop_reason: ${String(data.stop_reason || "unknown")})` };
-  lastModel = model;
   return { ok: true, text };
 }
 
@@ -372,11 +361,13 @@ export async function callClaude(opts: {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  /** Told which model answered (after any fallback). For checks; not used in production paths. */
+  onModel?: (model: string) => void;
 }): Promise<string> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
   const first = await callOnce(apiKey, opts.model, opts);
-  if (first.ok) return first.text;
+  if (first.ok) { opts.onModel?.(opts.model); return first.text; }
   // A request the current model rejects outright (unknown model for this key, a parameter it does not
   // accept) must not stop drafting for everyone: answer with the earlier model of the same tier and
   // say so in the log. Rate limits, overloads and refusals are not retried here.
@@ -384,20 +375,125 @@ export async function callClaude(opts: {
   if (fallback && (first.status === 400 || first.status === 404)) {
     console.error(`Anthropic ${first.status} on ${opts.model}, answering with ${fallback}: ${first.detail}`);
     const second = await callOnce(apiKey, fallback, opts);
-    if (second.ok) return second.text;
+    if (second.ok) { opts.onModel?.(fallback); return second.text; }
     throw new Error(`Anthropic ${second.status}: ${second.detail.slice(0, 200)}`);
   }
   throw new Error(`Anthropic ${first.status}: ${first.detail.slice(0, 200)}`);
 }
 
 /** Extract the first JSON array from a model reply. */
-export function parseJsonArray<T = any>(text: string): T[] {
+/** The text between the first "[" and the last "]" of a model reply (code fences removed). */
+function arrayBody(text: string): string {
   let s = text.trim();
   if (s.startsWith("```")) s = s.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
   const start = s.indexOf("[");
   const end = s.lastIndexOf("]");
   if (start === -1 || end === -1 || end < start) throw new Error("No JSON array in model reply");
-  return JSON.parse(s.slice(start, end + 1));
+  return s.slice(start, end + 1);
+}
+
+/** The JSON array in a model reply. A reply that does not parse is an error: nothing is guessed. */
+export function parseJsonArray<T = any>(text: string): T[] {
+  return JSON.parse(arrayBody(text));
+}
+
+export type WriterEntry = { index?: number; skip?: boolean; skip_reason?: string; comment?: string };
+const WRITER_KEYS = ["index", "skip", "skip_reason", "comment"] as const;
+
+/**
+ * The comment writer's reply: one entry per post asked for. This is the one reply that gets a repair
+ * when it does not parse, because the usual cause is harmless and common (a quoted word inside the
+ * comment) and the cost of refusing is a lost draft. Verdicts (the triage, the reviewer) are never
+ * repaired: there a wrong guess could turn a rejection into an approval, so they fail closed.
+ *
+ * A repaired reply is accepted only if it still looks like what was asked for: no more entries than
+ * posts, each index once and in range, and no entry that is both a comment and a skip. Anything else
+ * means the text was cut in the wrong place, and the original parse error is thrown.
+ */
+export function parseWriterReply(text: string, expected: number): WriterEntry[] {
+  const body = arrayBody(text);
+  try {
+    return JSON.parse(body);
+  } catch (first) {
+    try {
+      const repaired = parseRepaired(body, WRITER_KEYS);
+      if (!Array.isArray(repaired) || repaired.length > expected) throw first;
+      const seen = new Set<number>();
+      for (const e of repaired as WriterEntry[]) {
+        const i = e?.index ?? 0;
+        if (!e || typeof e !== "object" || !Number.isInteger(i) || i < 0 || i >= expected || seen.has(i)) throw first;
+        seen.add(i);
+        const hasComment = typeof e.comment === "string" && e.comment.trim() !== "";
+        if (hasComment && (e.skip === true || (typeof e.skip_reason === "string" && e.skip_reason !== ""))) throw first;
+        if (!hasComment && e.skip !== true) throw first;
+      }
+      return repaired as WriterEntry[];
+    } catch {
+      throw first;
+    }
+  }
+}
+
+const TEXT_KEYS = "comment|skip_reason|reason|fit_reason|signal_reason|topic|note";
+/**
+ * Escapes unescaped double quotes, line breaks and tabs inside the text values of a model's JSON reply.
+ * The usual cause of a reply that does not parse is a quoted word inside a comment. A value is taken to
+ * end at the quote that is followed by `,"key":`, `}` or `]`.
+ *
+ * That guess can be wrong when the text itself looks like JSON (`he said "yes", "ok": true`), and a
+ * wrong guess would still parse. So the repair refuses a value whose inner quotes do not come in
+ * pairs (a cut in the middle of a quoted word leaves one open), parseRepaired checks the keys, and
+ * parseWriterReply, its only caller, checks the shape. Throws when it refuses. Exported for tests.
+ */
+export function repairJsonStrings(json: string): string {
+  const value = new RegExp(`("(?:${TEXT_KEYS})"\\s*:\\s*")([\\s\\S]*?)"(?=\\s*(?:,\\s*"[A-Za-z_]+"\\s*:|[}\\]]))`, "g");
+  return json.replace(value, (_m, head: string, text: string) => {
+    let quotes = 0;
+    // Escapes are read in pairs, so an escaped backslash is not mistaken for the start of another escape.
+    const fixed = text.replace(/\\([\s\S]?)|"|\r?\n|\t/g, (m: string, next: string | undefined) => {
+      if (m === '"') { quotes++; return '\\"'; }
+      if (m === "\t") return "\\t";
+      if (m[0] !== "\\") return "\\n";
+      if (next && '"\\/bfnrt'.includes(next)) return m;
+      if (next === "u") return m;
+      return `\\\\${next ?? ""}`;
+    });
+    if (quotes % 2 === 1) throw new Error("unbalanced quote in a text value");
+    // The closing quote must be a real one: after an odd run of backslashes it is an escaped quote,
+    // which means the reply was cut off inside the text.
+    if ((text.match(/\\+$/)?.[0].length ?? 0) % 2 === 1) throw new Error("text value ends in an escape");
+    return `${head}${fixed}"`;
+  });
+}
+
+/**
+ * Parses a reply after repairJsonStrings, and accepts the result only when it has exactly the keys the
+ * prompt asked for, each at most once per object. A repeated key (the later one silently wins in JSON)
+ * or a key nobody asked for means the text was cut in the wrong place: refuse, so the caller fails
+ * closed as it did before, instead of acting on a changed verdict or a shortened comment.
+ * Returns the parsed value; throws when the repair or the check refuses.
+ */
+export function parseRepaired(json: string, allowedKeys: readonly string[]): unknown {
+  const repaired = repairJsonStrings(json);
+  const parsed = JSON.parse(repaired);
+  const allowed = new Set(allowedKeys);
+  let keys = 0;
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (v && typeof v === "object") {
+      for (const [k, child] of Object.entries(v as Record<string, unknown>)) {
+        if (!allowed.has(k)) throw new Error(`unexpected key "${k}" after repair`);
+        keys++;
+        walk(child);
+      }
+    }
+  };
+  walk(parsed);
+  // Keys as written in the text; more of them than in the parsed value means one was repeated.
+  // Text values are escaped by now, so a `"word":` inside a comment reads `\"word\":` and is not counted.
+  const written = (repaired.match(/(?<!\\)"[A-Za-z_]+"\s*:/g) || []).length;
+  if (written !== keys) throw new Error("repeated key after repair");
+  return parsed;
 }
 
 export function modelFast(): string {

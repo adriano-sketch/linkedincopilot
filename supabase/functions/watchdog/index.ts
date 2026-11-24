@@ -711,52 +711,6 @@ serve(async (req) => {
   stats.looping_leads_fixed = loopingLeads?.length || 0;
 
   // ═══════════════════════════════════════════════════════
-  // 9. GENERATE-DM FAILURE MONITORING
-  // ═══════════════════════════════════════════════════════
-  // Check for leads that need messages but keep waiting too long
-  const twoHoursAgoIso = new Date(now.getTime() - 2 * 3600000).toISOString();
-  const { count: dmFailCount } = await supabase
-    .from("campaign_leads")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "visiting_profile")
-    .is("connection_note", null)
-    .is("dm_text", null)
-    .not("profile_enriched_at", "is", null)
-    .lt("updated_at", twoHoursAgoIso);
-
-  const twentyMinutesAgoIso = new Date(now.getTime() - 20 * 60000).toISOString();
-  const { count: dmRecentCount } = await supabase
-    .from("campaign_leads")
-    .select("id", { count: "exact", head: true })
-    .not("messages_generated_at", "is", null)
-    .gte("messages_generated_at", twentyMinutesAgoIso);
-
-  if (dmFailCount && dmFailCount > 3) {
-    const hasRecentDmProgress = (dmRecentCount || 0) >= 3;
-
-    if (hasRecentDmProgress) {
-      issues.push({
-        severity: "warning",
-        area: "Generate-DM em Fila",
-        description: `${dmFailCount} leads enriquecidos há +2h ainda aguardando mensagem`,
-        auto_fixed: false,
-        details: `${dmRecentCount} leads processados nos últimos 20min. Fila em drenagem via cron.`,
-      });
-    } else {
-      issues.push({
-        severity: "critical",
-        area: "Generate-DM Falhando",
-        description: `${dmFailCount} leads enriquecidos há +2h sem mensagens geradas`,
-        auto_fixed: false,
-        details: "Sem progresso recente na geração de DMs. Verificar edge function generate-dm/generate-dm-cron.",
-      });
-    }
-  }
-
-  stats.dm_generation_failures = dmFailCount || 0;
-  stats.dm_generated_last_20m = dmRecentCount || 0;
-
-  // ═══════════════════════════════════════════════════════
   // 9b. ACTION FAILURE RATE — detect systematic failures per action_type
   //     Catches issues like "Connect button not found" (LinkedIn layout change)
   // ═══════════════════════════════════════════════════════

@@ -357,7 +357,7 @@ export default function Dashboard() {
                     <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
                       <p className="text-sm m-0">
                         <span className="font-semibold">Tell the AI what you comment on.</span>{' '}
-                        Until you list your subjects, contacts' posts get a like and no comment is drafted.
+                        Until you list your subjects, contacts' posts are read but no comment is drafted.
                       </p>
                       <Link to="/settings#comment-knowledge-base"><Button size="sm">Add your subjects</Button></Link>
                     </CardContent>
@@ -376,8 +376,10 @@ export default function Dashboard() {
         open={!!editingCampaign}
         onOpenChange={open => { if (!open) setEditingCampaign(null); }}
         onSave={(id, data) => {
-          updateCampaign.mutate({ id, ...data } as any);
-          toast.success('List updated');
+          updateCampaign.mutate({ id, ...data } as any, {
+            onSuccess: () => toast.success('List updated'),
+            onError: () => toast.error('Could not update the list'),
+          });
         }}
         onDelete={(id) => {
           deleteCampaign.mutate(id, {
