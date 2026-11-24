@@ -298,6 +298,64 @@ export function startOfNextMonthUtc(now = new Date()): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 8, 0, 0)).toISOString();
 }
 
+// ── Models ───────────────────────────────────────────────────────────────────────────────────────
+// Two tiers: a fast one that reads and judges (triage, review, matching) and a writer for the comment.
+// Request shape differs by generation (Anthropic migration guides for Claude Sonnet 5.5 and Haiku 5.5):
+//   current models  : no temperature/top_p/top_k (400), thinking runs by default and its tokens count
+//                     toward max_tokens, and the same text is about 30% more tokens.
+//   earlier models  : temperature accepted, no thinking unless asked.
+// These calls are short, single-turn and latency-sensitive, so up-front thinking is turned off with
+// the value each model accepts.
+const FAST_DEFAULT = "claude-haiku-5-5";
+const WRITER_DEFAULT = "claude-sonnet-5-5";
+const FAST_FALLBACK = "claude-haiku-4-5";
+const WRITER_FALLBACK = "claude-sonnet-4-6";
+
+/** Claude 3.x and 4.x: the request shape this code was first written for. */
+function isEarlierModel(model: string): boolean {
+  return /^claude-(3|[a-z]+-4)(\b|-)/.test(model);
+}
+
+function requestBody(model: string, opts: { system: string; user: string; maxTokens?: number; temperature?: number }) {
+  const maxTokens = opts.maxTokens ?? 2000;
+  const base = { model, system: opts.system, messages: [{ role: "user", content: opts.user }] };
+  if (isEarlierModel(model)) return { ...base, max_tokens: maxTokens, temperature: opts.temperature ?? 0.2 };
+  // Room for the larger token count of the same answer.
+  const body: Record<string, unknown> = { ...base, max_tokens: Math.ceil(maxTokens * 1.4) };
+  if (/^claude-haiku-5-5/.test(model)) body.thinking = { type: "disabled" };
+  else if (/^claude-sonnet-5-5/.test(model)) body.thinking = { type: "between_tools" };
+  // Any other current model: thinking stays adaptive, and needs room inside max_tokens.
+  else body.max_tokens = Math.ceil(maxTokens * 1.4) + 4000;
+  return body;
+}
+
+/** The model that answered the last call in this invocation (after any fallback). For checks only. */
+let lastModel = "";
+export function lastModelUsed(): string {
+  return lastModel;
+}
+
+async function callOnce(apiKey: string, model: string, opts: { system: string; user: string; maxTokens?: number; temperature?: number }): Promise<{ ok: true; text: string } | { ok: false; status: number; detail: string }> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify(requestBody(model, opts)),
+  });
+  if (!res.ok) return { ok: false, status: res.status, detail: (await res.text()).slice(0, 300) };
+  const data = await res.json();
+  // Blocks are read by type: a reply can start with thinking blocks.
+  const text = (Array.isArray(data.content) ? data.content : [])
+    .filter((b: any) => b?.type === "text")
+    .map((b: any) => b.text || "")
+    .join("")
+    .trim();
+  // No text means the model declined (stop_reason "refusal") or ran out of tokens before answering.
+  // Callers treat a throw as "no answer" and fail closed; an empty string would look like an answer.
+  if (!text) return { ok: false, status: 200, detail: `no text (stop_reason: ${String(data.stop_reason || "unknown")})` };
+  lastModel = model;
+  return { ok: true, text };
+}
+
 export async function callClaude(opts: {
   model: string;
   system: string;
@@ -307,27 +365,19 @@ export async function callClaude(opts: {
 }): Promise<string> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({
-      model: opts.model,
-      max_tokens: opts.maxTokens ?? 2000,
-      temperature: opts.temperature ?? 0.2,
-      system: opts.system,
-      messages: [{ role: "user", content: opts.user }],
-    }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Anthropic ${res.status}: ${t.slice(0, 200)}`);
+  const first = await callOnce(apiKey, opts.model, opts);
+  if (first.ok) return first.text;
+  // A request the current model rejects outright (unknown model for this key, a parameter it does not
+  // accept) must not stop drafting for everyone: answer with the earlier model of the same tier and
+  // say so in the log. Rate limits, overloads and refusals are not retried here.
+  const fallback = opts.model === FAST_DEFAULT ? FAST_FALLBACK : opts.model === WRITER_DEFAULT ? WRITER_FALLBACK : "";
+  if (fallback && (first.status === 400 || first.status === 404)) {
+    console.error(`Anthropic ${first.status} on ${opts.model}, answering with ${fallback}: ${first.detail}`);
+    const second = await callOnce(apiKey, fallback, opts);
+    if (second.ok) return second.text;
+    throw new Error(`Anthropic ${second.status}: ${second.detail.slice(0, 200)}`);
   }
-  const data = await res.json();
-  return (Array.isArray(data.content) ? data.content : [])
-    .filter((b: any) => b?.type === "text")
-    .map((b: any) => b.text || "")
-    .join("")
-    .trim();
+  throw new Error(`Anthropic ${first.status}: ${first.detail.slice(0, 200)}`);
 }
 
 /** Extract the first JSON array from a model reply. */
@@ -341,10 +391,10 @@ export function parseJsonArray<T = any>(text: string): T[] {
 }
 
 export function modelFast(): string {
-  return Deno.env.get("ANTHROPIC_MODEL_ICP") || "claude-haiku-4-5";
+  return Deno.env.get("ANTHROPIC_MODEL_ICP") || FAST_DEFAULT;
 }
 export function modelWriter(): string {
-  return Deno.env.get("ANTHROPIC_MODEL_DM") || "claude-sonnet-4-6";
+  return Deno.env.get("ANTHROPIC_MODEL_DM") || WRITER_DEFAULT;
 }
 
 /** Remove em/en dashes and collapse whitespace (comments must read as human-written). */
