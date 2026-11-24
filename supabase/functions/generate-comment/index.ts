@@ -13,7 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, loadLearned, reviewComments, triagePost, type SenderFacts,
+  commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, parseJsonArray } from "../_shared/network.ts";
 
@@ -52,6 +52,33 @@ function pickVariant(leadId: string, authorTitle: string): typeof COMMENT_VARIAN
     hash = ((hash << 5) - hash + leadId.charCodeAt(i)) | 0;
   }
   return pool[Math.abs(hash) % pool.length];
+}
+
+type Draft = { comment: string; skip: string | null };
+
+/**
+ * One draft (or a skip) for one post. The comment follows the POST's language, whatever it is: the
+ * language comes from the triage, which read the post, never from the list or the account.
+ */
+async function writeDraft(a: {
+  facts: SenderFacts; triage: Triage; postText: string;
+  author: string | null; authorTitle: string; authorCompany: string; hint: string;
+  feedback: { previous: string; why: string } | null;
+}): Promise<Draft> {
+  const user = [
+    `POST AUTHOR: ${a.author || "Unknown"} (${a.authorTitle || "role unknown"}${a.authorCompany ? `, ${a.authorCompany}` : ""})`,
+    `POST LANGUAGE: ${languageLine(a.triage.language)}`,
+    `POST:\n"""\n${a.postText}\n"""`,
+    a.hint ? `ANGLE: ${a.hint}` : "",
+    a.feedback ? `Your previous draft was REJECTED: "${a.feedback.previous}"\nWhy: ${a.feedback.why}\nWrite a better one or skip.` : "",
+  ].filter(Boolean).join("\n\n");
+  const system = `${commentRules(a.facts, a.triage.kind, a.triage.topic || "one of the subjects listed above", a.triage.signalReason)}
+
+Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
+  const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6 });
+  const r = parseJsonArray<{ skip?: boolean; skip_reason?: string; comment?: string }>(text)[0] || {};
+  if (r.skip === true || isSkip(r.comment)) return { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
+  return { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
 }
 
 function fail(error: string, status: number): Response {
@@ -106,6 +133,19 @@ serve(async (req) => {
       // triagePost answers "off_topic / triage unavailable" when the model call fails (so that no comment is
       // written). Here that must not be read as a verdict.
       if (t.reason === "triage unavailable") return json({ success: false, unavailable: true }, 503);
+      // With draft: true the writer and the reviewer run as well, on this text only. Still nothing is
+      // stored. Used to check what a post in a given language gets before trusting it.
+      // It is a check, not the production path: no learned examples, no angle, no company, no rewrite.
+      if (body.draft === true && t.kind !== "off_topic") {
+        const postText = body.triage_only.slice(0, 2000);
+        const author = typeof body.author === "string" ? body.author : "";
+        const d = await writeDraft({
+          facts: f, triage: t, postText, author,
+          authorTitle: typeof body.author_title === "string" ? body.author_title : "", authorCompany: "", hint: "", feedback: null,
+        });
+        const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language }], f, t.kind);
+        return json({ success: true, triage: t, draft: d, review });
+      }
       return json({ success: true, triage: t });
     }
 
@@ -211,31 +251,17 @@ serve(async (req) => {
       : pickVariant(campaign_lead_id, authorTitle);
 
     // The comment follows the POST's language, never the campaign's.
-    const write = async (feedback: { previous: string; why: string } | null): Promise<{ comment: string; skip: string | null }> => {
-      const user = [
-        `POST AUTHOR: ${author || "Unknown"} (${authorTitle || "role unknown"}${authorCompany ? `, ${authorCompany}` : ""})`,
-        `POST LANGUAGE: ${LANG_NAME[detectLang(postText)]}`,
-        `POST:\n"""\n${postText}\n"""`,
-        variant.hint ? `ANGLE: ${variant.hint}` : "",
-        feedback ? `Your previous draft was REJECTED: "${feedback.previous}"\nWhy: ${feedback.why}\nWrite a better one or skip.` : "",
-      ].filter(Boolean).join("\n\n");
-      const system = `${commentRules(facts, triage.kind, triage.topic || "one of the subjects listed above", triage.signalReason)}
+    const write = (feedback: { previous: string; why: string } | null) =>
+      writeDraft({ facts, triage, postText, author, authorTitle, authorCompany, hint: variant.hint, feedback });
 
-Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
-      const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6 });
-      const r = parseJsonArray<{ skip?: boolean; skip_reason?: string; comment?: string }>(text)[0] || {};
-      if (r.skip === true || isSkip(r.comment)) return { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
-      return { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
-    };
-
-    let draft: { comment: string; skip: string | null };
+    let draft: Draft;
     try {
       draft = await write(null);
       if (!draft.skip) {
-        let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment }], facts, triage.kind);
+        let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment, language: triage.language }], facts, triage.kind);
         if (!rev.ok) {
           const second = await write({ previous: draft.comment, why: rev.reason });
-          if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment }], facts, triage.kind);
+          if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment, language: triage.language }], facts, triage.kind);
           draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
         }
       }
