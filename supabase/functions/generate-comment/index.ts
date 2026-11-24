@@ -15,7 +15,7 @@ import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
   commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
-import { callClaude, cleanComment, modelWriter, parseWriterReply } from "../_shared/network.ts";
+import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
 
 // Deployed with verify_jwt=false: authentication is enforced here.
 //  - service callers (schedule-actions, pg_cron) may target any lead.
@@ -242,6 +242,37 @@ serve(async (req) => {
       }
       console.log(`generate-comment: lead ${campaign_lead_id} rests (post already ${existing.status})`);
       return json({ success: true, skipped: "post already decided", lead_id: campaign_lead_id });
+    }
+
+    // The search of the user's network stores posts under another key. Without this check a contact who
+    // is in a list and also turns up in a search gets two drafts for one post, and a post skipped in one
+    // place comes back from the other. One touch per person: a draft already waiting for this author, or
+    // a comment published to them in the last 7 days, also rests the lead.
+    const authorUrl = normalizeProfileUrl(lead.linkedin_url);
+    if (authorUrl) {
+      const { data: theirs, error: theirsErr } = await supabase.from("monitored_posts")
+        .select("id, status, post_text, commented_at")
+        .eq("user_id", lead.user_id).in("author_profile_url", [...new Set([authorUrl, String(lead.linkedin_url)])])
+        .order("created_at", { ascending: false }).limit(60);
+      if (theirsErr) {
+        console.error("generate-comment: author lookup failed", theirsErr);
+        return fail("Failed to check the approval queue", 500);
+      }
+      const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+      const WAITING = ["new", "pending", "approved", "queued"];
+      // deno-lint-ignore no-explicit-any
+      const other = (theirs || []).filter((r: any) => r.id !== existing?.id);
+      // deno-lint-ignore no-explicit-any
+      const sameOne = other.find((r: any) => [...WAITING, "posted", "dismissed"].includes(r.status) && samePost(r.post_text, postText));
+      // deno-lint-ignore no-explicit-any
+      const busy = other.find((r: any) => WAITING.includes(r.status) || (r.status === "posted" && r.commented_at && r.commented_at >= weekAgo));
+      const hit = sameOne || busy;
+      if (hit) {
+        const why = sameOne ? `same post already ${hit.status} (found by the network search)` : `author already has a comment ${hit.status}`;
+        if (!(await restLead("comment_skipped_already_seen", { reason: why }))) return fail("Failed to update the lead", 500);
+        console.log(`generate-comment: lead ${campaign_lead_id} rests (${why})`);
+        return json({ success: true, skipped: sameOne ? "post already seen" : "author already has a comment", lead_id: campaign_lead_id });
+      }
     }
 
     const triage = await triagePost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
