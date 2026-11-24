@@ -9,7 +9,7 @@
 //      or if it paraphrases the post, invents facts, or pitches, it is rejected.
 // A rejected draft is rewritten once with the reviewer's feedback; if it fails again the post is
 // skipped. Three good comments a day beat twenty forgettable ones.
-import { callClaude, modelFast, parseJsonArray, repairJsonStrings } from "./network.ts";
+import { callClaude, modelFast, parseJsonArray, parseRepaired } from "./network.ts";
 
 /**
  * The post's language as an English name ("German", "Portuguese"), judged by the model that reads the
@@ -214,7 +214,7 @@ Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<fo
     const m = text.match(/\{[\s\S]*\}/);
     const raw = m ? m[0] : text;
     let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch { parsed = JSON.parse(repairJsonStrings(raw)); }
+    try { parsed = JSON.parse(raw); } catch { parsed = parseRepaired(raw, ["kind", "topic", "reason", "signal", "signal_reason", "language"]); }
     const r = parsed as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string; language?: string };
     const kind: PostKind = r.kind === "on_topic" || r.kind === "milestone" ? r.kind : "off_topic";
     const signalReason = String(r.signal_reason || "").trim().slice(0, 200);
@@ -386,7 +386,7 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
   try {
     const system = kind === "milestone" ? milestoneSystem : topicSystem;
     const text = await callClaude({ model: modelFast(), system, user, maxTokens: 1200, temperature: 0, onModel });
-    const res = parseJsonArray<{ index: number; ok: boolean; reason?: string }>(text);
+    const res = parseJsonArray<{ index: number; ok: boolean; reason?: string }>(text, ["index", "ok", "reason"]);
     const seen = new Set<number>();
     for (const r of res) {
       const it = toCheck[r.index];

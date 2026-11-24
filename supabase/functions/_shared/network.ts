@@ -382,7 +382,11 @@ export async function callClaude(opts: {
 }
 
 /** Extract the first JSON array from a model reply. */
-export function parseJsonArray<T = any>(text: string): T[] {
+/**
+ * The JSON array in a model reply. With `repairKeys` (the keys the prompt asked for), a reply that does
+ * not parse is given one chance: see parseRepaired. Without it, a reply that does not parse is an error.
+ */
+export function parseJsonArray<T = any>(text: string, repairKeys?: readonly string[]): T[] {
   let s = text.trim();
   if (s.startsWith("```")) s = s.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
   const start = s.indexOf("[");
@@ -392,32 +396,70 @@ export function parseJsonArray<T = any>(text: string): T[] {
   try {
     return JSON.parse(body);
   } catch (first) {
-    // The usual cause: a text value with a plain double quote or a line break inside it (a quoted
-    // word in a comment, common in languages that quote with „…" or «…»). Escape those and try once.
-    try {
-      return JSON.parse(repairJsonStrings(body));
-    } catch {
-      throw first;
-    }
+    if (!repairKeys) throw first;
+    const repaired = parseRepaired(body, repairKeys);
+    if (!Array.isArray(repaired)) throw first;
+    return repaired as T[];
   }
 }
 
 const TEXT_KEYS = "comment|skip_reason|reason|fit_reason|signal_reason|topic|note";
 /**
  * Escapes unescaped double quotes, line breaks and tabs inside the text values of a model's JSON reply.
- * A value is taken to end at the quote that is followed by `,"key":`, `}` or `]`, so quotes inside the
- * text are kept as text. Exported for tests.
+ * The usual cause of a reply that does not parse is a quoted word inside a comment. A value is taken to
+ * end at the quote that is followed by `,"key":`, `}` or `]`.
+ *
+ * That guess can be wrong when the text itself looks like JSON (`he said "yes", "ok": true`), and a
+ * wrong guess would still parse. So the repair refuses a value whose inner quotes do not come in
+ * pairs (a cut in the middle of a quoted word leaves one open), and parseRepaired checks the keys.
+ * Throws when it refuses. Exported for tests.
  */
 export function repairJsonStrings(json: string): string {
   const value = new RegExp(`("(?:${TEXT_KEYS})"\\s*:\\s*")([\\s\\S]*?)"(?=\\s*(?:,\\s*"[A-Za-z_]+"\\s*:|[}\\]]))`, "g");
   return json.replace(value, (_m, head: string, text: string) => {
-    const fixed = text
-      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
-      .replace(/(?<!\\)"/g, '\\"')
-      .replace(/\r?\n/g, "\\n")
-      .replace(/\t/g, "\\t");
+    let quotes = 0;
+    // Escapes are read in pairs, so an escaped backslash is not mistaken for the start of another escape.
+    const fixed = text.replace(/\\([\s\S]?)|"|\r?\n|\t/g, (m: string, next: string | undefined) => {
+      if (m === '"') { quotes++; return '\\"'; }
+      if (m === "\t") return "\\t";
+      if (m[0] !== "\\") return "\\n";
+      if (next && '"\\/bfnrt'.includes(next)) return m;
+      if (next === "u") return m;
+      return `\\\\${next ?? ""}`;
+    });
+    if (quotes % 2 === 1) throw new Error("unbalanced quote in a text value");
     return `${head}${fixed}"`;
   });
+}
+
+/**
+ * Parses a reply after repairJsonStrings, and accepts the result only when it has exactly the keys the
+ * prompt asked for, each at most once per object. A repeated key (the later one silently wins in JSON)
+ * or a key nobody asked for means the text was cut in the wrong place: refuse, so the caller fails
+ * closed as it did before, instead of acting on a changed verdict or a shortened comment.
+ * Returns the parsed value; throws when the repair or the check refuses.
+ */
+export function parseRepaired(json: string, allowedKeys: readonly string[]): unknown {
+  const repaired = repairJsonStrings(json);
+  const parsed = JSON.parse(repaired);
+  const allowed = new Set(allowedKeys);
+  let keys = 0;
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (v && typeof v === "object") {
+      for (const [k, child] of Object.entries(v as Record<string, unknown>)) {
+        if (!allowed.has(k)) throw new Error(`unexpected key "${k}" after repair`);
+        keys++;
+        walk(child);
+      }
+    }
+  };
+  walk(parsed);
+  // Keys as written in the text; more of them than in the parsed value means one was repeated.
+  // Text values are escaped by now, so a `"word":` inside a comment reads `\"word\":` and is not counted.
+  const written = (repaired.match(/(?<!\\)"[A-Za-z_]+"\s*:/g) || []).length;
+  if (written !== keys) throw new Error("repeated key after repair");
+  return parsed;
 }
 
 export function modelFast(): string {

@@ -710,8 +710,6 @@ serve(async (req) => {
 
   stats.looping_leads_fixed = loopingLeads?.length || 0;
 
-  stats.dm_generated_last_20m = dmRecentCount || 0;
-
   // ═══════════════════════════════════════════════════════
   // 9b. ACTION FAILURE RATE — detect systematic failures per action_type
   //     Catches issues like "Connect button not found" (LinkedIn layout change)

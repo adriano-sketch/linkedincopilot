@@ -38,7 +38,7 @@ export default function InboxPage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const { items, loading, failed, approve, dismiss } = useInbox();
+  const { items, loading, failed, retry, approve, dismiss } = useInbox();
 
   const filter = (FILTERS.some(f => f.key === params.get('type')) ? params.get('type') : 'all') as Filter;
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -174,6 +174,14 @@ export default function InboxPage() {
             mobileDetail ? 'hidden lg:flex' : 'flex')}>
             {loading ? (
               <div className="flex-1 grid place-items-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin" /></div>
+            ) : failed ? (
+              <div className="flex-1 grid place-items-center p-8 text-center" role="alert">
+                <div className="flex flex-col items-center gap-2 max-w-xs">
+                  <div className="font-semibold text-lg">Could not load your Inbox</div>
+                  <p className="m-0 text-sm text-muted-foreground">Nothing was lost. Check your connection and try again.</p>
+                  <button onClick={() => retry()} className="text-gold-dark font-medium mt-1">Try again</button>
+                </div>
+              </div>
             ) : visible.length === 0 ? (
               <EmptyState filtered={open.length > 0} onShowAll={() => setFilter('all')} />
             ) : (

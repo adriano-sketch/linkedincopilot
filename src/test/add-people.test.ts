@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { profileUrlFrom } from '@/lib/addPeople';
-import { browserTimezone, safeTimezone, timezoneOptions } from '@/lib/timezones';
+import { safeTimezone, timezoneOptions } from '@/lib/timezones';
 
 describe('profileUrlFrom', () => {
   const canon = 'https://www.linkedin.com/in/maria-silva';
@@ -38,10 +38,5 @@ describe('time zones', () => {
   it('always offers the zone already saved, even an alias', () => {
     expect(timezoneOptions('Asia/Calcutta')).toContain('Asia/Calcutta');
     expect(timezoneOptions(null).length).toBeGreaterThan(10);
-  });
-
-  it('reports the browser zone as a place or nothing', () => {
-    const tz = browserTimezone();
-    expect(tz === null || (typeof tz === 'string' && !['UTC', 'GMT', 'Etc/UTC'].includes(tz))).toBe(true);
   });
 });

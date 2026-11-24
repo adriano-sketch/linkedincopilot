@@ -128,7 +128,7 @@ async function writeComments(
 Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "comment": "..."}] or
 [{"index": n, "skip": true, "skip_reason": "<max 12 words>"}]`;
   const text = await callClaude({ model: modelWriter(), system, user: items, maxTokens: 1800, temperature: 0.6 });
-  const res = parseJsonArray<{ index: number; skip?: boolean; skip_reason?: string; comment?: string }>(text);
+  const res = parseJsonArray<{ index: number; skip?: boolean; skip_reason?: string; comment?: string }>(text, ["index", "skip", "skip_reason", "comment"]);
   const out = batch.map(() => ({ comment: "", skip: "no draft returned" as string | null }));
   for (const r of res) {
     if (!out[r.index]) continue;

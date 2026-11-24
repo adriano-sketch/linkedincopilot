@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": { "strictNullChecks": true, "noEmit": true },
+  "include": ["src/test", "src/vite-env.d.ts"],
+  "exclude": []
+}
