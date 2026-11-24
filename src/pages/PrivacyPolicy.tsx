@@ -85,6 +85,12 @@ export default function PrivacyPolicy() {
               <strong className="text-gray-300">Authentication tokens:</strong>{' '}
               Your session token for our backend, stored locally in Chrome's storage.
             </li>
+            <li>
+              <strong className="text-gray-300">Visits to olanovo.com:</strong>{' '}
+              Which pages are opened, the site the visit came from, the country and region, and
+              the kind of device and browser. They are counted without cookies and used as totals
+              only, not tied to your account.
+            </li>
           </ul>
         </Section>
 
@@ -95,8 +101,8 @@ export default function PrivacyPolicy() {
               We do not read your LinkedIn messages.
             </li>
             <li>
-              We do not collect browsing history, cookies, or data from any website other
-              than linkedin.com.
+              The extension does not collect browsing history, cookies, or data from any
+              website other than linkedin.com.
             </li>
             <li>
               We do not sell, rent, or share personal data with third parties for advertising or

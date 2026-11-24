@@ -19,6 +19,7 @@ import HelpPage from "./pages/HelpPage";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 import ScrollToTop from "./components/ScrollToTop";
+import { Analytics } from "@vercel/analytics/react";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,9 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        {/* Page-view counts only, no cookies. The address is sent without what follows "?" or "#",
+            which can carry a sign-in or password-reset token. */}
+        <Analytics beforeSend={(event) => ({ ...event, url: event.url.split(/[?#]/)[0] })} />
         <BrowserRouter>
           <ScrollToTop />
           <Routes>
