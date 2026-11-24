@@ -334,7 +334,7 @@ serve(async (req) => {
     {
       const { data: lastTry, error: lastTryErr } = await supabase.from("activity_log").select("created_at")
         .eq("user_id", lead.user_id).eq("campaign_lead_id", campaign_lead_id).eq("action", "comment_unavailable")
-        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        .not("created_at", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (lastTryErr) {
         console.error(`generate-comment: could not read the last try for lead ${campaign_lead_id}`, lastTryErr);
         return json({ success: false, unavailable: "waiting", lead_id: campaign_lead_id }, 503);
