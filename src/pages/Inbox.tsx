@@ -322,7 +322,7 @@ function EmptyState({ filtered, onShowAll }: { filtered: boolean; onShowAll: () 
         <CheckCircle2 className="w-10 h-10 text-success" />
         <div className="font-semibold text-lg">All clear</div>
         <p className="m-0 text-sm text-muted-foreground">
-          Comment drafts land here a few times a day while autopilot runs.
+          Comment drafts land here a few times a day while Olanovo is on.
         </p>
         <div className="flex gap-4 text-sm mt-1">
           <Link to="/dashboard?new=1" className="text-gold-dark font-medium">New list</Link>

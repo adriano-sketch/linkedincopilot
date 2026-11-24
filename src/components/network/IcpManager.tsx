@@ -144,7 +144,7 @@ export default function IcpManager() {
         <Card>
           <CardContent className="py-10 text-center space-y-3">
             <Target className="w-8 h-8 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No audience yet. Describe who you want in your network and the extension does the rest.</p>
+            <p className="text-sm text-muted-foreground">No audience yet. Describe who you want in your network. Olanovo looks for them and for what they post.</p>
             <Button onClick={() => setForm({ ...empty })}><Plus className="w-4 h-4 mr-1" /> Create your first audience</Button>
           </CardContent>
         </Card>
@@ -197,7 +197,7 @@ export default function IcpManager() {
               <div className="space-y-1">
                 <Label>Who are they? (the AI reads this)</Label>
                 <Textarea rows={3} value={form.description} onChange={e => set('description', e.target.value)}
-                  placeholder="Founders and CEOs of small B2B marketing agencies (5-50 people) that sell outbound or lead generation services." />
+                  placeholder="Who they are, in one or two sentences: their role, the kind of company, its size and where it is." />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1">
@@ -276,7 +276,7 @@ export default function IcpManager() {
               </div>
               <div className="space-y-1">
                 <Label>Post topics to watch</Label>
-                <Input value={form.post_topics} onChange={e => set('post_topics', e.target.value)} placeholder="cold outreach, lead generation, hiring SDR" />
+                <Input value={form.post_topics} onChange={e => set('post_topics', e.target.value)} placeholder="Subjects they post about, separated by commas" />
                 <p className="text-xs text-muted-foreground">Used to find recent posts from people in this audience. If empty, the keywords are used.</p>
               </div>
               <div className="space-y-2">

@@ -39,14 +39,14 @@ export default function SetupGuide() {
           <CardContent className="space-y-4">
             <Step number={1} title="Add the extension to Chrome">
               <p>
-                Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">the Olanovo extension on the Chrome Web Store</a> (still listed there as LinkedIn Copilot) and
+                Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">the Olanovo extension on the Chrome Web Store</a> and
                 click <strong>Add to Chrome</strong>. Chrome keeps it up to date on its own.
               </p>
               <p>Keep one copy only. If you installed the extension from a .zip file in the past, remove that copy first.</p>
             </Step>
 
             <Step number={2} title="Sign in to the extension">
-              <p>Click the puzzle icon in the Chrome toolbar, pin the extension (shown as LinkedIn Copilot for now), click its icon and sign in with the same email and password you use on this site.</p>
+              <p>Click the puzzle icon in the Chrome toolbar, pin the Olanovo extension, click its icon and sign in with the same email and password you use on this site.</p>
             </Step>
 
             <Step number={3} title="Be signed in to LinkedIn in the same Chrome">
