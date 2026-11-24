@@ -255,15 +255,18 @@ serve(async (req) => {
       const theirs: any[] = [];
       // deno-lint-ignore no-explicit-any
       let theirsErr: any = null;
-      for (let from = 0; ; from += 1000) {
+      // Read until a page comes back empty, so the result does not depend on how many rows the API
+      // returns per request.
+      for (let from = 0; ; ) {
         const { data: page, error } = await supabase.from("monitored_posts")
           .select("id, status, post_text, commented_at, created_at")
           .eq("user_id", lead.user_id).in("author_profile_url", [...new Set([authorUrl, String(lead.linkedin_url)])])
           .order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, from + 999);
         if (error) { theirsErr = error; break; }
-        theirs.push(...(page || []));
-        if ((page || []).length < 1000) break;
-        if (from >= 19000) { theirsErr = new Error("author history too long to read"); break; }
+        if (!page || page.length === 0) break;
+        theirs.push(...page);
+        from += page.length;
+        if (from > 20000) { theirsErr = new Error("author history too long to read"); break; }
       }
       if (theirsErr) {
         console.error("generate-comment: author lookup failed", theirsErr);

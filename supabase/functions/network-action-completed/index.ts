@@ -274,7 +274,7 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
   const busyAuthors = new Set<string>();
   if (myNetwork) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
-    const { data: recent } = await supabase.from("monitored_posts").select("author_profile_url, status, commented_at")
+    const { data: recent, error: recentErr } = await supabase.from("monitored_posts").select("author_profile_url, status, commented_at")
       .eq("user_id", userId).in("status", ["pending", "approved", "queued", "posted"])
       .order("created_at", { ascending: false }).limit(500);
     for (const r of recent || []) {
@@ -282,8 +282,14 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
       const u = normalizeProfileUrl(r.author_profile_url);
       if (u) busyAuthors.add(u);
     }
-    const { data: leadsBusy } = await supabase.from("campaign_leads").select("linkedin_url")
+    const { data: leadsBusy, error: leadsBusyErr } = await supabase.from("campaign_leads").select("linkedin_url")
       .eq("user_id", userId).eq("status", "comment_review").limit(500);
+    // Without these lists an author with a draft already waiting would get a second one: store nothing.
+    if (recentErr || leadsBusyErr) {
+      console.error("busy authors lookup failed:", recentErr || leadsBusyErr);
+      if (runId) await supabase.from("network_search_runs").update({ status: "failed", completed_at: now }).eq("id", runId).eq("user_id", userId);
+      return { ok: true };
+    }
     for (const r of leadsBusy || []) { const u = normalizeProfileUrl(r.linkedin_url); if (u) busyAuthors.add(u); }
   }
 
@@ -299,14 +305,17 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
       const stored: any[] = [];
       // deno-lint-ignore no-explicit-any
       let storedErr: any = null;
-      for (let from = 0; ; from += 1000) {
+      // Read until a page comes back empty, so the result does not depend on how many rows the API
+      // returns per request.
+      for (let from = 0; ; ) {
         const { data: page, error } = await supabase.from("monitored_posts")
           .select("author_profile_url, post_text").eq("user_id", userId).in("author_profile_url", authors)
           .order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, from + 999);
         if (error) { storedErr = error; break; }
-        stored.push(...(page || []));
-        if ((page || []).length < 1000) break;
-        if (from >= 19000) { storedErr = new Error("stored posts list too long to read"); break; }
+        if (!page || page.length === 0) break;
+        stored.push(...page);
+        from += page.length;
+        if (from > 20000) { storedErr = new Error("stored posts list too long to read"); break; }
       }
       // Without this list nothing can be told apart from what is already there: store nothing this run.
       if (storedErr) {
