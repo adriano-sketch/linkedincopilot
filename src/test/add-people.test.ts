@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { profileUrlFrom } from '@/lib/addPeople';
-import { safeTimezone, timezoneOptions } from '@/lib/timezones';
+import { browserTimezone, safeTimezone, timezoneOptions } from '@/lib/timezones';
 
 describe('profileUrlFrom', () => {
   const canon = 'https://www.linkedin.com/in/maria-silva';
@@ -38,5 +38,21 @@ describe('time zones', () => {
   it('always offers the zone already saved, even an alias', () => {
     expect(timezoneOptions('Asia/Calcutta')).toContain('Asia/Calcutta');
     expect(timezoneOptions(null).length).toBeGreaterThan(10);
+  });
+
+  describe('browserTimezone', () => {
+    afterEach(() => vi.restoreAllMocks());
+    const reports = (timeZone: string) => vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions')
+      .mockReturnValue({ timeZone } as Intl.ResolvedDateTimeFormatOptions);
+
+    it('gives the zone the browser reports', () => {
+      reports('America/Sao_Paulo');
+      expect(browserTimezone()).toBe('America/Sao_Paulo');
+    });
+
+    it('gives nothing when the browser reports UTC, which says nothing about where the person is', () => {
+      reports('UTC');
+      expect(browserTimezone()).toBeNull();
+    });
   });
 });

@@ -128,7 +128,7 @@ export function useInbox() {
   const loading = comments.isLoading;
   // A failed load with nothing cached must not look like an empty Inbox.
   const failed = comments.isError && !comments.data;
-  return { items, loading, failed, retry: comments.refetch, approve, dismiss };
+  return { items, loading, failed, retrying: failed && comments.isFetching, retry: comments.refetch, approve, dismiss };
 }
 
 /** Lightweight count for the sidebar badge. */

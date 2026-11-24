@@ -15,7 +15,7 @@ import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
   commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
-import { callClaude, cleanComment, modelWriter, parseJsonArray } from "../_shared/network.ts";
+import { callClaude, cleanComment, modelWriter, parseWriterReply } from "../_shared/network.ts";
 
 // Deployed with verify_jwt=false: authentication is enforced here.
 //  - service callers (schedule-actions, pg_cron) may target any lead.
@@ -77,7 +77,7 @@ async function writeDraft(a: {
 
 Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
   const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6, onModel: a.onModel });
-  const r = parseJsonArray<{ skip?: boolean; skip_reason?: string; comment?: string }>(text, ["index", "skip", "skip_reason", "comment"])[0] || {};
+  const r = parseWriterReply(text, 1)[0] || {};
   if (r.skip === true || isSkip(r.comment)) return { comment: "", skip: String(r.skip_reason || "nothing specific to add").slice(0, 120) };
   return { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
 }

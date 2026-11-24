@@ -382,24 +382,55 @@ export async function callClaude(opts: {
 }
 
 /** Extract the first JSON array from a model reply. */
-/**
- * The JSON array in a model reply. With `repairKeys` (the keys the prompt asked for), a reply that does
- * not parse is given one chance: see parseRepaired. Without it, a reply that does not parse is an error.
- */
-export function parseJsonArray<T = any>(text: string, repairKeys?: readonly string[]): T[] {
+/** The text between the first "[" and the last "]" of a model reply (code fences removed). */
+function arrayBody(text: string): string {
   let s = text.trim();
   if (s.startsWith("```")) s = s.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
   const start = s.indexOf("[");
   const end = s.lastIndexOf("]");
   if (start === -1 || end === -1 || end < start) throw new Error("No JSON array in model reply");
-  const body = s.slice(start, end + 1);
+  return s.slice(start, end + 1);
+}
+
+/** The JSON array in a model reply. A reply that does not parse is an error: nothing is guessed. */
+export function parseJsonArray<T = any>(text: string): T[] {
+  return JSON.parse(arrayBody(text));
+}
+
+export type WriterEntry = { index?: number; skip?: boolean; skip_reason?: string; comment?: string };
+const WRITER_KEYS = ["index", "skip", "skip_reason", "comment"] as const;
+
+/**
+ * The comment writer's reply: one entry per post asked for. This is the one reply that gets a repair
+ * when it does not parse, because the usual cause is harmless and common (a quoted word inside the
+ * comment) and the cost of refusing is a lost draft. Verdicts (the triage, the reviewer) are never
+ * repaired: there a wrong guess could turn a rejection into an approval, so they fail closed.
+ *
+ * A repaired reply is accepted only if it still looks like what was asked for: no more entries than
+ * posts, each index once and in range, and no entry that is both a comment and a skip. Anything else
+ * means the text was cut in the wrong place, and the original parse error is thrown.
+ */
+export function parseWriterReply(text: string, expected: number): WriterEntry[] {
+  const body = arrayBody(text);
   try {
     return JSON.parse(body);
   } catch (first) {
-    if (!repairKeys) throw first;
-    const repaired = parseRepaired(body, repairKeys);
-    if (!Array.isArray(repaired)) throw first;
-    return repaired as T[];
+    try {
+      const repaired = parseRepaired(body, WRITER_KEYS);
+      if (!Array.isArray(repaired) || repaired.length > expected) throw first;
+      const seen = new Set<number>();
+      for (const e of repaired as WriterEntry[]) {
+        const i = e?.index ?? 0;
+        if (!e || typeof e !== "object" || !Number.isInteger(i) || i < 0 || i >= expected || seen.has(i)) throw first;
+        seen.add(i);
+        const hasComment = typeof e.comment === "string" && e.comment.trim() !== "";
+        if (hasComment && (e.skip === true || (typeof e.skip_reason === "string" && e.skip_reason !== ""))) throw first;
+        if (!hasComment && e.skip !== true) throw first;
+      }
+      return repaired as WriterEntry[];
+    } catch {
+      throw first;
+    }
   }
 }
 
@@ -411,8 +442,8 @@ const TEXT_KEYS = "comment|skip_reason|reason|fit_reason|signal_reason|topic|not
  *
  * That guess can be wrong when the text itself looks like JSON (`he said "yes", "ok": true`), and a
  * wrong guess would still parse. So the repair refuses a value whose inner quotes do not come in
- * pairs (a cut in the middle of a quoted word leaves one open), and parseRepaired checks the keys.
- * Throws when it refuses. Exported for tests.
+ * pairs (a cut in the middle of a quoted word leaves one open), parseRepaired checks the keys, and
+ * parseWriterReply, its only caller, checks the shape. Throws when it refuses. Exported for tests.
  */
 export function repairJsonStrings(json: string): string {
   const value = new RegExp(`("(?:${TEXT_KEYS})"\\s*:\\s*")([\\s\\S]*?)"(?=\\s*(?:,\\s*"[A-Za-z_]+"\\s*:|[}\\]]))`, "g");
@@ -428,6 +459,9 @@ export function repairJsonStrings(json: string): string {
       return `\\\\${next ?? ""}`;
     });
     if (quotes % 2 === 1) throw new Error("unbalanced quote in a text value");
+    // The closing quote must be a real one: after an odd run of backslashes it is an escaped quote,
+    // which means the reply was cut off inside the text.
+    if ((text.match(/\\+$/)?.[0].length ?? 0) % 2 === 1) throw new Error("text value ends in an escape");
     return `${head}${fixed}"`;
   });
 }
