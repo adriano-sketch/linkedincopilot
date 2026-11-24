@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
+import { timezoneLabel, timezoneOptions } from '@/lib/timezones';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { useCampaignProfiles, CampaignProfile } from '@/hooks/useCampaignProfiles';
 import { Button } from '@/components/ui/button';
@@ -36,12 +37,6 @@ const STATUS_LABELS: Record<string, { label: string; variant: 'default' | 'secon
   paused: { label: 'Paused', variant: 'secondary' },
   completed: { label: 'Completed', variant: 'secondary' },
 };
-
-const TIMEZONES = [
-  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'America/Anchorage', 'Pacific/Honolulu', 'America/Phoenix',
-  'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Asia/Tokyo', 'Australia/Sydney',
-];
 
 export default function SettingsPage() {
   const { user, loading } = useAuth();
@@ -114,7 +109,9 @@ export default function SettingsPage() {
   const handleSaveExtension = async () => {
     if (!user || !extensionStatus) return;
     try {
-      const { error } = await supabase.from('extension_status').update(extensionLimits).eq('user_id', user.id);
+      const { error } = await supabase.from('extension_status')
+        // A zone saved here is the person's choice: it is never replaced by the browser's.
+        .update({ ...extensionLimits, timezone_confirmed: true } as never).eq('user_id', user.id);
       if (error) throw error;
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
@@ -358,7 +355,7 @@ export default function SettingsPage() {
                     <Select value={extensionLimits.timezone} onValueChange={v => setExtensionLimits({ ...extensionLimits, timezone: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {TIMEZONES.map(tz => <SelectItem key={tz} value={tz}>{tz.replace('_', ' ')}</SelectItem>)}
+                        {timezoneOptions(extensionLimits.timezone).map(tz => <SelectItem key={tz} value={tz}>{timezoneLabel(tz)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

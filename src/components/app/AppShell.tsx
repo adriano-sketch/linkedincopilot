@@ -17,6 +17,7 @@ import { useUserPlan } from '@/hooks/useUserPlan';
 import { UpgradeModal } from '@/components/UpgradeModal';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { browserTimezone } from '@/lib/timezones';
 
 type NavItem = { to: string; label: string; icon: typeof Inbox; match: (path: string) => boolean; badge?: number };
 
@@ -34,6 +35,20 @@ function useNav(): NavItem[] {
 function AutopilotCard() {
   const { extensionStatus, isLoading } = useExtensionStatus();
   const [toggling, setToggling] = useState(false);
+
+  // First time the app sees this account's extension row: work in the person's own time zone
+  // instead of the column default. Done once; a choice made in Settings is never replaced.
+  const statusId = extensionStatus?.id;
+  const zoneUnset = !!extensionStatus && (extensionStatus as { timezone_confirmed?: boolean }).timezone_confirmed === false;
+  useEffect(() => {
+    if (!statusId || !zoneUnset) return;
+    const tz = browserTimezone();
+    void supabase.from('extension_status')
+      .update((tz ? { timezone: tz, timezone_confirmed: true } : { timezone_confirmed: true }) as never)
+      .eq('id', statusId).eq('timezone_confirmed' as never, false as never)
+      .then(({ error }) => { if (error) console.error('AppShell: could not set the time zone', error); });
+  }, [statusId, zoneUnset]);
+
   if (isLoading) return null;
 
   if (!extensionStatus) {
