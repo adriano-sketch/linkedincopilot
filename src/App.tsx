@@ -22,6 +22,8 @@ import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
 
+// The public pages are also rendered at build time by src/prerender.tsx, inside a copy of these
+// providers. A provider added here that Landing, PrivacyPolicy or Terms needs must be added there too.
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>

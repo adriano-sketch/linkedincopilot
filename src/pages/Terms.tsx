@@ -1,8 +1,11 @@
 import { Link } from 'react-router-dom';
+import { usePageTitle } from '@/lib/pageTitle';
 import { ArrowLeft } from 'lucide-react';
 import Logo from '@/components/Logo';
 
 export default function Terms() {
+  usePageTitle('Terms of Service | Olanovo');
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-gray-300">
       {/* Navbar */}
