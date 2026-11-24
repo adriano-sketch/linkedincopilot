@@ -1,3 +1,4 @@
+import { okToLeavePage, registerUnsavedCheck } from '@/lib/unsavedChanges';
 import CommentKnowledgeBase from '@/components/CommentKnowledgeBase';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import AppShell from '@/components/app/AppShell';
@@ -88,6 +89,13 @@ export default function SettingsPage() {
     }
   }, [profile]);
 
+  // Checkout and the billing portal leave this page: they ask first when something here is not saved.
+  const unsavedRef = useRef<() => boolean>(() => false);
+  unsavedRef.current = () => dirtyLimits.current.size > 0 || (!!profile && (
+    masterForm.sender_name !== (profile.sender_name || '') || masterForm.sender_title !== (profile.sender_title || '')
+    || masterForm.company_name !== (profile.company_name || '') || masterForm.company_description !== (profile.company_description || '')));
+  useEffect(() => registerUnsavedCheck(() => unsavedRef.current()), []);
+
   // Fields the person has changed and not saved yet. The row is refetched every few seconds (and
   // changes on each heartbeat), so the form must not be rebuilt over what is being typed.
   const dirtyLimits = useRef(new Set<string>());
@@ -164,6 +172,7 @@ export default function SettingsPage() {
   const toggle = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const handleBillingPortal = async () => {
+    if (!okToLeavePage()) return;
     setBillingLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('customer-portal');

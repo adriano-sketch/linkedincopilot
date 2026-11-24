@@ -1,3 +1,4 @@
+import { okToLeavePage } from '@/lib/unsavedChanges';
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,8 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
   const [interval, setInterval_] = useState<'month' | 'year'>('month');
 
   const handleCheckout = async (planKey: string) => {
+    // Checkout opens in this tab: ask first if the page underneath holds edits that were not saved.
+    if (!okToLeavePage()) return;
     setLoading(planKey);
     try {
       const getAccessToken = async () => {
