@@ -4,67 +4,29 @@
 // spam that floods LinkedIn. Every draft goes through three layers before the user sees it:
 //   1. The writer prompt (COMMENT_RULES): same language as the post, one concrete detail, no invented
 //      experience, no selling, and permission to SKIP when there is nothing worth saying.
-//   2. Cheap local checks (localIssues): praise openers, wrong language, dashes, links, too long.
+//   2. Cheap local checks (localIssues): praise openers, dashes, links, too long.
 //   3. A strict reviewer model (reviewComments): "would this comment fit a different post?" If yes,
 //      or if it paraphrases the post, invents facts, or pitches, it is rejected.
 // A rejected draft is rewritten once with the reviewer's feedback; if it fails again the post is
 // skipped. Three good comments a day beat twenty forgettable ones.
 import { callClaude, modelFast, parseJsonArray } from "./network.ts";
 
-export type Lang = "pt" | "en" | "es" | "other";
-export const LANG_NAME: Record<Lang, string> = { pt: "Portuguese", en: "English", es: "Spanish", other: "the same language as the post" };
-
-const STOP: Record<Exclude<Lang, "other">, string[]> = {
-  pt: ["de", "que", "não", "para", "com", "uma", "os", "as", "dos", "das", "mais", "mas", "foi", "são", "está", "isso", "nos", "pela", "pelo", "também", "já", "quando", "muito", "nossa", "você", "em", "ao", "à", "é"],
-  en: ["the", "and", "of", "to", "is", "in", "that", "for", "with", "this", "are", "was", "we", "our", "you", "have", "it", "on", "be", "not", "they", "from", "what", "how"],
-  es: ["el", "los", "las", "del", "que", "para", "con", "una", "por", "pero", "más", "fue", "son", "está", "esto", "nuestro", "también", "ya", "cuando", "muy", "es", "en", "y"],
-};
-
 /**
  * The post's language as an English name ("German", "Portuguese"), judged by the model that reads the
  * post. This is what the writer is told. Anything that is not a plain language name is dropped.
  */
 export function cleanLanguage(x: unknown): string {
-  const s = String(x ?? "").trim();
-  // Letters of any script, at most four words: a name, never a sentence.
-  if (!/^\p{L}[\p{L} ()'-]{1,30}$/u.test(s) || s.split(/\s+/).length > 4) return "";
+  const s = String(x ?? "").normalize("NFC").trim();
+  // Letters of any script (with their combining marks, as in हिन्दी), at most four words: a name,
+  // never a sentence.
+  if (!/^\p{L}[\p{L}\p{M} ()'-]{1,30}$/u.test(s) || s.split(/\s+/).length > 4) return "";
   if (/^(unknown|none|mixed|other|multiple|several|various|n a|na)$/i.test(s)) return "";
   return s;
 }
 
 /** The "write in this language" line for the writer. Without a known language: follow the post. */
 export function languageLine(language: string | null | undefined): string {
-  return cleanLanguage(language) || LANG_NAME.other;
-}
-
-const KNOWN_LANG: [RegExp, Exclude<Lang, "other">][] = [
-  [/(^|[^\p{L}])(portuguese|portugu[eê]s)($|[^\p{L}])/iu, "pt"],
-  [/(^|[^\p{L}])(english|ingl[eê]s)($|[^\p{L}])/iu, "en"],
-  [/(^|[^\p{L}])(spanish|espa[nñ]ol|castilian|castellano)($|[^\p{L}])/iu, "es"],
-];
-
-/** "Brazilian Portuguese" and "Portuguese (Brazil)" are Portuguese. A name that fits two, or none, is "other". */
-function knownLang(name: string): Lang {
-  const hits = KNOWN_LANG.filter(([re]) => re.test(name));
-  return hits.length === 1 ? hits[0][1] : "other";
-}
-
-/**
- * Rough language detection by stopword frequency. It only knows pt / en / es and it is wrong for
- * every other language (German reads as English, French as Portuguese), so it must never decide
- * which language to write in. It is used for one thing: catching a draft written in the wrong one
- * of these three.
- */
-export function detectLang(text: string): Lang {
-  const words = String(text || "").toLowerCase().normalize("NFC").match(/[a-zà-ÿ]+/g) || [];
-  if (words.length < 4) return "other";
-  const score = (l: Exclude<Lang, "other">) => words.reduce((n, w) => n + (STOP[l].includes(w) ? 1 : 0), 0);
-  const s = { pt: score("pt"), en: score("en"), es: score("es") };
-  // Portuguese and Spanish share words: accents and a few markers break the tie.
-  if (/[ãõç]|ção|ções|\bnão\b|\bvocê\b/.test(text.toLowerCase())) s.pt += 3;
-  if (/[ñ¿¡]|\bpero\b|\bmuy\b|\bdel\b/.test(text.toLowerCase())) s.es += 3;
-  const best = (Object.entries(s) as [Exclude<Lang, "other">, number][]).sort((a, b) => b[1] - a[1])[0];
-  return best[1] >= 2 && best[1] / words.length >= 0.04 ? best[0] : "other";
+  return cleanLanguage(language) || "the same language as the post";
 }
 
 const PRAISE_OPENERS = [
@@ -82,33 +44,30 @@ const PRAISE_OPENERS = [
 ];
 
 /** Deterministic problems we never let through. Empty array = passes. */
-export function localIssues(comment: string, post: string, kind: PostKind = "on_topic", postLanguage?: string | null): string[] {
+export function localIssues(comment: string, kind: PostKind = "on_topic"): string[] {
   const c = String(comment || "").trim();
   const issues: string[] = [];
-  if (c.length < 25) issues.push("too short to say anything specific");
-  if (c.length > 450) issues.push("too long for a LinkedIn comment");
-  const head = c.toLowerCase().replace(/^[^a-zà-ÿ]+/, "").slice(0, 40);
+  // Chinese, Japanese and Korean say in one character what other scripts say in a word, so the same
+  // limits in characters would reject a complete sentence as too short and allow an essay.
+  const dense = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(c);
+  if (c.length < (dense ? 8 : 25)) issues.push("too short to say anything specific");
+  if (c.length > (dense ? 220 : 450)) issues.push("too long for a LinkedIn comment");
+  const head = c.toLowerCase().replace(/^[^\p{L}]+/u, "").slice(0, 40);
   const opener = PRAISE_OPENERS.find((p) => head.startsWith(p));
   // A congratulation is the point of a milestone comment.
   if (opener && kind !== "milestone") issues.push(`opens with generic praise ("${opener}")`);
   if (kind !== "milestone") {
     // A comment has to say something: reject it when every sentence is a question.
-    const sentences = c.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
-    if (sentences.length && sentences.every((x) => x.endsWith("?"))) issues.push("is only a question: state a point of view, a question may only close it");
+    // Sentence ends and question marks of other scripts count too (。！？ and the Arabic ؟).
+    const sentences = c.split(/(?<=[.!?])\s+|(?<=[。！？؟])\s*/).map((x) => x.trim()).filter(Boolean);
+    if (sentences.length && sentences.every((x) => /[?？؟]$/.test(x))) issues.push("is only a question: state a point of view, a question may only close it");
   }
   if (/https?:\/\/|www\./i.test(c)) issues.push("contains a link");
   if (/#\w/.test(c)) issues.push("contains a hashtag");
   if (/[—–]/.test(c)) issues.push("contains a dash typical of AI text");
-  // Only when the model named the post's language as pt / en / es is the draft checked here. For any
-  // other language, or with no name at all, the stopword detector cannot tell a right draft from a
-  // wrong one (German reads as English), and its verdict would reach the writer as rewrite feedback
-  // naming a wrong language. The reviewer's same-language rule covers those cases.
-  const named = cleanLanguage(postLanguage);
-  const postLang: Lang = named ? knownLang(named) : "other";
-  const commentLang = detectLang(c);
-  if (postLang !== "other" && commentLang !== "other" && postLang !== commentLang) {
-    issues.push(`written in ${LANG_NAME[commentLang]} but the post is in ${LANG_NAME[postLang]}`);
-  }
+  // The language is not checked here. A word list can only know a few languages and is wrong for the
+  // rest (it read German as English), so it would treat languages differently. The reviewer, which is
+  // told the post's language, checks it the same way for every language.
   return issues;
 }
 
@@ -379,7 +338,7 @@ export async function reviewComments(
   kind: PostKind = "on_topic",
 ): Promise<Review[]> {
   const out: Review[] = items.map((it) => {
-    const local = localIssues(it.comment, it.post, kind, it.language);
+    const local = localIssues(it.comment, kind);
     return local.length ? { ok: false, reason: local.join("; ") } : { ok: true, reason: "" };
   });
   const toCheck = items.map((it, i) => ({ ...it, i })).filter((it) => out[it.i].ok);
