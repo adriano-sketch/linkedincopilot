@@ -20,7 +20,28 @@ const STOP: Record<Exclude<Lang, "other">, string[]> = {
   es: ["el", "los", "las", "del", "que", "para", "con", "una", "por", "pero", "más", "fue", "son", "está", "esto", "nuestro", "también", "ya", "cuando", "muy", "es", "en", "y"],
 };
 
-/** Rough language detection by stopword frequency (good enough for pt / en / es posts). */
+/**
+ * The post's language as an English name ("German", "Portuguese"), judged by the model that reads the
+ * post. This is what the writer is told. Anything that is not a plain language name is dropped.
+ */
+export function cleanLanguage(x: unknown): string {
+  const s = String(x ?? "").trim();
+  return /^[A-Za-z][A-Za-z ()'-]{1,30}$/.test(s) ? s : "";
+}
+
+/** The "write in this language" line for the writer. Without a known language: follow the post. */
+export function languageLine(language: string | null | undefined): string {
+  return cleanLanguage(language) || LANG_NAME.other;
+}
+
+const KNOWN_LANG: Record<string, Exclude<Lang, "other">> = { portuguese: "pt", english: "en", spanish: "es" };
+
+/**
+ * Rough language detection by stopword frequency. It only knows pt / en / es and it is wrong for
+ * every other language (German reads as English, French as Portuguese), so it must never decide
+ * which language to write in. It is used for one thing: catching a draft written in the wrong one
+ * of these three.
+ */
 export function detectLang(text: string): Lang {
   const words = String(text || "").toLowerCase().normalize("NFC").match(/[a-zà-ÿ]+/g) || [];
   if (words.length < 4) return "other";
@@ -48,7 +69,7 @@ const PRAISE_OPENERS = [
 ];
 
 /** Deterministic problems we never let through. Empty array = passes. */
-export function localIssues(comment: string, post: string, kind: PostKind = "on_topic"): string[] {
+export function localIssues(comment: string, post: string, kind: PostKind = "on_topic", postLanguage?: string | null): string[] {
   const c = String(comment || "").trim();
   const issues: string[] = [];
   if (c.length < 25) issues.push("too short to say anything specific");
@@ -65,7 +86,10 @@ export function localIssues(comment: string, post: string, kind: PostKind = "on_
   if (/https?:\/\/|www\./i.test(c)) issues.push("contains a link");
   if (/#\w/.test(c)) issues.push("contains a hashtag");
   if (/[—–]/.test(c)) issues.push("contains a dash typical of AI text");
-  const postLang = detectLang(post);
+  // With the language given by the model, only pt / en / es posts are checked here: for any other
+  // language the stopword detector cannot tell a right draft from a wrong one (the reviewer does).
+  const named = cleanLanguage(postLanguage);
+  const postLang: Lang = named ? (KNOWN_LANG[named.toLowerCase()] ?? "other") : detectLang(post);
   const commentLang = detectLang(c);
   if (postLang !== "other" && commentLang !== "other" && postLang !== commentLang) {
     issues.push(`written in ${LANG_NAME[commentLang]} but the post is in ${LANG_NAME[postLang]}`);
@@ -165,7 +189,7 @@ export function learnedFor(l: Learned | null | undefined, kind: PostKind, maxPos
 export type PostKind = "on_topic" | "milestone" | "off_topic";
 /** A post in which the author shows a need the sender's work addresses. "none" for everything else. */
 export type PostSignal = "opportunity" | "pain" | "none";
-export type Triage = { kind: PostKind; topic: string; reason: string; signal: PostSignal; signalReason: string };
+export type Triage = { kind: PostKind; topic: string; reason: string; signal: PostSignal; signalReason: string; language: string };
 
 /** True when the user told us what they work on. Without it there is no basis to judge relevance. */
 export function hasKnowledgeBase(f: SenderFacts): boolean {
@@ -205,23 +229,23 @@ Then pick:
 - "none": everything else, including: opinion and thought-leadership posts, rhetorical questions to the reader ("what would you find if you looked at your own numbers?"), sector statistics and funding news, reports of a busy month, articles, and general statements that a problem exists in the sector.
 When in doubt, "none": a false alarm costs the person's attention and their trust in the label.
 For "milestone" and "off_topic" posts the signal is always "none".
-Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words, in English>", "signal": "opportunity"|"pain"|"none", "signal_reason": "<for opportunity or pain: what THEY need or struggle with, as a plain statement starting with who (e.g. \"Acme Logistics is looking for...\"), written in English whatever the language of the post, max 18 words; otherwise empty>"}`;
+Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words, in English>", "signal": "opportunity"|"pain"|"none", "signal_reason": "<for opportunity or pain: what THEY need or struggle with, as a plain statement starting with who (e.g. \"Acme Logistics is looking for...\"), written in English whatever the language of the post, max 18 words; otherwise empty>", "language": "<the language the POST is written in, as its English name, e.g. \"German\", \"Portuguese\", \"Japanese\">"}`;
   const user = [
     `AUTHOR: ${author.name || "Unknown"} (${author.title || "role unknown"}${author.company ? `, ${author.company}` : ""})`,
     `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,
   ].join("\n\n");
   try {
-    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 260, temperature: 0 });
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 290, temperature: 0 });
     const m = text.match(/\{[\s\S]*\}/);
-    const r = JSON.parse(m ? m[0] : text) as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string };
+    const r = JSON.parse(m ? m[0] : text) as { kind?: string; topic?: string; reason?: string; signal?: string; signal_reason?: string; language?: string };
     const kind: PostKind = r.kind === "on_topic" || r.kind === "milestone" ? r.kind : "off_topic";
     const signalReason = String(r.signal_reason || "").trim().slice(0, 200);
     // A signal needs a stated reason; without one it is not shown as a signal.
     const signal: PostSignal = kind === "on_topic" && signalReason && (r.signal === "opportunity" || r.signal === "pain") ? r.signal : "none";
-    return { kind, topic: String(r.topic || "").slice(0, 60), reason: String(r.reason || "").slice(0, 140), signal, signalReason: signal === "none" ? "" : signalReason };
+    return { kind, topic: String(r.topic || "").slice(0, 60), reason: String(r.reason || "").slice(0, 140), signal, signalReason: signal === "none" ? "" : signalReason, language: cleanLanguage(r.language) };
   } catch (e) {
     console.error("post triage failed:", e instanceof Error ? e.message : e);
-    return { kind: "off_topic", topic: "", reason: "triage unavailable", signal: "none", signalReason: "" };
+    return { kind: "off_topic", topic: "", reason: "triage unavailable", signal: "none", signalReason: "", language: "" };
   }
 }
 
@@ -306,7 +330,7 @@ generic comments ("Impressive results!", "Incredible to see how technology...") 
 something. Those comments are worthless and hurt the sender's reputation. Never write one.
 
 Hard rules:
-- Write in the SAME language as the post. A post in Portuguese gets a comment in Portuguese.
+- Write in the SAME language as the post, whatever language that is. A post in German gets a comment in German, a post in Portuguese gets one in Portuguese. Never translate into the language of these instructions.
 - Anchor the comment on ONE concrete detail of the post: a number, a result, a method, a claim, a place. A reader must
   be able to tell which post it answers. Test: if the comment would still make sense under a different post, it fails.
 - Do not summarize, restate or paraphrase the post back to the author.
@@ -335,12 +359,12 @@ export type Review = { ok: boolean; reason: string };
 
 /** Strict second opinion. Fails closed: if the reviewer cannot answer, every draft is rejected. */
 export async function reviewComments(
-  items: { post: string; comment: string; author?: string | null }[],
+  items: { post: string; comment: string; author?: string | null; language?: string | null }[],
   f: SenderFacts,
   kind: PostKind = "on_topic",
 ): Promise<Review[]> {
   const out: Review[] = items.map((it) => {
-    const local = localIssues(it.comment, it.post, kind);
+    const local = localIssues(it.comment, it.post, kind, it.language);
     return local.length ? { ok: false, reason: local.join("; ") } : { ok: true, reason: "" };
   });
   const toCheck = items.map((it, i) => ({ ...it, i })).filter((it) => out[it.i].ok);
@@ -348,8 +372,9 @@ export async function reviewComments(
 
   const user = toCheck.map((it, idx) => [
     `[${idx}] POST${it.author ? ` by ${it.author}` : ""}:\n${String(it.post).slice(0, 1800)}`,
+    cleanLanguage(it.language) ? `POST LANGUAGE: ${cleanLanguage(it.language)}` : "",
     `DRAFT COMMENT:\n${it.comment}`,
-  ].join("\n")).join("\n=====\n");
+  ].filter(Boolean).join("\n")).join("\n=====\n");
   const milestoneSystem = `You are a strict editor protecting a professional's reputation on LinkedIn. Each post announces a milestone
 of its author and each draft is a congratulation. Reject any draft that:
 1. does not name the specific milestone (role, company, years) and could be pasted under any announcement;

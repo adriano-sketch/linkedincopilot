@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  commentRules, detectLang, hasKnowledgeBase, isSkip, LANG_NAME, loadLearned, reviewComments, triagePost, type PostKind, type SenderFacts,
+  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type PostKind, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray,
@@ -108,7 +108,7 @@ Reply ONLY with a JSON array: [{"index": <number>, "score": <0-100>, "reason": "
 
 /** Writes one comment (or a skip) per post. `retry` carries the reviewer's feedback for a second attempt. */
 async function writeComments(
-  batch: { post: any; signal: string; reason: string }[],
+  batch: { post: any; signal: string; reason: string; language?: string }[],
   facts: SenderFacts,
   retry: { previous: string; feedback: string }[] | null,
   kind: PostKind = "on_topic",
@@ -118,7 +118,7 @@ async function writeComments(
   const items = batch.map((d, idx) => [
     `[${idx}] Author: ${d.post.author_name || "Unknown"}`,
     d.post.author_headline ? `Headline: ${d.post.author_headline}` : "",
-    `Post language: ${LANG_NAME[detectLang(String(d.post.post_text))]}`,
+    `Post language: ${languageLine(d.language)}`,
     `Signal: ${d.signal}${d.reason ? ` (${d.reason})` : ""}`,
     `Post:\n${String(d.post.post_text).slice(0, 2000)}`,
     retry ? `Your previous draft was REJECTED: "${retry[idx].previous}"\nWhy: ${retry[idx].feedback}\nWrite a better one or skip.` : "",
@@ -156,7 +156,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
     .maybeSingle();
 
   let classified = 0;
-  const toDraft: { post: any; icp: Icp; signal: string; reason: string }[] = [];
+  const toDraft: { post: any; icp: Icp; signal: string; reason: string; language?: string }[] = [];
 
   // The user's comment knowledge base: subjects, what to stay out of, and their own voice.
   const facts: SenderFacts = {
@@ -183,18 +183,18 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
     try {
       const triage = await triagePost(String(p.post_text), { name: p.author_name, title: p.author_headline }, facts);
       if (triage.kind === "off_topic") { await ignore(`Off topic: ${triage.reason}`); kbSkipped++; continue; }
-      const item = [{ post: p, signal: triage.kind, reason: triage.topic || "" }];
+      const item = [{ post: p, signal: triage.kind, reason: triage.topic || "", language: triage.language }];
       const topic = triage.topic || "one of the subjects listed above";
       let [draft] = await writeComments(item, facts, null, triage.kind, topic, triage.signalReason);
       let rev = { ok: false, reason: draft.skip || "" };
       if (!draft.skip) {
-        [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: draft.comment }], facts, triage.kind);
+        [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: draft.comment, language: triage.language }], facts, triage.kind);
         if (!rev.ok) {
           const [second] = await writeComments(item, facts, [{ previous: draft.comment, feedback: rev.reason }], triage.kind, topic, triage.signalReason);
           draft = second;
           rev = second.skip
             ? { ok: false, reason: second.skip }
-            : (await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: second.comment }], facts, triage.kind))[0];
+            : (await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: second.comment, language: triage.language }], facts, triage.kind))[0];
         }
       }
       if (!draft.skip && rev.ok && !isSkip(draft.comment)) {
@@ -270,7 +270,7 @@ Sender (who will comment): ${me?.sender_name || "unknown"}, ${me?.sender_title |
 ICP:
 ${icpBrief(icp)}
 
-Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason": "<max 15 words, in English>", "signal_type": "...", "signal_reason": "<max 20 words, in English, say concretely what the opportunity is>", "priority": 0-100}]`;
+Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason": "<max 15 words, in English>", "signal_type": "...", "signal_reason": "<max 20 words, in English, say concretely what the opportunity is>", "priority": 0-100, "language": "<the language the POST is written in, as its English name, e.g. \"German\">"}]`;
 
       let results: any[] = [];
       try {
@@ -298,7 +298,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
         }).eq("id", p.id);
         if (upErr) console.error("post update failed:", upErr);
         classified++;
-        if (keep) toDraft.push({ post: p, icp, signal, reason: String(r.signal_reason || "") });
+        if (keep) toDraft.push({ post: p, icp, signal, reason: String(r.signal_reason || ""), language: cleanLanguage(r.language) });
       }
     }
   }
@@ -318,7 +318,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
     }
 
     const review = await reviewComments(batch.map((d, k) => ({
-      post: String(d.post.post_text), author: d.post.author_name, comment: drafts[k].comment,
+      post: String(d.post.post_text), author: d.post.author_name, comment: drafts[k].comment, language: d.language,
     })), facts);
     const retryIdx = batch.map((_, k) => k).filter((k) => !drafts[k].skip && !review[k].ok);
     if (retryIdx.length) {
@@ -327,7 +327,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
           previous: drafts[k].comment, feedback: review[k].reason,
         })));
         const review2 = await reviewComments(retryIdx.map((k, j) => ({
-          post: String(batch[k].post.post_text), author: batch[k].post.author_name, comment: again[j].comment,
+          post: String(batch[k].post.post_text), author: batch[k].post.author_name, comment: again[j].comment, language: batch[k].language,
         })), facts);
         retryIdx.forEach((k, j) => {
           drafts[k] = again[j];
