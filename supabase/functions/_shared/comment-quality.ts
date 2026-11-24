@@ -163,6 +163,68 @@ export function learnedFor(l: Learned | null | undefined, kind: PostKind, maxPos
 export type PostKind = "on_topic" | "milestone" | "off_topic";
 /** A post in which the author shows a need the sender's work addresses. "none" for everything else. */
 export type PostSignal = "opportunity" | "pain" | "none";
+/**
+ * What triagePost and reviewComments answer when the model could not be reached or its reply could not
+ * be read. Both still answer "no" (off topic, not approved) so that nothing is written by mistake, but
+ * this is not a judgement of the post or of the draft: callers must try again later, not record a
+ * decision. Test with triageUnavailable / reviewUnavailable.
+ */
+export const TRIAGE_UNAVAILABLE = "triage unavailable";
+export const REVIEW_UNAVAILABLE = "review unavailable";
+export const triageUnavailable = (t: { kind: string; reason: string }): boolean => t.kind === "off_topic" && t.reason === TRIAGE_UNAVAILABLE;
+export const reviewUnavailable = (r: { ok: boolean; reason: string }): boolean => !r.ok && r.reason === REVIEW_UNAVAILABLE;
+/**
+ * How many times a post is tried again after an outage before it is given up. A post that fails every
+ * time (its text makes the model answer in a way that cannot be read) must not be retried for ever.
+ */
+export const OUTAGE_MAX_TRIES = 6;
+/** Tries are an hour apart, so a short outage does not use them all up. */
+export const OUTAGE_WAIT_MS = 3600 * 1000;
+/**
+ * Posts found by the network search keep their count in last_error, as "unavailable: <n> <time of the
+ * last try>". Returns the count and whether the hour since the last try is still running.
+ */
+export function outageState(lastError: string | null | undefined, now = Date.now()): { tries: number; waiting: boolean } {
+  const m = /^unavailable: (\d+)(?: (\S+))?$/.exec(String(lastError || ""));
+  if (!m) return { tries: 0, waiting: false };
+  const at = m[2] ? Date.parse(m[2]) : NaN;
+  return { tries: Number(m[1]), waiting: Number.isFinite(at) && now - at < OUTAGE_WAIT_MS };
+}
+/** What tryLater writes: the next count, or the final "gave up" line (which the reading summary does not count as off topic). */
+export function outageNext(lastError: string | null | undefined, step: string, now = Date.now()): { giveUp: boolean; lastError: string } {
+  const tries = outageState(lastError, now).tries + 1;
+  return tries >= OUTAGE_MAX_TRIES
+    ? { giveUp: true, lastError: `gave up: ${step} unavailable after ${tries} tries` }
+    : { giveUp: false, lastError: `unavailable: ${tries} ${new Date(now).toISOString()}` };
+}
+/**
+ * True when a reply's entries are numbered the way the prompt asked: every index a whole number, inside
+ * the batch, and used once. Anything else (counting from 1, a repeated index) means no entry can be
+ * tied to its post with certainty, so the caller treats the whole reply as unreadable.
+ */
+export function numberedAsAsked(res: unknown, count: number): boolean {
+  if (!Array.isArray(res)) return false;
+  const seen = new Set<number>();
+  for (const r of res) {
+    const i = (r as { index?: unknown } | null)?.index;
+    if (typeof i !== "number" || !Number.isInteger(i) || i < 0 || i >= count || seen.has(i)) return false;
+    seen.add(i);
+  }
+  return true;
+}
+/**
+ * Splits posts into batches for one model call. Posts the caller marks as retried go alone, so a post
+ * the model cannot answer for does not take the others in its batch down with it. Callers mark a post
+ * from its second failure: one failure is usually a general outage, two point at the post.
+ */
+export function outageBatches<T>(items: T[], size: number, retried: (item: T) => boolean): T[][] {
+  const out: T[][] = [];
+  const fresh = items.filter((it) => !retried(it));
+  for (let i = 0; i < fresh.length; i += size) out.push(fresh.slice(i, i + size));
+  for (const it of items) if (retried(it)) out.push([it]);
+  return out;
+}
+
 export type Triage = { kind: PostKind; topic: string; reason: string; signal: PostSignal; signalReason: string; language: string };
 
 /** True when the user told us what they work on. Without it there is no basis to judge relevance. */
@@ -220,10 +282,12 @@ Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<fo
     const signalReason = String(r.signal_reason || "").trim().slice(0, 200);
     // A signal needs a stated reason; without one it is not shown as a signal.
     const signal: PostSignal = kind === "on_topic" && signalReason && (r.signal === "opportunity" || r.signal === "pain") ? r.signal : "none";
-    return { kind, topic: String(r.topic || "").slice(0, 60), reason: String(r.reason || "").slice(0, 140), signal, signalReason: signal === "none" ? "" : signalReason, language: cleanLanguage(r.language) };
+    // The model's own words can never be the outage marker.
+    const reason = String(r.reason || "").slice(0, 140);
+    return { kind, topic: String(r.topic || "").slice(0, 60), reason: reason === TRIAGE_UNAVAILABLE ? "off topic" : reason, signal, signalReason: signal === "none" ? "" : signalReason, language: cleanLanguage(r.language) };
   } catch (e) {
     console.error("post triage failed:", e instanceof Error ? e.message : e);
-    return { kind: "off_topic", topic: "", reason: "triage unavailable", signal: "none", signalReason: "", language: "" };
+    return { kind: "off_topic", topic: "", reason: TRIAGE_UNAVAILABLE, signal: "none", signalReason: "", language: "" };
   }
 }
 
@@ -390,7 +454,7 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
     toCheck.forEach((it, idx) => { out[it.i] = verdicts[idx]; });
   } catch (e) {
     console.error("comment review failed:", e instanceof Error ? e.message : e);
-    toCheck.forEach((it) => { out[it.i] = { ok: false, reason: "review unavailable" }; });
+    toCheck.forEach((it) => { out[it.i] = { ok: false, reason: REVIEW_UNAVAILABLE }; });
   }
   return out;
 }
@@ -398,7 +462,8 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
 type ReviewVerdict = { index: number; ok: boolean; reason?: string };
 /**
  * Turns the reviewer's reply into one verdict per draft, in order. A draft is approved only by a
- * single verdict that says ok:true for its index; no verdict is a rejection. Some replies are refused
+ * single verdict that says ok:true for its index; a draft with no verdict is not approved and is marked
+ * as not reviewed (REVIEW_UNAVAILABLE), to be tried again. Some replies are refused
  * whole (throws, and the caller rejects every draft), because they show the reviewer did not follow
  * the numbering, so no verdict in them can be tied to a draft with certainty: two verdicts for one
  * draft, an index outside the drafts that were sent, or an index that is not a whole number
@@ -416,9 +481,12 @@ export function readVerdicts(res: unknown, count: number): { ok: boolean; reason
     // Two verdicts for one draft: the reply is not what was asked for, so none of it is trusted.
     if (seen.has(r.index)) throw new Error("review reply judges a draft twice");
     seen.add(r.index);
-    out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: String(r.reason || "generic").slice(0, 200) };
+    // The reviewer's own words can never be the outage marker.
+    const reason = String(r.reason || "generic").slice(0, 200);
+    out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: reason === REVIEW_UNAVAILABLE ? "generic" : reason };
   }
-  return out.map((v) => v ?? { ok: false, reason: "not reviewed" });
+  // A draft the reviewer left out was not judged: that is an answer that could not be read, not a rejection.
+  return out.map((v) => v ?? { ok: false, reason: REVIEW_UNAVAILABLE });
 }
 
 /** True when the writer chose to skip ("SKIP", empty, or a JSON skip flag already unwrapped to ""). */
