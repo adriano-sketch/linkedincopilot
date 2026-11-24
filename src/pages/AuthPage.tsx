@@ -16,7 +16,11 @@ export default function AuthPage() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'recovery'>('signup');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'recovery'>(() => {
+    // Read from the address at once, so a "Log in" link does not flash the sign-up form first.
+    const m = searchParams.get('mode') || searchParams.get('type');
+    return m === 'recovery' ? 'recovery' : m === 'signin' ? 'signin' : 'signup';
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [recoveryPassword, setRecoveryPassword] = useState('');

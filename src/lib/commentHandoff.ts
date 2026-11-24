@@ -9,6 +9,9 @@ export const isActivityUrl = (url: string | null | undefined) => /\/recent-activ
 
 /** Copies without waiting, so that it can run inside the click itself. False when the browser refuses. */
 function copyNow(text: string): boolean {
+  // Selecting the hidden field takes the focus; it goes back to where the person was (the draft
+  // being edited, or the button) once the copy is done.
+  const before = document.activeElement as HTMLElement | null;
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -22,6 +25,8 @@ function copyNow(text: string): boolean {
     return ok;
   } catch {
     return false;
+  } finally {
+    try { before?.focus?.({ preventScroll: true }); } catch { /* nothing to restore */ }
   }
 }
 

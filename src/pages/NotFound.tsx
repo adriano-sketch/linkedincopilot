@@ -1,19 +1,18 @@
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import { usePageTitle } from "@/lib/pageTitle";
 
 const NotFound = () => {
   const location = useLocation();
 
   // The server answers 200 for every app address, so search engines are told here not to index this one.
   useEffect(() => {
-    const meta = document.createElement("meta");
-    meta.name = "robots";
-    meta.content = "noindex";
-    document.head.appendChild(meta);
-    const title = document.title;
-    document.title = "Page not found | Olanovo";
-    return () => { meta.remove(); document.title = title; };
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    const before = meta?.content;
+    if (meta) meta.content = "noindex";
+    return () => { if (meta && before != null) meta.content = before; };
   }, [location.pathname]);
+  usePageTitle("Page not found | Olanovo");
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted">

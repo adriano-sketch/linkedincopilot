@@ -150,9 +150,11 @@ export default function PrivacyPolicy() {
             The extension works inside your own browser, using your existing LinkedIn session. It
             opens LinkedIn pages, reads them, and sends the invitations described in
             section 1. It keeps to low daily limits, works only in the hours you choose, and pauses
-            by itself if LinkedIn shows a verification or warning page. To read facts about your
-            own account, such as whether it has a paid LinkedIn plan, the extension also calls
-            LinkedIn's own web endpoints inside your session, the same ones LinkedIn's site uses.
+            by itself if LinkedIn shows a verification or warning page. The extension also calls
+            LinkedIn's own web endpoints inside your session, the same ones LinkedIn's site uses:
+            to read facts about your own account, such as whether it has a paid LinkedIn plan,
+            and, in Sales Navigator, to read the search results and the public profile addresses
+            for the audiences you define.
           </p>
           <p>
             Olanovo is not affiliated with or endorsed by LinkedIn. LinkedIn's User

@@ -55,7 +55,6 @@ export default function Landing() {
     ref.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-
   // -- Data --
 
   const parts = [

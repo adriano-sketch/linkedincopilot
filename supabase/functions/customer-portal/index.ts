@@ -49,7 +49,8 @@ serve(async (req) => {
 
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${baseUrl}/dashboard`,
+      // Back to where the person opened the portal from (it now opens in the same tab).
+      return_url: `${baseUrl}/settings`,
     });
 
     return json({ url: portalSession.url });
