@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanLanguage, languageLine, localIssues } from '../../supabase/functions/_shared/comment-quality.ts';
+import { cleanLanguage, languageLine, localIssues, readVerdicts } from '../../supabase/functions/_shared/comment-quality.ts';
 
 describe('cleanLanguage', () => {
   it('accepts a language name in any script', () => {
@@ -50,5 +50,37 @@ describe('localIssues', () => {
 
   it('starts the opener check at the first letter of the comment, in any script', () => {
     ok('Согласен: amazing как раз то слово, которое здесь не подходит, важнее цифры по сменам.');
+  });
+});
+
+describe('readVerdicts', () => {
+  it('gives one verdict per draft, in order', () => {
+    expect(readVerdicts([{ index: 1, ok: false, reason: 'generic praise' }, { index: 0, ok: true }], 2))
+      .toEqual([{ ok: true, reason: '' }, { ok: false, reason: 'generic praise' }]);
+  });
+
+  it('rejects a draft that got no verdict', () => {
+    expect(readVerdicts([{ index: 0, ok: true }], 2)[1]).toEqual({ ok: false, reason: 'not reviewed' });
+  });
+
+  it('rejects a draft that got two verdicts, whatever their order', () => {
+    expect(readVerdicts([{ index: 0, ok: false }, { index: 0, ok: true }], 1)[0].ok).toBe(false);
+    expect(readVerdicts([{ index: 0, ok: true }, { index: 0, ok: false }], 1)[0].ok).toBe(false);
+  });
+
+  it('refuses the whole reply when an index is not a whole number', () => {
+    expect(() => readVerdicts([{ index: '0', ok: false }, { index: 0, ok: true }], 1)).toThrow();
+    expect(() => readVerdicts([{ ok: true }], 1)).toThrow();
+    expect(() => readVerdicts([{ index: 0.5, ok: true }], 1)).toThrow();
+    expect(() => readVerdicts({ index: 0, ok: true }, 1)).toThrow();
+  });
+
+  it('refuses the whole reply when a verdict names a draft that was not sent (numbering from 1)', () => {
+    expect(() => readVerdicts([{ index: 1, ok: true }, { index: 2, ok: false }], 2)).toThrow();
+    expect(() => readVerdicts([{ index: -1, ok: true }], 1)).toThrow();
+  });
+
+  it('approves only on ok: true', () => {
+    expect(readVerdicts([{ index: 0, ok: 'true' }], 1)[0].ok).toBe(false);
   });
 });

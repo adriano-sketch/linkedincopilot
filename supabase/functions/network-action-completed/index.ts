@@ -13,7 +13,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, effectiveUserId, json, unauthorized } from "../_shared/auth.ts";
 import {
-  buildConnectionsSearchUrl, buildSalesNavConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, postFingerprint, startOfNextMonthUtc,
+  buildConnectionsSearchUrl, buildSalesNavConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, postFingerprint, startOfNextMonthUtc, samePost,
 } from "../_shared/network.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -287,6 +287,30 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
     for (const r of leadsBusy || []) { const u = normalizeProfileUrl(r.linkedin_url); if (u) busyAuthors.add(u); }
   }
 
+  // Posts already stored for these authors, in any state. The contact-by-contact check stores a post
+  // under another key, so the unique key alone does not stop the same post from entering twice, and a
+  // post the user skipped there must not come back from here.
+  const seenByAuthor = new Map<string, string[]>();
+  {
+    const authors = [...new Set(posts.map((p) => normalizeProfileUrl(p?.author_profile_url)).filter((u): u is string => !!u))];
+    if (authors.length) {
+      const { data: stored, error: storedErr } = await supabase.from("monitored_posts")
+        .select("author_profile_url, post_text").eq("user_id", userId).in("author_profile_url", authors)
+        .order("created_at", { ascending: false }).limit(1000);
+      // Without this list nothing can be told apart from what is already there: store nothing this run.
+      if (storedErr) {
+        console.error("stored posts lookup failed:", storedErr);
+        if (runId) await supabase.from("network_search_runs").update({ status: "failed", completed_at: now }).eq("id", runId).eq("user_id", userId);
+        return { ok: true };
+      }
+      for (const r of stored || []) {
+        const u = normalizeProfileUrl(r.author_profile_url);
+        if (!u || !r.post_text) continue;
+        (seenByAuthor.get(u) || seenByAuthor.set(u, []).get(u)!).push(String(r.post_text));
+      }
+    }
+  }
+
   const rows = [];
   for (const p of posts) {
     let urn = typeof p.urn === "string" ? p.urn.trim() : "";
@@ -294,6 +318,7 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
     if (ownUrl && authorUrl === ownUrl) continue; // never comment on our own posts
     if (!authorUrl) continue; // company pages / unknown authors: skip
     if (!p.text || String(p.text).trim().length < 40) continue;
+    if ((seenByAuthor.get(authorUrl) || []).some((t) => samePost(t, String(p.text)))) continue;
     let postUrl = `https://www.linkedin.com/feed/update/${urn}/`;
     if (!/^urn:li:(activity|share|ugcPost):/i.test(urn)) {
       // The 2026 search page carries no post id. The post is identified by its author and its

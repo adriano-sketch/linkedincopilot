@@ -257,6 +257,20 @@ export function postFingerprint(text: string): string {
   return (text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 80);
 }
 
+/**
+ * The same post, whichever way it was found. Posts are stored under different keys depending on the
+ * source (a contact's activity page, or a search), and neither page gives a post id, so two readings
+ * of one post are recognized by the author (checked by the caller) and by their opening words. The
+ * shorter reading decides how many words are compared: a search result can be cut earlier than the
+ * activity page. Under 30 characters there is too little to tell two posts apart.
+ */
+export function samePost(a: string | null | undefined, b: string | null | undefined): boolean {
+  const fa = postFingerprint(a || "");
+  const fb = postFingerprint(b || "");
+  const n = Math.min(fa.length, fb.length);
+  return n >= 30 && fa.slice(0, n) === fb.slice(0, n);
+}
+
 /** LinkedIn post (content) search URL: last 24h, newest first. */
 export function buildPostSearchUrl(icp: Icp): string {
   const topics = (icp.post_topics && icp.post_topics.length ? icp.post_topics : icp.keywords || [])
@@ -420,12 +434,22 @@ export function parseWriterReply(text: string, expected: number): WriterEntry[] 
       if (!Array.isArray(repaired) || repaired.length > expected) throw first;
       const seen = new Set<number>();
       for (const e of repaired as WriterEntry[]) {
-        const i = e?.index ?? 0;
-        if (!e || typeof e !== "object" || !Number.isInteger(i) || i < 0 || i >= expected || seen.has(i)) throw first;
+        if (!e || typeof e !== "object") throw first;
+        // Without an index the target post is known only when a single post was asked for.
+        if (e.index === undefined) {
+          if (expected !== 1) throw first;
+          e.index = 0;
+        }
+        const i = e.index;
+        if (!Number.isInteger(i) || i < 0 || i >= expected || seen.has(i)) throw first;
         seen.add(i);
         const hasComment = typeof e.comment === "string" && e.comment.trim() !== "";
-        if (hasComment && (e.skip === true || (typeof e.skip_reason === "string" && e.skip_reason !== ""))) throw first;
+        // A comment entry never carries a skip_reason, not even an empty one: its presence means the
+        // comment was cut where its own text looked like the next key.
+        if (hasComment && (e.skip === true || "skip_reason" in e)) throw first;
         if (!hasComment && e.skip !== true) throw first;
+        // "skip" is true or false; anything else after a repair is a piece of the comment.
+        if ("skip" in e && typeof e.skip !== "boolean") throw first;
       }
       return repaired as WriterEntry[];
     } catch {
@@ -490,8 +514,10 @@ export function parseRepaired(json: string, allowedKeys: readonly string[]): unk
   };
   walk(parsed);
   // Keys as written in the text; more of them than in the parsed value means one was repeated.
-  // Text values are escaped by now, so a `"word":` inside a comment reads `\"word\":` and is not counted.
-  const written = (repaired.match(/(?<!\\)"[A-Za-z_]+"\s*:/g) || []).length;
+  // The text is valid JSON by now, so reading it string by string from the start finds every key,
+  // however it is spelled (`"\u0069ndex"` is `index`), and never one that sits inside a text value.
+  let written = 0;
+  for (const m of repaired.matchAll(/"(?:[^"\\]|\\[\s\S])*"(\s*:)?/g)) if (m[1]) written++;
   if (written !== keys) throw new Error("repeated key after repair");
   return parsed;
 }

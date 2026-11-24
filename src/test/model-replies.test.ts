@@ -99,3 +99,33 @@ describe('repairJsonStrings', () => {
     expect(repairJsonStrings(ok)).toBe(ok);
   });
 });
+
+describe('repaired writer replies: index and leftover keys', () => {
+  const refused = (reply: string, expected = 1) => expect(() => parseWriterReply(reply, expected)).toThrow();
+
+  it('gives a single repaired entry without an index the index 0', () => {
+    const out = parseWriterReply('[{"comment":"Says "x" twice"}]', 1);
+    expect(out).toEqual([{ index: 0, comment: 'Says "x" twice' }]);
+  });
+
+  it('refuses a repaired entry without an index when several posts were asked for', () => {
+    refused('[{"comment":"Says "x" twice"}]', 2);
+  });
+
+  it('refuses a comment followed by a skip_reason, even an empty one', () => {
+    refused('[{"index":0,"skip":false,"comment":"Treat "x" as a delimiter. ", "skip_reason": ""}]');
+  });
+
+  it('refuses a skip that is not true or false', () => {
+    refused('[{"index":0,"comment":"Says "x" twice", "skip": "no"}]');
+  });
+
+  it('refuses a key repeated under another spelling', () => {
+    refused('[{"index":0,"\\u0069ndex":1,"comment":"Says "x" twice"}]', 2);
+  });
+
+  it('still accepts a comment whose text contains a quoted word and a colon', () => {
+    const out = parseWriterReply('[{"index":0,"skip":false,"comment":"The "why": nobody asked the fitters."}]', 1);
+    expect(out[0].comment).toBe('The "why": nobody asked the fitters.');
+  });
+});

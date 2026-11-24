@@ -15,7 +15,7 @@ import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
   commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
-import { callClaude, cleanComment, modelWriter, parseWriterReply } from "../_shared/network.ts";
+import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
 
 // Deployed with verify_jwt=false: authentication is enforced here.
 //  - service callers (schedule-actions, pg_cron) may target any lead.
@@ -244,6 +244,42 @@ serve(async (req) => {
       return json({ success: true, skipped: "post already decided", lead_id: campaign_lead_id });
     }
 
+    // The search of the user's network stores posts under another key. Without this check a contact who
+    // is in a list and also turns up in a search gets two drafts for one post, and a post skipped in one
+    // place comes back from the other. One touch per person: a draft already waiting for this author, or
+    // a comment published to them in the last 7 days, also rests the lead.
+    const authorUrl = normalizeProfileUrl(lead.linkedin_url);
+    if (authorUrl) {
+      const { data: theirs, error: theirsErr } = await supabase.from("monitored_posts")
+        .select("id, status, post_text, commented_at, created_at")
+        .eq("user_id", lead.user_id).in("author_profile_url", [...new Set([authorUrl, String(lead.linkedin_url)])])
+        .order("created_at", { ascending: false }).limit(60);
+      if (theirsErr) {
+        console.error("generate-comment: author lookup failed", theirsErr);
+        return fail("Failed to check the approval queue", 500);
+      }
+      const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+      const WAITING = ["new", "pending", "approved", "queued"];
+      // "Busy" has an age limit, so a draft nobody ever decides cannot keep an author out for good:
+      // a draft counts while it is at most 14 days old, a post not yet classified for 2 days.
+      const since = (days: number) => new Date(Date.now() - days * 864e5).toISOString();
+      // deno-lint-ignore no-explicit-any
+      const waitingNow = (r: any) => r.status === "new" ? r.created_at >= since(2) : WAITING.includes(r.status) && r.created_at >= since(14);
+      // deno-lint-ignore no-explicit-any
+      const other = (theirs || []).filter((r: any) => r.id !== existing?.id);
+      // deno-lint-ignore no-explicit-any
+      const sameOne = other.find((r: any) => [...WAITING, "posted", "dismissed"].includes(r.status) && samePost(r.post_text, postText));
+      // deno-lint-ignore no-explicit-any
+      const busy = other.find((r: any) => waitingNow(r) || (r.status === "posted" && r.commented_at && r.commented_at >= weekAgo));
+      const hit = sameOne || busy;
+      if (hit) {
+        const why = sameOne ? `same post already ${hit.status} (found by the network search)` : `author already has a comment ${hit.status}`;
+        if (!(await restLead("comment_skipped_already_seen", { reason: why }))) return fail("Failed to update the lead", 500);
+        console.log(`generate-comment: lead ${campaign_lead_id} rests (${why})`);
+        return json({ success: true, skipped: sameOne ? "post already seen" : "author already has a comment", lead_id: campaign_lead_id });
+      }
+    }
+
     const triage = await triagePost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
     if (triage.kind === "off_topic") {
       await restLead("comment_skipped_off_topic", { reason: triage.reason });
@@ -345,7 +381,8 @@ serve(async (req) => {
         post_url: postUrl || null,
         author_name: lead.full_name || null,
         author_headline: lead.profile_headline || lead.title || null,
-        author_profile_url: lead.linkedin_url || null,
+        // Stored in the one form the search looks authors up by.
+        author_profile_url: authorUrl || lead.linkedin_url || null,
         post_text: String(lead.post_content).slice(0, 5000),
         suggested_comment: commentText,
         status: "pending",
