@@ -64,7 +64,7 @@ export default function Landing() {
       icon: MessageCircle,
       title: 'Stay close',
       desc: 'Olanovo finds recent posts by people you already know, about the subjects you care about, and drafts a comment from your point of view.',
-      bullets: ['You tell it once what you think about each subject', 'A draft waits for you in the Inbox', 'You open the post and publish the comment yourself'],
+      bullets: ['You tell it once what you think about each subject', 'A draft waits for you in the Inbox, in the language of the post', 'You open the post and publish the comment yourself'],
     },
     {
       icon: Radar,
@@ -109,6 +109,7 @@ export default function Landing() {
     { q: 'Do I need Sales Navigator?', a: 'No. Finding posts by your own connections and drafting comments works with a free LinkedIn account. Sales Navigator is recommended only if you want to find new people by audience, because its filters (job title, seniority, region, company size) make that search much more precise.' },
     { q: 'How many invitations does it send?', a: 'You set a weekly number and Olanovo spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day. The best matches for your audience go first.' },
     { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. Drafts are written with AI. The data is not sold and is not used to train AI models. The privacy policy explains what is processed and why.' },
+    { q: 'Does it work in my language?', a: 'Yes. Each comment is drafted in the language of the post it answers: a contact who posts in German gets a draft in German, one who posts in Japanese gets it in Japanese, and the same goes for French, Spanish, Portuguese and others. Invitations go out with the note you wrote, so they are in the language you write in, and each audience can have its own note. The Olanovo screens are in English.' },
     { q: 'Can I edit or reject what it writes?', a: 'Every comment is a draft you post yourself: edit it, skip it or ignore it. Invitation notes are written by you. Olanovo does not write or send messages.' },
     { q: 'What does it cost?', a: 'You try everything free for 14 days, with no credit card. After that there is one plan: Pro, $69 a month per LinkedIn account, or $690 a year. If you do not subscribe when the trial ends, Olanovo stops looking for posts, writing drafts and sending invitations; what is already in your Inbox stays there.' },
   ];
@@ -213,7 +214,7 @@ export default function Landing() {
         </div>
         <div className="border-t border-white/[0.06] bg-[#15111F]">
           <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-5 flex flex-wrap justify-between gap-4 font-mono-label text-xs text-slate-400">
-            <span>Drafts in the language of the post</span>
+            <span>Drafts in the language of each post, from German to Japanese</span>
             <span>You post every comment</span>
             <span>Low daily limits</span>
             <span>Sales Navigator optional</span>
