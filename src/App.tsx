@@ -19,8 +19,24 @@ import HelpPage from "./pages/HelpPage";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 import ScrollToTop from "./components/ScrollToTop";
+import { Analytics } from "@vercel/analytics/react";
 
 const queryClient = new QueryClient();
+
+// What follows "?" or "#" in an address can carry a sign-in or password-reset token, so it is not
+// sent with a page view. Only the parameters that say which campaign a visit came from are kept.
+const CAMPAIGN_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "ref"];
+const pageViewWithoutTokens = <T extends { url: string }>(event: T): T => {
+  try {
+    const u = new URL(event.url);
+    const kept = new URLSearchParams();
+    for (const k of CAMPAIGN_PARAMS) { const v = u.searchParams.get(k); if (v) kept.set(k, v.slice(0, 80)); }
+    const q = kept.toString();
+    return { ...event, url: `${u.origin}${u.pathname}${q ? `?${q}` : ""}` };
+  } catch {
+    return { ...event, url: event.url.split(/[?#]/)[0] };
+  }
+};
 
 // The public pages are also rendered at build time by src/prerender.tsx, inside a copy of these
 // providers. A provider added here that Landing, PrivacyPolicy or Terms needs must be added there too.
@@ -30,6 +46,8 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        {/* Page-view counts only, no cookies. */}
+        <Analytics beforeSend={pageViewWithoutTokens} />
         <BrowserRouter>
           <ScrollToTop />
           <Routes>

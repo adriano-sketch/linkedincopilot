@@ -253,7 +253,7 @@ export default function CommentQueue({ initialFilter = 'pending', hidePending = 
               {filter === 'pending'
                 ? (campaignId
                   ? 'Nothing to review right now. A draft appears here each time one of your contacts publishes a post worth commenting on.'
-                  : 'Nothing to review right now. New posts from your ICPs are checked a few times a day.')
+                  : 'Nothing to review right now. New posts from your audiences are checked a few times a day.')
                 : 'Nothing here yet.'}
             </p>
           </CardContent>

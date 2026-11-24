@@ -144,7 +144,7 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
           <CommandItem onSelect={() => go('/dashboard')}><Send className="mr-2 h-4 w-4" />Lists</CommandItem>
           <CommandItem onSelect={() => go('/dashboard?new=1')}><Plus className="mr-2 h-4 w-4" />New list</CommandItem>
           <CommandItem onSelect={() => go('/network')}><Radar className="mr-2 h-4 w-4" />Network · new connections</CommandItem>
-          <CommandItem onSelect={() => go('/network?tab=icps')}><Radar className="mr-2 h-4 w-4" />Network · ICPs</CommandItem>
+          <CommandItem onSelect={() => go('/network?tab=icps')}><Radar className="mr-2 h-4 w-4" />Network · Audiences</CommandItem>
           <CommandItem onSelect={() => go('/leads')}><Upload className="mr-2 h-4 w-4" />Add people</CommandItem>
           <CommandItem onSelect={() => go('/settings')}><Settings className="mr-2 h-4 w-4" />Settings</CommandItem>
           <CommandItem onSelect={() => go('/help')}><HelpCircle className="mr-2 h-4 w-4" />Help</CommandItem>

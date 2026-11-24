@@ -14,12 +14,12 @@ const TABS = ['connections', 'icps', 'history', 'limits'] as const;
 type Tab = typeof TABS[number];
 const LABELS: Record<Tab, string> = {
   connections: 'New connections',
-  icps: 'ICPs',
+  icps: 'Audiences',
   history: 'Comment history',
   limits: 'Safety limits',
 };
 const SUBTITLES: Record<Tab, string> = {
-  connections: 'People who fit your ICPs and accepted your invite.',
+  connections: 'People who fit your audiences and accepted your invite.',
   icps: 'Describe who you want to meet. Olanovo searches LinkedIn for them and watches what they post.',
   history: 'Comments that are scheduled, posted or skipped. New drafts wait for you in the Inbox.',
   limits: 'Olanovo stays inside these limits and pauses itself if LinkedIn pushes back.',

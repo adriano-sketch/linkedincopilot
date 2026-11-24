@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Save, MessageSquareText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProfile } from '@/hooks/useProfile';
+import { registerUnsavedCheck } from '@/lib/unsavedChanges';
 
 type Kb = { comment_topics: string; comment_avoid: string; comment_views: string; comment_examples: string; comment_search_terms: string };
 const LIMITS: Record<keyof Kb, number> = { comment_topics: 600, comment_avoid: 400, comment_views: 2500, comment_examples: 1200, comment_search_terms: 600 };
@@ -31,6 +32,18 @@ export default function CommentKnowledgeBase() {
       comment_examples: p.comment_examples || '', comment_search_terms: (p.comment_search_terms || []).join('\n'),
     });
   }, [profile]);
+
+  // Leaving the page for checkout or billing asks first when something typed here was not saved.
+  // Compared the way save() stores it, so spaces at the ends or a reordered separator do not count.
+  const termsOf = (text: string) => Array.from(new Set(text.split(/[\n;,]+/).map(t => t.trim()).filter(Boolean))).slice(0, 15).join('\n');
+  const unsavedRef = useRef<() => boolean>(() => false);
+  unsavedRef.current = () => {
+    if (!profile) return false;
+    const p = profile as unknown as Partial<Record<Exclude<keyof Kb, 'comment_search_terms'>, string | null>> & { comment_search_terms?: string[] | null };
+    return (['comment_topics', 'comment_avoid', 'comment_views', 'comment_examples'] as const).some(k => form[k].trim() !== (p[k] || '').trim())
+      || termsOf(form.comment_search_terms) !== termsOf((p.comment_search_terms || []).join('\n'));
+  };
+  useEffect(() => registerUnsavedCheck(() => unsavedRef.current()), []);
 
   const set = (k: keyof Kb) => (e: React.ChangeEvent<HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value.slice(0, LIMITS[k]) }));
   const save = async () => {

@@ -59,7 +59,7 @@ export default function PrivacyPolicy() {
         <Section title="2. Data We Collect">
           <p className="mb-4">
             Olanovo collects and processes only the data needed to do what is described
-            above:
+            above, and to see how its own site is used:
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>
@@ -87,6 +87,12 @@ export default function PrivacyPolicy() {
               <strong className="text-gray-300">Authentication tokens:</strong>{' '}
               Your session token for our backend, stored locally in Chrome's storage.
             </li>
+            <li>
+              <strong className="text-gray-300">Visits to olanovo.com:</strong>{' '}
+              Which pages are opened, the site the visit came from, the approximate location
+              (country, region, city), and the kind of device, operating system and browser. They
+              are counted without cookies and used as totals only, not tied to your account.
+            </li>
           </ul>
         </Section>
 
@@ -97,8 +103,8 @@ export default function PrivacyPolicy() {
               We do not read your LinkedIn messages.
             </li>
             <li>
-              We do not collect browsing history, cookies, or data from any website other
-              than linkedin.com.
+              The extension does not collect browsing history, cookies, or data from any
+              website other than linkedin.com.
             </li>
             <li>
               We do not sell, rent, or share personal data with third parties for advertising or

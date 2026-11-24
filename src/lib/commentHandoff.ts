@@ -58,9 +58,13 @@ export async function openPostWithDraft(postUrl: string | null | undefined, text
   // is blocked by some browsers, and a copy attempted after the new tab took the focus can fail.
   const draft = text.trim();
   let copied = copyNow(draft);
+  // If the browser refused that copy, the other way is started now, while this page still has the
+  // focus: once the new tab is open, a copy started from here can be rejected. Started, not waited
+  // for, so the tab still opens inside the click.
+  const fallback = copied ? null : copyText(draft);
   const url = cleanPostUrl(postUrl);
   let opened = false;
   if (url) { window.open(url, '_blank', 'noopener,noreferrer'); opened = true; }
-  if (!copied) copied = await copyText(draft);
+  if (fallback) copied = await fallback;
   return { copied, opened };
 }

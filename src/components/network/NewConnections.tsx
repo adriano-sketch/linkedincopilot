@@ -65,12 +65,12 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
 
       {stats?.by_icp?.length ? (
         <Card className="rounded-2xl">
-          <CardHeader className="pb-2"><CardTitle className="text-base">By ICP</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">By audience</CardTitle></CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ICP</TableHead>
+                  <TableHead>Audience</TableHead>
                   <TableHead className="text-right">Invited</TableHead>
                   <TableHead className="text-right">Accepted</TableHead>
                   <TableHead className="text-right">Rate</TableHead>
@@ -119,7 +119,7 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead className="hidden md:table-cell">Why it fits</TableHead>
-                  <TableHead>ICP</TableHead>
+                  <TableHead>Audience</TableHead>
                   <TableHead className="text-right">{list === 'accepted' ? 'Connected' : list === 'invited' ? 'Invited' : 'Fit'}</TableHead>
                 </TableRow>
               </TableHeader>

@@ -34,7 +34,7 @@ const PLAN_LABEL: Record<string, string> = {
   follow_profile: 'Follow profiles',
   check_connection_status: 'Check who accepted',
   network_search_people: 'Search LinkedIn for people who fit',
-  network_search_posts: 'Look for fresh posts in your ICPs',
+  network_search_posts: 'Look for fresh posts in your audiences',
   network_sync_connections: 'Sync accepted invites',
   network_withdraw_invites: 'Withdraw stale invites',
 };
@@ -262,8 +262,8 @@ export default function Today() {
                 </div>
                 {s.opportunities.length === 0 ? (
                   <p className="m-0 py-6 text-sm text-muted-foreground">
-                    No buying signals yet. When someone in your ICPs posts about hiring, a problem or a vendor search, it shows up here.
-                    {!s.network_active && <> <Link to="/network?tab=icps" className="text-gold-dark font-medium">Set up an ICP</Link> to start.</>}
+                    No buying signals yet. When someone in your audiences posts about hiring, a problem or a vendor search, it shows up here.
+                    {!s.network_active && <> <Link to="/network?tab=icps" className="text-gold-dark font-medium">Set up an audience</Link> to start.</>}
                   </p>
                 ) : s.opportunities.map(o => (
                   <div key={o.id} className="flex gap-3 py-3 border-t border-border/70 first-of-type:border-t-0">

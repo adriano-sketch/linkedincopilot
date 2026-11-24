@@ -79,7 +79,7 @@ export default function IcpManager() {
 
   const submit = async () => {
     if (!form) return;
-    if (!form.name.trim()) { toast.error('Give this ICP a name'); return; }
+    if (!form.name.trim()) { toast.error('Give this audience a name'); return; }
     if (toList(form.titles).length === 0 && !form.description.trim()) {
       toast.error('Add at least one target title or a description');
       return;
@@ -114,28 +114,28 @@ export default function IcpManager() {
         // reset search pagination when the targeting changes
         ...(form.id ? { people_search_page: 0, people_search_exhausted_at: null } : {}),
       } as Partial<Icp> & { name: string });
-      toast.success(form.id ? 'ICP updated' : 'ICP created. The extension starts working on it in the next cycle.');
+      toast.success(form.id ? 'Audience updated' : 'Audience created. The extension starts working on it in the next cycle.');
       setForm(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not save ICP');
+      toast.error(e instanceof Error ? e.message : 'Could not save the audience');
     }
   };
 
   const del = async (i: Icp) => {
-    if (!window.confirm(`Delete ICP "${i.name}"? People and posts already found are kept.`)) return;
-    try { await remove.mutateAsync(i.id); toast.success('ICP deleted'); } catch { toast.error('Could not delete'); }
+    if (!window.confirm(`Delete the audience "${i.name}"? People and posts already found are kept.`)) return;
+    try { await remove.mutateAsync(i.id); toast.success('Audience deleted'); } catch { toast.error('Could not delete'); }
   };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Ideal customer profiles</h2>
+          <h2 className="text-lg font-semibold">Your audiences</h2>
           <p className="text-sm text-muted-foreground">
-            Each ICP drives both features: finding people to connect with, and finding their posts to comment on.
+            Each audience drives both features: finding people to connect with, and finding their posts to comment on.
           </p>
         </div>
-        <Button onClick={() => setForm({ ...empty })}><Plus className="w-4 h-4 mr-1" /> New ICP</Button>
+        <Button onClick={() => setForm({ ...empty })}><Plus className="w-4 h-4 mr-1" /> New audience</Button>
       </div>
 
       {isLoading ? (
@@ -144,8 +144,8 @@ export default function IcpManager() {
         <Card>
           <CardContent className="py-10 text-center space-y-3">
             <Target className="w-8 h-8 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No ICP yet. Describe who you want in your network. Olanovo looks for them and for what they post.</p>
-            <Button onClick={() => setForm({ ...empty })}><Plus className="w-4 h-4 mr-1" /> Create your first ICP</Button>
+            <p className="text-sm text-muted-foreground">No audience yet. Describe who you want in your network. Olanovo looks for them and for what they post.</p>
+            <Button onClick={() => setForm({ ...empty })}><Plus className="w-4 h-4 mr-1" /> Create your first audience</Button>
           </CardContent>
         </Card>
       ) : (
@@ -185,7 +185,7 @@ export default function IcpManager() {
       <Dialog open={!!form} onOpenChange={o => !o && setForm(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{form?.id ? 'Edit ICP' : 'New ICP'}</DialogTitle>
+            <DialogTitle>{form?.id ? 'Edit audience' : 'New audience'}</DialogTitle>
             <DialogDescription>Separate multiple values with commas.</DialogDescription>
           </DialogHeader>
           {form && (
@@ -277,7 +277,7 @@ export default function IcpManager() {
               <div className="space-y-1">
                 <Label>Post topics to watch</Label>
                 <Input value={form.post_topics} onChange={e => set('post_topics', e.target.value)} placeholder="Subjects they post about, separated by commas" />
-                <p className="text-xs text-muted-foreground">Used to find recent posts from people in this ICP. If empty, the keywords are used.</p>
+                <p className="text-xs text-muted-foreground">Used to find recent posts from people in this audience. If empty, the keywords are used.</p>
               </div>
               <div className="space-y-2">
                 <div className="flex items-baseline justify-between gap-2">
