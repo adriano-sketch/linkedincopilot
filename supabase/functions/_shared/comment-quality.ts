@@ -205,7 +205,7 @@ Then pick:
 - "none": everything else, including: opinion and thought-leadership posts, rhetorical questions to the reader ("what would you find running in your plant?"), sector statistics and funding news, reports of a busy month, articles, and general statements that a problem exists in the sector.
 When in doubt, "none": a false alarm costs the person's attention and their trust in the label.
 For "milestone" and "off_topic" posts the signal is always "none".
-Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words>", "signal": "opportunity"|"pain"|"none", "signal_reason": "<for opportunity or pain: what THEY need or struggle with, as a plain statement starting with who (e.g. \"A Sanepar procura...\"), written in the language of the post, max 18 words; otherwise empty>"}`;
+Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<for on_topic: the matching subject, in the person's words, max 6 words; otherwise empty>", "reason": "<max 14 words, in English>", "signal": "opportunity"|"pain"|"none", "signal_reason": "<for opportunity or pain: what THEY need or struggle with, as a plain statement starting with who (e.g. \"Acme Logistics is looking for...\"), written in English whatever the language of the post, max 18 words; otherwise empty>"}`;
   const user = [
     `AUTHOR: ${author.name || "Unknown"} (${author.title || "role unknown"}${author.company ? `, ${author.company}` : ""})`,
     `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,

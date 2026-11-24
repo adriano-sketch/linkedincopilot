@@ -76,7 +76,7 @@ More mutual connections is a small positive signal, never the main one.
 ICP:
 ${icpBrief(icp)}
 
-Reply ONLY with a JSON array: [{"index": <number>, "score": <0-100>, "reason": "<max 15 words, in Portuguese>"}]`;
+Reply ONLY with a JSON array: [{"index": <number>, "score": <0-100>, "reason": "<max 15 words, in English>"}]`;
 
       let results: { index: number; score: number; reason: string }[] = [];
       try {
@@ -270,7 +270,7 @@ Sender (who will comment): ${me?.sender_name || "unknown"}, ${me?.sender_title |
 ICP:
 ${icpBrief(icp)}
 
-Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason": "<max 15 words, Portuguese>", "signal_type": "...", "signal_reason": "<max 20 words, Portuguese, say concretely what the opportunity is>", "priority": 0-100}]`;
+Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason": "<max 15 words, in English>", "signal_type": "...", "signal_reason": "<max 20 words, in English, say concretely what the opportunity is>", "priority": 0-100}]`;
 
       let results: any[] = [];
       try {

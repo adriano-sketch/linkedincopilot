@@ -51,7 +51,7 @@ For each person, rate from 0 to 100 how well they match the TARGET description, 
 Judge the role and responsibilities, not exact words: "Maintenance Manager", "Gerente de Manutenção", "Reliability Engineer" and "Coordenador de Utilidades" can all match a maintenance target.
 Students, job seekers and people whose current role is unknown score at most 40.
 Reply ONLY with a JSON array, one object per person, in the same order:
-[{"i": <index>, "score": <0-100>, "reason": "<max 12 words, in the target's language>"}]`;
+[{"i": <index>, "score": <0-100>, "reason": "<max 12 words, in English>"}]`;
 
 const SYSTEM_KEYWORDS = `You turn a description of target people into LinkedIn people-search keywords.
 Return 4 to 8 short job-title or responsibility terms, mixing Portuguese and English when the description suggests Brazil, and the description's own language otherwise.
