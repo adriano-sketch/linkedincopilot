@@ -398,10 +398,11 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rej
 type ReviewVerdict = { index: number; ok: boolean; reason?: string };
 /**
  * Turns the reviewer's reply into one verdict per draft, in order. A draft is approved only by a
- * single verdict that says ok:true for its index. No verdict, or two for the same draft, is a
- * rejection. An index outside the drafts that were sent, or one that is not a whole number ("0", 0.5, missing) is not a verdict for any draft,
- * and "0" beside 0 would let a second verdict overwrite the first, so the whole reply is refused
- * (throws) and the caller rejects every draft. Exported for tests.
+ * single verdict that says ok:true for its index; no verdict is a rejection. Some replies are refused
+ * whole (throws, and the caller rejects every draft), because they show the reviewer did not follow
+ * the numbering, so no verdict in them can be tied to a draft with certainty: two verdicts for one
+ * draft, an index outside the drafts that were sent, or an index that is not a whole number
+ * ("0" beside 0 would let a second verdict overwrite the first). Exported for tests.
  */
 export function readVerdicts(res: unknown, count: number): { ok: boolean; reason: string }[] {
   if (!Array.isArray(res)) throw new Error("review reply is not a list");
@@ -412,7 +413,8 @@ export function readVerdicts(res: unknown, count: number): { ok: boolean; reason
     // A verdict for a draft that was not sent means the numbering is off (counting from 1, say), and
     // then every verdict may belong to another draft.
     if (r.index < 0 || r.index >= count) throw new Error("review reply names a draft that was not sent");
-    if (seen.has(r.index)) { out[r.index] = { ok: false, reason: "reviewed twice" }; continue; }
+    // Two verdicts for one draft: the reply is not what was asked for, so none of it is trusted.
+    if (seen.has(r.index)) throw new Error("review reply judges a draft twice");
     seen.add(r.index);
     out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: String(r.reason || "generic").slice(0, 200) };
   }
