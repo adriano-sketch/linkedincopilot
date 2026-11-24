@@ -30,9 +30,9 @@ export function useProfile() {
         .eq('user_id', user.id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
-    },
+    // Returned, so a save is only "done" once the fresh profile is loaded: until then a form would
+    // still look different from what is stored.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profile', user?.id] }),
   });
 
   return { profile, isLoading, updateProfile };

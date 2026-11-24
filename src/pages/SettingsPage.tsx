@@ -89,16 +89,17 @@ export default function SettingsPage() {
     }
   }, [profile]);
 
+  // Fields the person has changed and not saved yet. The row is refetched every few seconds (and
+  // changes on each heartbeat), so the form must not be rebuilt over what is being typed.
+  const dirtyLimits = useRef(new Set<string>());
   // Checkout and the billing portal leave this page: they ask first when something here is not saved.
+  // (Limits can only be saved once the extension has connected, so before that they do not count.)
   const unsavedRef = useRef<() => boolean>(() => false);
-  unsavedRef.current = () => dirtyLimits.current.size > 0 || (!!profile && (
+  unsavedRef.current = () => (!!extensionStatus && dirtyLimits.current.size > 0) || (!!profile && (
     masterForm.sender_name !== (profile.sender_name || '') || masterForm.sender_title !== (profile.sender_title || '')
     || masterForm.company_name !== (profile.company_name || '') || masterForm.company_description !== (profile.company_description || '')));
   useEffect(() => registerUnsavedCheck(() => unsavedRef.current()), []);
 
-  // Fields the person has changed and not saved yet. The row is refetched every few seconds (and
-  // changes on each heartbeat), so the form must not be rebuilt over what is being typed.
-  const dirtyLimits = useRef(new Set<string>());
   const latestLimits = useRef(extensionLimits);
   latestLimits.current = extensionLimits;
   const editLimits = (patch: Partial<typeof extensionLimits>) => {
