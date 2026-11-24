@@ -1,7 +1,7 @@
 import CommentKnowledgeBase from '@/components/CommentKnowledgeBase';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import AppShell from '@/components/app/AppShell';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -88,17 +88,32 @@ export default function SettingsPage() {
     }
   }, [profile]);
 
+  // Fields the person has changed and not saved yet. The row is refetched every few seconds (and
+  // changes on each heartbeat), so the form must not be rebuilt over what is being typed.
+  const dirtyLimits = useRef(new Set<string>());
+  const editLimits = (patch: Partial<typeof extensionLimits>) => {
+    Object.keys(patch).forEach(k => dirtyLimits.current.add(k));
+    setExtensionLimits(prev => ({ ...prev, ...patch }));
+  };
+
   useEffect(() => {
-    if (extensionStatus) {
-      setExtensionLimits({
-        daily_limit_connection_requests: extensionStatus.daily_limit_connection_requests ?? 40,
-        daily_limit_messages: extensionStatus.daily_limit_messages ?? 100,
-        timezone: (extensionStatus as any).timezone ?? 'America/New_York',
-        active_days: (extensionStatus as any).active_days ?? ['mon', 'tue', 'wed', 'thu', 'fri'],
-        active_hours_start: (extensionStatus as any).active_hours_start ?? '08:00',
-        active_hours_end: (extensionStatus as any).active_hours_end ?? '18:00',
-      });
-    }
+    if (!extensionStatus) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ext = extensionStatus as any;
+    const fromServer = {
+      daily_limit_connection_requests: ext.daily_limit_connection_requests ?? 40,
+      daily_limit_messages: ext.daily_limit_messages ?? 100,
+      timezone: ext.timezone ?? 'America/New_York',
+      active_days: ext.active_days ?? ['mon', 'tue', 'wed', 'thu', 'fri'],
+      active_hours_start: ext.active_hours_start ?? '08:00',
+      active_hours_end: ext.active_hours_end ?? '18:00',
+    };
+    setExtensionLimits(prev => {
+      const next = { ...fromServer } as typeof prev;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      dirtyLimits.current.forEach(k => { (next as any)[k] = (prev as any)[k]; });
+      return next;
+    });
   }, [extensionStatus]);
 
   const handleSaveMaster = async () => {
@@ -119,6 +134,7 @@ export default function SettingsPage() {
         ({ error } = await supabase.from('extension_status').update(extensionLimits).eq('user_id', user.id));
       }
       if (error) throw error;
+      dirtyLimits.current.clear();
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
   };
@@ -291,7 +307,7 @@ export default function SettingsPage() {
                 {/* Daily Limits */}
                 <div>
                   <Label className="text-xs">Connection Requests / Day</Label>
-                  <Input type="number" value={extensionLimits.daily_limit_connection_requests} onChange={e => setExtensionLimits({ ...extensionLimits, daily_limit_connection_requests: parseInt(e.target.value) || 0 })} />
+                  <Input type="number" value={extensionLimits.daily_limit_connection_requests} onChange={e => editLimits({ daily_limit_connection_requests: parseInt(e.target.value) || 0 })} />
                 </div>
 
                 {/* Schedule */}
@@ -325,7 +341,7 @@ export default function SettingsPage() {
                               const newDays = isActive
                                 ? extensionLimits.active_days.filter(d => d !== day.key)
                                 : [...extensionLimits.active_days, day.key];
-                              setExtensionLimits({ ...extensionLimits, active_days: newDays });
+                              editLimits({ active_days: newDays });
                             }}
                           >
                             {day.label}
@@ -342,7 +358,7 @@ export default function SettingsPage() {
                       <Input
                         type="time"
                         value={extensionLimits.active_hours_start}
-                        onChange={e => setExtensionLimits({ ...extensionLimits, active_hours_start: e.target.value })}
+                        onChange={e => editLimits({ active_hours_start: e.target.value })}
                       />
                     </div>
                     <div>
@@ -350,7 +366,7 @@ export default function SettingsPage() {
                       <Input
                         type="time"
                         value={extensionLimits.active_hours_end}
-                        onChange={e => setExtensionLimits({ ...extensionLimits, active_hours_end: e.target.value })}
+                        onChange={e => editLimits({ active_hours_end: e.target.value })}
                       />
                     </div>
                   </div>
@@ -358,7 +374,7 @@ export default function SettingsPage() {
                   {/* Timezone */}
                   <div>
                     <Label className="text-xs">Timezone</Label>
-                    <Select value={extensionLimits.timezone} onValueChange={v => setExtensionLimits({ ...extensionLimits, timezone: v })}>
+                    <Select value={extensionLimits.timezone} onValueChange={v => editLimits({ timezone: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {zoneOptions.map(tz => <SelectItem key={tz} value={tz}>{timezoneLabel(tz)}</SelectItem>)}

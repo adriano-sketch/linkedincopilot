@@ -1,8 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { browserTimezone } from '@/lib/timezones';
+
+const ZONE_RETRIES = 3;
+const ZONE_RETRY_MS = 20_000;
 
 export function useExtensionStatus() {
   const { user } = useAuth();
@@ -29,21 +32,32 @@ export function useExtensionStatus() {
   // own. Done once: the update only matches a row that is still unconfirmed, so a choice saved in
   // Settings is never replaced, and several pages or tabs doing this at once write a single time.
   // When the browser gives no usable zone the row stays unconfirmed, for another device to set.
+  // A failed write is tried again a few times (a short outage must not leave the account on the
+  // default zone); each try carries the same "still unconfirmed" condition.
   const statusId = extensionStatus?.id;
   const zoneUnset = (extensionStatus as { timezone_confirmed?: boolean } | null | undefined)?.timezone_confirmed === false;
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!statusId || !zoneUnset) return;
     const tz = browserTimezone();
     if (!tz) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     void supabase.from('extension_status')
       .update({ timezone: tz, timezone_confirmed: true } as never)
       .eq('id', statusId).eq('timezone_confirmed' as never, false as never)
       .then(({ error }) => {
-        if (error) { console.error('useExtensionStatus: could not set the time zone', error); return; }
+        if (cancelled) return;
+        if (error) {
+          console.error('useExtensionStatus: could not set the time zone', error);
+          if (attempt < ZONE_RETRIES) timer = setTimeout(() => setAttempt(n => n + 1), ZONE_RETRY_MS * (attempt + 1));
+          return;
+        }
         void queryClient.invalidateQueries({ queryKey: ['extension-status'] });
         void queryClient.invalidateQueries({ queryKey: ['today-summary'] });
       });
-  }, [statusId, zoneUnset, queryClient]);
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [statusId, zoneUnset, queryClient, attempt]);
 
   return { extensionStatus, isLoading, refetch };
 }
