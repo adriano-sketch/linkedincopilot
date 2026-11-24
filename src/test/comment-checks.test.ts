@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanLanguage, languageLine, localIssues, OUTAGE_MAX_TRIES, outageBatches, outageNext, outageState, readVerdicts, reviewUnavailable, REVIEW_UNAVAILABLE, triageUnavailable, TRIAGE_UNAVAILABLE } from '../../supabase/functions/_shared/comment-quality.ts';
+import { cleanLanguage, languageLine, localIssues, numberedAsAsked, OUTAGE_MAX_TRIES, outageBatches, outageNext, outageState, readVerdicts, reviewUnavailable, REVIEW_UNAVAILABLE, triageUnavailable, TRIAGE_UNAVAILABLE } from '../../supabase/functions/_shared/comment-quality.ts';
 
 describe('cleanLanguage', () => {
   it('accepts a language name in any script', () => {
@@ -142,5 +142,22 @@ describe('an outage is not a verdict', () => {
     const out = readVerdicts([{ index: 0, ok: true }], 2);
     expect(out[0].ok).toBe(true);
     expect(reviewUnavailable(out[1])).toBe(true);
+  });
+
+  it('accepts only a reply numbered the way the prompt asked', () => {
+    expect(numberedAsAsked([{ index: 1 }, { index: 0 }], 2)).toBe(true);
+    expect(numberedAsAsked([{ index: 0 }], 2)).toBe(true); // a post left out is handled by the caller
+    expect(numberedAsAsked([], 2)).toBe(true);
+    expect(numberedAsAsked([{ index: 1 }, { index: 2 }], 2)).toBe(false); // counted from 1
+    expect(numberedAsAsked([{ index: 0 }, { index: 0 }], 2)).toBe(false);
+    expect(numberedAsAsked([{ index: '0' }], 2)).toBe(false);
+    expect(numberedAsAsked([{ index: 0.5 }], 2)).toBe(false);
+    expect(numberedAsAsked([null], 2)).toBe(false);
+    expect(numberedAsAsked({ index: 0 }, 2)).toBe(false);
+  });
+
+  it('reads the old count format and a time that cannot be read as "not waiting"', () => {
+    expect(outageState('unavailable: 3')).toEqual({ tries: 3, waiting: false });
+    expect(outageState('unavailable: 2 not-a-time')).toEqual({ tries: 2, waiting: false });
   });
 });

@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, outageBatches, outageNext, outageState, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type SenderFacts,
+  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, numberedAsAsked, outageBatches, outageNext, outageState, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray, parseWriterReply,
@@ -266,7 +266,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
   for (const [icpId, list] of byIcp) {
     const icp = icps.get(icpId)!;
     // deno-lint-ignore no-explicit-any
-    for (const batch of outageBatches(list, POST_CLASSIFY_BATCH, (p: any) => outageState(p.last_error).tries > 0)) {
+    for (const batch of outageBatches(list, POST_CLASSIFY_BATCH, (p: any) => outageState(p.last_error).tries >= 2)) {
       const items = batch.map((p, idx) => [
         `[${idx}] Author: ${p.author_name || "Unknown"}${p.author_degree ? ` (${p.author_degree})` : ""}`,
         p.author_headline ? `Author headline: ${p.author_headline}` : "",
@@ -297,6 +297,8 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
       try {
         const text = await callClaude({ model: modelFast(), system, user: items, maxTokens: 2500, temperature: 0.1 });
         results = parseJsonArray(text);
+        // Misnumbered entries could put one post's verdict on another: the reply is not used at all.
+        if (!numberedAsAsked(results, batch.length)) throw new Error("classification reply is not numbered as asked");
       } catch (e) {
         console.error("post classification failed:", e instanceof Error ? e.message : e);
         // Fail closed: they stay 'new' for the next run, a counted number of times.
@@ -306,9 +308,8 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
 
       const judged = new Set<number>();
       for (const r of results) {
-        const p = Number.isInteger(r?.index) ? batch[r.index] : undefined;
-        // One verdict per post: a second one for the same post is not applied over the first.
-        if (!p || judged.has(r.index)) continue;
+        const p = batch[r.index];
+        if (!p) continue;
         judged.add(r.index);
         const signal = ["business_opportunity", "hiring", "pain_point", "launch", "milestone", "relationship", "ignore"]
           .includes(r.signal_type) ? r.signal_type : "relationship";
@@ -335,7 +336,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
   // strict reviewer → one rewrite with feedback → otherwise the post is skipped (status 'ignored').
   let drafted = kbDrafted;
   let skipped = kbSkipped;
-  for (const batch of outageBatches(toDraft, DRAFT_BATCH, (d) => outageState(d.post.last_error).tries > 0)) {
+  for (const batch of outageBatches(toDraft, DRAFT_BATCH, (d) => outageState(d.post.last_error).tries >= 2)) {
     let drafts: { comment: string; skip: string | null }[];
     try {
       drafts = await writeComments(batch, facts, null);

@@ -359,7 +359,7 @@ serve(async (req) => {
       }
     } catch (e) {
       // The writer could not be reached or its reply could not be read: counted and tried again, like the others.
-      console.error("generate-comment: drafting failed", e instanceof Error ? e.message : e);
+      console.error("generate-comment: drafting failed", e instanceof Error ? (e.stack || e.message) : e);
       return await unavailable("drafting");
     }
 

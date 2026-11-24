@@ -198,8 +198,24 @@ export function outageNext(lastError: string | null | undefined, step: string, n
     : { giveUp: false, lastError: `unavailable: ${tries} ${new Date(now).toISOString()}` };
 }
 /**
- * Splits posts into batches for one model call. Posts that already failed once go alone, so a post
- * the model cannot answer for does not take the others in its batch down with it.
+ * True when a reply's entries are numbered the way the prompt asked: every index a whole number, inside
+ * the batch, and used once. Anything else (counting from 1, a repeated index) means no entry can be
+ * tied to its post with certainty, so the caller treats the whole reply as unreadable.
+ */
+export function numberedAsAsked(res: unknown, count: number): boolean {
+  if (!Array.isArray(res)) return false;
+  const seen = new Set<number>();
+  for (const r of res) {
+    const i = (r as { index?: unknown } | null)?.index;
+    if (typeof i !== "number" || !Number.isInteger(i) || i < 0 || i >= count || seen.has(i)) return false;
+    seen.add(i);
+  }
+  return true;
+}
+/**
+ * Splits posts into batches for one model call. Posts the caller marks as retried go alone, so a post
+ * the model cannot answer for does not take the others in its batch down with it. Callers mark a post
+ * from its second failure: one failure is usually a general outage, two point at the post.
  */
 export function outageBatches<T>(items: T[], size: number, retried: (item: T) => boolean): T[][] {
   const out: T[][] = [];
