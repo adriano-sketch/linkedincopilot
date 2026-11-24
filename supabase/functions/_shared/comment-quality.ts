@@ -16,9 +16,10 @@ import { callClaude, modelFast, parseJsonArray } from "./network.ts";
  * post. This is what the writer is told. Anything that is not a plain language name is dropped.
  */
 export function cleanLanguage(x: unknown): string {
-  const s = String(x ?? "").trim();
-  // Letters of any script, at most four words: a name, never a sentence.
-  if (!/^\p{L}[\p{L} ()'-]{1,30}$/u.test(s) || s.split(/\s+/).length > 4) return "";
+  const s = String(x ?? "").normalize("NFC").trim();
+  // Letters of any script (with their combining marks, as in हिन्दी), at most four words: a name,
+  // never a sentence.
+  if (!/^\p{L}[\p{L}\p{M} ()'-]{1,30}$/u.test(s) || s.split(/\s+/).length > 4) return "";
   if (/^(unknown|none|mixed|other|multiple|several|various|n a|na)$/i.test(s)) return "";
   return s;
 }
