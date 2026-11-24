@@ -1,16 +1,10 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { usePageTitle } from '@/lib/pageTitle';
 import { ArrowLeft } from 'lucide-react';
 import Logo from '@/components/Logo';
 
 export default function PrivacyPolicy() {
-  // The tab title follows the page when it is opened from inside the app (a direct visit already
-  // gets it from the server); it goes back to the previous one on leaving.
-  useEffect(() => {
-    const previous = document.title;
-    document.title = 'Privacy Policy | Olanovo';
-    return () => { document.title = previous; };
-  }, []);
+  usePageTitle('Privacy Policy | Olanovo');
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-gray-300">
