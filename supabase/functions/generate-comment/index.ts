@@ -135,6 +135,7 @@ serve(async (req) => {
       if (t.reason === "triage unavailable") return json({ success: false, unavailable: true }, 503);
       // With draft: true the writer and the reviewer run as well, on this text only. Still nothing is
       // stored. Used to check what a post in a given language gets before trusting it.
+      // It is a check, not the production path: no learned examples, no angle, no company, no rewrite.
       if (body.draft === true && t.kind !== "off_topic") {
         const postText = body.triage_only.slice(0, 2000);
         const author = typeof body.author === "string" ? body.author : "";

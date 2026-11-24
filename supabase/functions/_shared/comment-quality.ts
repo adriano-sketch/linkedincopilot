@@ -26,7 +26,10 @@ const STOP: Record<Exclude<Lang, "other">, string[]> = {
  */
 export function cleanLanguage(x: unknown): string {
   const s = String(x ?? "").trim();
-  return /^[A-Za-z][A-Za-z ()'-]{1,30}$/.test(s) ? s : "";
+  // Letters of any script, at most four words: a name, never a sentence.
+  if (!/^\p{L}[\p{L} ()'-]{1,30}$/u.test(s) || s.split(/\s+/).length > 4) return "";
+  if (/^(unknown|none|mixed|other|multiple|several|various|n a|na)$/i.test(s)) return "";
+  return s;
 }
 
 /** The "write in this language" line for the writer. Without a known language: follow the post. */
@@ -34,7 +37,17 @@ export function languageLine(language: string | null | undefined): string {
   return cleanLanguage(language) || LANG_NAME.other;
 }
 
-const KNOWN_LANG: Record<string, Exclude<Lang, "other">> = { portuguese: "pt", english: "en", spanish: "es" };
+const KNOWN_LANG: [RegExp, Exclude<Lang, "other">][] = [
+  [/(^|[^\p{L}])(portuguese|portugu[eê]s)($|[^\p{L}])/iu, "pt"],
+  [/(^|[^\p{L}])(english|ingl[eê]s)($|[^\p{L}])/iu, "en"],
+  [/(^|[^\p{L}])(spanish|espa[nñ]ol|castilian|castellano)($|[^\p{L}])/iu, "es"],
+];
+
+/** "Brazilian Portuguese" and "Portuguese (Brazil)" are Portuguese. A name that fits two, or none, is "other". */
+function knownLang(name: string): Lang {
+  const hits = KNOWN_LANG.filter(([re]) => re.test(name));
+  return hits.length === 1 ? hits[0][1] : "other";
+}
 
 /**
  * Rough language detection by stopword frequency. It only knows pt / en / es and it is wrong for
@@ -86,10 +99,12 @@ export function localIssues(comment: string, post: string, kind: PostKind = "on_
   if (/https?:\/\/|www\./i.test(c)) issues.push("contains a link");
   if (/#\w/.test(c)) issues.push("contains a hashtag");
   if (/[—–]/.test(c)) issues.push("contains a dash typical of AI text");
-  // With the language given by the model, only pt / en / es posts are checked here: for any other
-  // language the stopword detector cannot tell a right draft from a wrong one (the reviewer does).
+  // Only when the model named the post's language as pt / en / es is the draft checked here. For any
+  // other language, or with no name at all, the stopword detector cannot tell a right draft from a
+  // wrong one (German reads as English), and its verdict would reach the writer as rewrite feedback
+  // naming a wrong language. The reviewer's same-language rule covers those cases.
   const named = cleanLanguage(postLanguage);
-  const postLang: Lang = named ? (KNOWN_LANG[named.toLowerCase()] ?? "other") : detectLang(post);
+  const postLang: Lang = named ? knownLang(named) : "other";
   const commentLang = detectLang(c);
   if (postLang !== "other" && commentLang !== "other" && postLang !== commentLang) {
     issues.push(`written in ${LANG_NAME[commentLang]} but the post is in ${LANG_NAME[postLang]}`);
@@ -290,7 +305,7 @@ The post announces a milestone of its author (new role, anniversary, award). The
 same industry would write: a short, warm, specific congratulation.
 
 Hard rules:
-- Write in the SAME language as the post.
+- Write in the SAME language as the post, whatever language that is. Never translate into the language of these instructions.
 - 1 or 2 short sentences, under 200 characters.
 - Name the specific milestone (the role, the company, the number of years). Never a generic "Congratulations!".
 - No question that makes the author explain or justify anything. No analysis, no advice, no "what about".
