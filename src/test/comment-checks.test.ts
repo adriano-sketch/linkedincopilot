@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanLanguage, languageLine, localIssues, outageTries, readVerdicts, reviewUnavailable, REVIEW_UNAVAILABLE, triageUnavailable, TRIAGE_UNAVAILABLE } from '../../supabase/functions/_shared/comment-quality.ts';
+import { cleanLanguage, languageLine, localIssues, OUTAGE_MAX_TRIES, outageBatches, outageNext, outageState, readVerdicts, reviewUnavailable, REVIEW_UNAVAILABLE, triageUnavailable, TRIAGE_UNAVAILABLE } from '../../supabase/functions/_shared/comment-quality.ts';
 
 describe('cleanLanguage', () => {
   it('accepts a language name in any script', () => {
@@ -60,7 +60,7 @@ describe('readVerdicts', () => {
   });
 
   it('rejects a draft that got no verdict', () => {
-    expect(readVerdicts([{ index: 0, ok: true }], 2)[1]).toEqual({ ok: false, reason: 'not reviewed' });
+    expect(readVerdicts([{ index: 0, ok: true }], 2)[1]).toEqual({ ok: false, reason: REVIEW_UNAVAILABLE });
   });
 
   it('refuses the whole reply when a draft got two verdicts, whatever their order', () => {
@@ -105,9 +105,42 @@ describe('an outage is not a verdict', () => {
   });
 
   it('counts tries from last_error and nothing else', () => {
-    expect(outageTries(null)).toBe(0);
-    expect(outageTries('unavailable: 3')).toBe(3);
-    expect(outageTries('quality skip: generic')).toBe(0);
-    expect(outageTries('review unavailable, gave up after 6 tries')).toBe(0);
+    expect(outageState(null).tries).toBe(0);
+    expect(outageState('quality skip: generic').tries).toBe(0);
+    expect(outageState('gave up: review unavailable after 6 tries').tries).toBe(0);
+    expect(outageState('unavailable: 3').tries).toBe(3);
+  });
+
+  it('waits an hour between tries', () => {
+    const t = Date.parse('2026-11-24T12:00:00Z');
+    const first = outageNext(null, 'triage', t);
+    expect(first).toEqual({ giveUp: false, lastError: 'unavailable: 1 2026-11-24T12:00:00.000Z' });
+    expect(outageState(first.lastError, t + 59 * 60000)).toEqual({ tries: 1, waiting: true });
+    expect(outageState(first.lastError, t + 61 * 60000)).toEqual({ tries: 1, waiting: false });
+  });
+
+  it('gives up on the last try, with a line the reading summary does not count as off topic', () => {
+    let last: string | null = null;
+    for (let n = 1; n < OUTAGE_MAX_TRIES; n++) {
+      const next = outageNext(last, 'review');
+      expect(next.giveUp).toBe(false);
+      last = next.lastError;
+    }
+    const end = outageNext(last, 'review');
+    expect(end.giveUp).toBe(true);
+    expect(end.lastError.startsWith('gave up:')).toBe(true);
+    expect(end.lastError.startsWith('quality skip')).toBe(false);
+  });
+
+  it('sends posts that already failed alone, so one bad post does not sink a batch', () => {
+    const items = [{ id: 'a', r: false }, { id: 'b', r: true }, { id: 'c', r: false }, { id: 'd', r: false }];
+    expect(outageBatches(items, 2, (x) => x.r).map((b) => b.map((x) => x.id))).toEqual([['a', 'c'], ['d'], ['b']]);
+    expect(outageBatches([], 5, () => false)).toEqual([]);
+  });
+
+  it('marks a draft the reviewer left out as not reviewed, to be tried again', () => {
+    const out = readVerdicts([{ index: 0, ok: true }], 2);
+    expect(out[0].ok).toBe(true);
+    expect(reviewUnavailable(out[1])).toBe(true);
   });
 });

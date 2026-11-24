@@ -299,8 +299,9 @@ serve(async (req) => {
     // or the draft, so no decision is recorded: the lead stays where it is and the scheduler asks again.
     // Each try is logged and the next one waits an hour. After OUTAGE_MAX_TRIES the lead rests like after
     // any other skip, so a post the model can never answer for does not keep it busy for ever.
-    const unavailable = async (step: "triage" | "review") => {
-      const since = new Date(Date.now() - 3 * 864e5).toISOString();
+    const unavailable = async (step: "triage" | "drafting" | "review") => {
+      // Seven days: tries only happen while the extension is connected, and an earlier cycle ended in a 7-day rest.
+      const since = new Date(Date.now() - 7 * 864e5).toISOString();
       const { count, error: countErr } = await supabase.from("activity_log").select("id", { count: "exact", head: true })
         .eq("user_id", lead.user_id).eq("campaign_lead_id", campaign_lead_id).eq("action", "comment_unavailable").gte("created_at", since);
       // Without the count the tries cannot be bounded: treat it as the last one.
@@ -315,7 +316,13 @@ serve(async (req) => {
         .update({ next_action_at: new Date(Date.now() + 3600e3).toISOString() })
         .eq("id", campaign_lead_id).eq("user_id", lead.user_id).eq("status", "post_liked");
       if (waitErr) console.error(`generate-comment: could not postpone lead ${campaign_lead_id}`, waitErr);
-      await supabase.from("activity_log").insert({ user_id: lead.user_id, campaign_lead_id, action: "comment_unavailable", details: { step, tries } });
+      const { error: logErr } = await supabase.from("activity_log").insert({ user_id: lead.user_id, campaign_lead_id, action: "comment_unavailable", details: { step, tries } });
+      // The log is the count: if it cannot be written the tries would never end, so this one is the last.
+      if (logErr) {
+        console.error(`generate-comment: could not log a try for lead ${campaign_lead_id}`, logErr);
+        if (!(await restLead("comment_skipped_unavailable", { reason: `${step} unavailable, tries could not be counted` }))) return fail("Failed to update the lead", 500);
+        return json({ success: true, skipped: "unavailable", lead_id: campaign_lead_id });
+      }
       console.error(`generate-comment: ${step} unavailable for lead ${campaign_lead_id} (try ${tries}), will be tried again`);
       return json({ success: false, unavailable: step, lead_id: campaign_lead_id }, 503);
     };
@@ -351,8 +358,9 @@ serve(async (req) => {
         }
       }
     } catch (e) {
+      // The writer could not be reached or its reply could not be read: counted and tried again, like the others.
       console.error("generate-comment: drafting failed", e instanceof Error ? e.message : e);
-      return fail("Comment generation failed", 502);
+      return await unavailable("drafting");
     }
 
     if (reviewDown) return await unavailable("review");

@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, outageTries, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type SenderFacts,
+  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, outageBatches, outageNext, outageState, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray, parseWriterReply,
@@ -140,15 +140,18 @@ Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "
 }
 
 async function processPosts(supabase: Supa, userId: string, icps: Map<string, Icp>) {
-  const { data: posts, error } = await supabase
+  const { data: fetched, error } = await supabase
     .from("monitored_posts")
     .select("id, icp_id, campaign_lead_id, post_urn, author_name, author_headline, author_degree, post_text, reactions_count, comments_count, icp_fit, signal_type, signal_reason, last_error")
     .eq("user_id", userId)
     .eq("status", "new")
     .order("created_at", { ascending: true })
-    .limit(MAX_POSTS_PER_RUN);
+    .limit(MAX_POSTS_PER_RUN * 4);
   if (error) throw error;
-  if (!posts || posts.length === 0) return { classified: 0, drafted: 0 };
+  // Posts that failed less than an hour ago wait their turn and do not take a place in this run.
+  // deno-lint-ignore no-explicit-any
+  const posts = (fetched || []).filter((p: any) => !outageState(p.last_error).waiting).slice(0, MAX_POSTS_PER_RUN);
+  if (posts.length === 0) return { classified: 0, drafted: 0 };
 
   const { data: me } = await supabase
     .from("profiles")
@@ -180,11 +183,9 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
   let waiting = 0;
   // deno-lint-ignore no-explicit-any
   const tryLater = async (p: any, step: string) => {
-    const tries = outageTries(p.last_error) + 1;
-    const update = tries >= OUTAGE_MAX_TRIES
-      ? { status: "ignored", last_error: `${step} unavailable, gave up after ${tries} tries` }
-      : { last_error: `unavailable: ${tries}` };
-    const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", p.id).eq("status", "new");
+    const next = outageNext(p.last_error, step);
+    const update = next.giveUp ? { status: "ignored", last_error: next.lastError } : { last_error: next.lastError };
+    const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", p.id).eq("user_id", userId).eq("status", "new");
     if (upErr) console.error("could not record an unavailable step:", upErr);
     waiting++;
   };
@@ -264,8 +265,8 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
 
   for (const [icpId, list] of byIcp) {
     const icp = icps.get(icpId)!;
-    for (let i = 0; i < list.length; i += POST_CLASSIFY_BATCH) {
-      const batch = list.slice(i, i + POST_CLASSIFY_BATCH);
+    // deno-lint-ignore no-explicit-any
+    for (const batch of outageBatches(list, POST_CLASSIFY_BATCH, (p: any) => outageState(p.last_error).tries > 0)) {
       const items = batch.map((p, idx) => [
         `[${idx}] Author: ${p.author_name || "Unknown"}${p.author_degree ? ` (${p.author_degree})` : ""}`,
         p.author_headline ? `Author headline: ${p.author_headline}` : "",
@@ -303,9 +304,12 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
         continue;
       }
 
+      const judged = new Set<number>();
       for (const r of results) {
-        const p = batch[r.index];
-        if (!p) continue;
+        const p = Number.isInteger(r?.index) ? batch[r.index] : undefined;
+        // One verdict per post: a second one for the same post is not applied over the first.
+        if (!p || judged.has(r.index)) continue;
+        judged.add(r.index);
         const signal = ["business_opportunity", "hiring", "pain_point", "launch", "milestone", "relationship", "ignore"]
           .includes(r.signal_type) ? r.signal_type : "relationship";
         const fit = r.icp_fit === true;
@@ -322,6 +326,8 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
         classified++;
         if (keep) toDraft.push({ post: p, icp, signal, reason: String(r.signal_reason || ""), language: cleanLanguage(r.language) });
       }
+      // A post the reply left out was not classified: counted and tried again, not left waiting for ever.
+      for (let k = 0; k < batch.length; k++) if (!judged.has(k)) await tryLater(batch[k], "classification");
     }
   }
 
@@ -329,8 +335,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
   // strict reviewer → one rewrite with feedback → otherwise the post is skipped (status 'ignored').
   let drafted = kbDrafted;
   let skipped = kbSkipped;
-  for (let i = 0; i < toDraft.length; i += DRAFT_BATCH) {
-    const batch = toDraft.slice(i, i + DRAFT_BATCH);
+  for (const batch of outageBatches(toDraft, DRAFT_BATCH, (d) => outageState(d.post.last_error).tries > 0)) {
     let drafts: { comment: string; skip: string | null }[];
     try {
       drafts = await writeComments(batch, facts, null);
