@@ -37,12 +37,15 @@ export default function CommentKnowledgeBase() {
   // Compared the way save() stores it, so spaces at the ends or a reordered separator do not count.
   const termsOf = (text: string) => Array.from(new Set(text.split(/[\n;,]+/).map(t => t.trim()).filter(Boolean))).slice(0, 15).join('\n');
   const unsavedRef = useRef<() => boolean>(() => false);
-  unsavedRef.current = () => {
-    if (!profile) return false;
-    const p = profile as unknown as Partial<Record<Exclude<keyof Kb, 'comment_search_terms'>, string | null>> & { comment_search_terms?: string[] | null };
-    return (['comment_topics', 'comment_avoid', 'comment_views', 'comment_examples'] as const).some(k => form[k].trim() !== (p[k] || '').trim())
-      || termsOf(form.comment_search_terms) !== termsOf((p.comment_search_terms || []).join('\n'));
-  };
+  // Kept current after each render (not during it), for the check registered once below.
+  useEffect(() => {
+    unsavedRef.current = () => {
+      if (!profile) return false;
+      const p = profile as unknown as Partial<Record<Exclude<keyof Kb, 'comment_search_terms'>, string | null>> & { comment_search_terms?: string[] | null };
+      return (['comment_topics', 'comment_avoid', 'comment_views', 'comment_examples'] as const).some(k => form[k].trim() !== (p[k] || '').trim())
+        || termsOf(form.comment_search_terms) !== termsOf((p.comment_search_terms || []).join('\n'));
+    };
+  });
   useEffect(() => registerUnsavedCheck(() => unsavedRef.current()), []);
 
   const set = (k: keyof Kb) => (e: React.ChangeEvent<HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value.slice(0, LIMITS[k]) }));

@@ -91,7 +91,9 @@ export default function PrivacyPolicy() {
               <strong className="text-gray-300">Visits to olanovo.com:</strong>{' '}
               Which pages are opened, the site the visit came from, the approximate location
               (country, region, city), and the kind of device, operating system and browser. They
-              are counted without cookies and used as totals only, not tied to your account.
+              are counted without cookies and used as totals. If the link that brought you
+              carried a campaign label (utm_source, utm_medium, utm_campaign or ref), that label
+              is counted too. Nothing else from the address is kept.
             </li>
           </ul>
         </Section>

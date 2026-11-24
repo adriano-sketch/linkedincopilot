@@ -1,4 +1,4 @@
-import { okToLeavePage } from '@/lib/unsavedChanges';
+import { hasUnsavedChanges, okToLeavePage } from '@/lib/unsavedChanges';
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
 
   const handleCheckout = async (planKey: string) => {
     // Checkout opens in this tab: ask first if the page underneath holds edits that were not saved.
+    const asked = hasUnsavedChanges();
     if (!okToLeavePage()) return;
     setLoading(planKey);
     try {
@@ -140,6 +141,8 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       }
 
       if (responseBody?.url) {
+        // Something typed while the server was answering is asked about too (once).
+        if (!asked && !okToLeavePage()) return;
         // Same tab: a tab opened after waiting for the server is blocked by some browsers.
         window.location.assign(responseBody.url);
       } else {
