@@ -36,7 +36,9 @@ const STATUS_TO_ACTION: Record<string, string> = {
 // LinkedIn's warning on 2026-11-10 (3 to 4 pages per contact per cycle).
 // Likes are given by the person, not by the extension. LinkedIn's User Agreement lists automated
 // reactions next to automated comments. With this off, the extension only finds the post; the
-// person likes it when opening the post to comment. Set to true to restore the in-visit like.
+// person likes it when opening the post to comment. The database enforces this too: the
+// action_queue triggers remove the like option and refuse like_post rows (migration
+// 20261124010000). Turning this on alone does nothing but leave contacts stuck at post_found.
 const AUTO_LIKE = false;
 
 const GROWTH_STATUS_TO_ACTION: Record<string, string> = {
