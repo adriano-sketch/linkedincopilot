@@ -60,7 +60,7 @@ function AutopilotCard() {
     setToggling(true);
     const { error } = await supabase.from('extension_status').update({ is_paused: !paused }).eq('id', extensionStatus.id);
     setToggling(false);
-    if (error) toast.error('Could not change autopilot');
+    if (error) toast.error('Could not pause or resume');
     else toast.success(paused ? 'Extension resumed' : 'Extension paused');
   };
 

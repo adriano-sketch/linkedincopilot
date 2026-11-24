@@ -55,7 +55,6 @@ export default function Landing() {
     ref.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleCTA = () => navigate('/auth');
 
   // -- Data --
 
@@ -139,10 +138,10 @@ export default function Landing() {
             <button onClick={() => scrollTo(pricingRef)} className="hover:text-white transition-colors">Pricing</button>
           </div>
           <div className="flex items-center gap-2">
-            <Link to="/auth" className="text-sm font-medium text-white px-3 py-2.5 whitespace-nowrap hover:text-primary transition-colors">Log in</Link>
-            <Button onClick={handleCTA} className="bg-primary text-primary-foreground hover:bg-gold-dark font-semibold rounded-lg h-11 px-5">
-              Start free
-            </Button>
+            <Link to="/auth?mode=signin" className="text-sm font-medium text-white px-3 py-2.5 whitespace-nowrap hover:text-primary transition-colors">Log in</Link>
+            <Button asChild className="bg-primary text-primary-foreground hover:bg-gold-dark font-semibold rounded-lg h-11 px-5">
+<Link to="/auth">Start free</Link>
+</Button>
           </div>
         </div>
       </nav>
@@ -169,9 +168,9 @@ export default function Landing() {
               No automated DMs. No fake compliments. No pretending you know someone.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }} className="flex flex-wrap items-center gap-4">
-              <Button onClick={handleCTA} size="lg" className="bg-primary text-primary-foreground hover:bg-gold-dark font-semibold text-base rounded-xl h-14 px-6">
-                Start free <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+              <Button asChild size="lg" className="bg-primary text-primary-foreground hover:bg-gold-dark font-semibold text-base rounded-xl h-14 px-6">
+<Link to="/auth">Start free <ArrowRight className="w-4 h-4 ml-2" /></Link>
+</Button>
               <button onClick={() => scrollTo(howRef)} className="text-base text-white py-3 border-b border-slate-600 hover:border-primary transition-colors">
                 See how it works
               </button>
@@ -399,9 +398,9 @@ export default function Landing() {
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">or $690 a year. Cancel anytime.</div>
                   </div>
-                  <Button onClick={handleCTA} className="font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-gold-dark h-12 px-7">
-                    Start free
-                  </Button>
+                  <Button asChild className="font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-gold-dark h-12 px-7">
+<Link to="/auth">Start free</Link>
+</Button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-5 mb-0">
                   If you do not subscribe when the 14 days end, nothing is charged: Olanovo pauses and your Inbox stays where it is.
@@ -480,14 +479,13 @@ export default function Landing() {
               <p className="text-slate-300 text-lg mb-8 max-w-lg mx-auto">
                 Tell Olanovo what you think once. Open your Inbox, read the drafts, and post the ones you would sign.
               </p>
-              <Button
-                onClick={handleCTA}
+              <Button asChild
                 size="lg"
                 className="bg-primary text-primary-foreground hover:bg-gold-dark px-8 py-6 text-base font-semibold rounded-xl"
               >
-                Start free
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+<Link to="/auth">Start free
+                <ArrowRight className="w-4 h-4 ml-2" /></Link>
+</Button>
               <p className="text-slate-500 text-xs mt-4">No credit card required.</p>
             </div>
           </motion.div>
@@ -533,9 +531,9 @@ export default function Landing() {
           </div>
           <div className="border-t border-white/10 mt-10 pt-6 text-center">
             <p className="text-sm text-gray-500 mb-2">
-              Olanovo is part of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-gold-light hover:text-primary transition-colors font-medium">scan<em>to</em>sell.io</a>. Not affiliated with or endorsed by LinkedIn.
+              Olanovo is a product of <a href="https://scantosell.io" target="_blank" rel="noopener noreferrer" className="text-gold-light hover:text-primary transition-colors font-medium">scan<em>to</em>sell.io</a>. Not affiliated with or endorsed by LinkedIn.
             </p>
-            <p className="text-xs text-gray-500">&copy; 2026 scan<em>to</em>sell.io &middot; All rights reserved.</p>
+            <p className="text-xs text-gray-500">&copy; {new Date().getFullYear()} Nortech LLC &middot; All rights reserved.</p>
           </div>
         </div>
       </footer>

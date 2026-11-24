@@ -34,6 +34,7 @@ export default function AuthPage() {
   useEffect(() => {
     const urlMode = searchParams.get('mode') || searchParams.get('type');
     if (urlMode === 'recovery') setMode('recovery');
+    else if (urlMode === 'signin') setMode('signin');
   }, [searchParams]);
 
   useEffect(() => {
@@ -121,13 +122,13 @@ export default function AuthPage() {
       <Card className="w-full max-w-sm shadow-lg">
         <CardContent className="p-6">
           <h1 className="text-xl font-bold text-center mb-1">
-            {mode === 'signup' && 'Create your account'}
+            {mode === 'signup' && 'Start your 14-day free trial'}
             {mode === 'signin' && 'Welcome back'}
             {mode === 'forgot' && 'Reset your password'}
             {mode === 'recovery' && 'Set a new password'}
           </h1>
           <p className="text-sm text-muted-foreground text-center mb-6">
-            {mode === 'signup' && 'Get started with Olanovo'}
+            {mode === 'signup' && 'Everything included. No credit card.'}
             {mode === 'signin' && 'Sign in to your account'}
             {mode === 'forgot' && 'We will email you a reset link'}
             {mode === 'recovery' && 'Choose a strong password to continue'}
@@ -212,6 +213,14 @@ export default function AuthPage() {
                 Update password
               </Button>
             </form>
+          )}
+
+          {mode === 'signup' && (
+            <p className="text-center text-xs text-muted-foreground mt-4">
+              By creating an account, you agree to the{' '}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Terms of Service</a> and the{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Privacy Policy</a>.
+            </p>
           )}
 
           {(mode === 'signin' || mode === 'signup') && (

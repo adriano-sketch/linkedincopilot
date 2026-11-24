@@ -137,7 +137,8 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       }
 
       if (responseBody?.url) {
-        window.open(responseBody.url, '_blank');
+        // Same tab: a tab opened after waiting for the server is blocked by some browsers.
+        window.location.assign(responseBody.url);
       } else {
         throw new Error('Checkout URL not returned. Please try again.');
       }

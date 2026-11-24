@@ -4,15 +4,22 @@ import { useEffect } from "react";
 const NotFound = () => {
   const location = useLocation();
 
+  // The server answers 200 for every app address, so search engines are told here not to index this one.
   useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
+    const meta = document.createElement("meta");
+    meta.name = "robots";
+    meta.content = "noindex";
+    document.head.appendChild(meta);
+    const title = document.title;
+    document.title = "Page not found | Olanovo";
+    return () => { meta.remove(); document.title = title; };
   }, [location.pathname]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted">
       <div className="text-center">
         <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-muted-foreground">Oops! Page not found</p>
+        <p className="mb-4 text-xl text-muted-foreground">This page does not exist.</p>
         <a href="/" className="text-primary underline hover:text-primary/90">
           Return to Home
         </a>
