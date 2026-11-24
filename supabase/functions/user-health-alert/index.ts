@@ -105,7 +105,7 @@ async function computeHealth(
   // ── Extension status ──
   const { data: ext } = await supabase
     .from("extension_status")
-    .select("is_connected, is_paused, last_heartbeat_at, linkedin_logged_in, active_days, active_hours_start, active_hours_end, actions_today, messages_today, connection_requests_today")
+    .select("is_connected, is_paused, last_heartbeat_at, linkedin_logged_in, active_days, active_hours_start, active_hours_end, timezone, actions_today, messages_today, connection_requests_today")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -131,6 +131,7 @@ async function computeHealth(
       ext.active_days,
       ext.active_hours_start,
       ext.active_hours_end,
+      ext.timezone || undefined,
     );
     metrics.in_business_hours = withinHours;
 

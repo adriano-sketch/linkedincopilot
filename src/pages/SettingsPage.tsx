@@ -1,12 +1,13 @@
 import CommentKnowledgeBase from '@/components/CommentKnowledgeBase';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import AppShell from '@/components/app/AppShell';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
+import { timezoneLabel, timezoneOptions } from '@/lib/timezones';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { useCampaignProfiles, CampaignProfile } from '@/hooks/useCampaignProfiles';
 import { Button } from '@/components/ui/button';
@@ -37,12 +38,6 @@ const STATUS_LABELS: Record<string, { label: string; variant: 'default' | 'secon
   completed: { label: 'Completed', variant: 'secondary' },
 };
 
-const TIMEZONES = [
-  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'America/Anchorage', 'Pacific/Honolulu', 'America/Phoenix',
-  'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Asia/Tokyo', 'Australia/Sydney',
-];
-
 export default function SettingsPage() {
   const { user, loading } = useAuth();
   const { profile, isLoading, updateProfile } = useProfile();
@@ -66,6 +61,8 @@ export default function SettingsPage() {
     active_hours_start: '08:00',
     active_hours_end: '18:00',
   });
+
+  const zoneOptions = useMemo(() => timezoneOptions(extensionLimits.timezone), [extensionLimits.timezone]);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     profile: true, billing: true, extension: true, campaigns: false, templates: false,
@@ -114,7 +111,13 @@ export default function SettingsPage() {
   const handleSaveExtension = async () => {
     if (!user || !extensionStatus) return;
     try {
-      const { error } = await supabase.from('extension_status').update(extensionLimits).eq('user_id', user.id);
+      // A zone saved here is the person's choice: it is never replaced by the browser's.
+      let { error } = await supabase.from('extension_status')
+        .update({ ...extensionLimits, timezone_confirmed: true } as never).eq('user_id', user.id);
+      // The column arrives with a migration; if this page is live before it, save without the flag.
+      if (error && /timezone_confirmed/.test(error.message || '')) {
+        ({ error } = await supabase.from('extension_status').update(extensionLimits).eq('user_id', user.id));
+      }
       if (error) throw error;
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
@@ -358,7 +361,7 @@ export default function SettingsPage() {
                     <Select value={extensionLimits.timezone} onValueChange={v => setExtensionLimits({ ...extensionLimits, timezone: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {TIMEZONES.map(tz => <SelectItem key={tz} value={tz}>{tz.replace('_', ' ')}</SelectItem>)}
+                        {zoneOptions.map(tz => <SelectItem key={tz} value={tz}>{timezoneLabel(tz)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

@@ -48,14 +48,14 @@ For each person, rate from 0 to 100 how well they match the TARGET description, 
 - 60-84: likely matches (adjacent role, or right role in a company type that is unclear)
 - 30-59: weak or unclear match
 - 0-29: does not match
-Judge the role and responsibilities, not exact words: "Maintenance Manager", "Gerente de Manutenção", "Reliability Engineer" and "Coordenador de Utilidades" can all match a maintenance target.
+Judge the role and responsibilities, not exact words: "Head of Finance", "Diretor Financeiro", "CFO" and "Controller" can all match a finance target.
 Students, job seekers and people whose current role is unknown score at most 40.
 Reply ONLY with a JSON array, one object per person, in the same order:
 [{"i": <index>, "score": <0-100>, "reason": "<max 12 words, in English>"}]`;
 
 const SYSTEM_KEYWORDS = `You turn a description of target people into LinkedIn people-search keywords.
-Return 4 to 8 short job-title or responsibility terms, mixing Portuguese and English when the description suggests Brazil, and the description's own language otherwise.
-Prefer terms people put in their LinkedIn title (e.g. "gerente de manutenção", "maintenance manager", "eficiência energética").
+Return 4 to 8 short job-title or responsibility terms, in the description's own language, and always include the common English title as well. When the description points to a country where another language is spoken, add the terms in that language too.
+Prefer terms people put in their LinkedIn title (e.g. "head of finance", "CFO", "diretor financeiro").
 Reply ONLY with a JSON array of strings.`;
 
 async function scoreBatch(people: any[], description: string): Promise<{ i: number; score: number; reason: string }[]> {

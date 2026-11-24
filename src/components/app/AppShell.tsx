@@ -34,6 +34,7 @@ function useNav(): NavItem[] {
 function AutopilotCard() {
   const { extensionStatus, isLoading } = useExtensionStatus();
   const [toggling, setToggling] = useState(false);
+
   if (isLoading) return null;
 
   if (!extensionStatus) {

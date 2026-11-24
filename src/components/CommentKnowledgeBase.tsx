@@ -64,7 +64,7 @@ export default function CommentKnowledgeBase() {
         <div>
           <Label htmlFor="kb-topics">Subjects you have something to say about</Label>
           <Textarea id="kb-topics" rows={3} value={form.comment_topics} onChange={set('comment_topics')}
-            placeholder="Water loss and leak detection; predictive maintenance of pumps and motors; sewer inspection" />
+            placeholder="Cash flow for small manufacturers; hiring and keeping field technicians; moving off spreadsheets" />
           <p className="text-xs text-muted-foreground text-right">{form.comment_topics.length}/{LIMITS.comment_topics}</p>
         </div>
         <div>
@@ -76,7 +76,7 @@ export default function CommentKnowledgeBase() {
         <div>
           <Label htmlFor="kb-views">What you think and what you have seen on these subjects</Label>
           <Textarea id="kb-views" rows={6} value={form.comment_views} onChange={set('comment_views')}
-            placeholder={"Two or three sentences per subject, in your own words. For example:\nWater loss: most programs fail after the first year because the field team is not part of the target.\nPredictive maintenance: it only pays off when the alert reaches the person who schedules the crew."} />
+            placeholder={"Two or three sentences per subject, in your own words. For example:\nCash flow: most small manufacturers run out of cash while growing, not while shrinking.\nField technicians: people leave over the schedule more often than over the pay."} />
           <p className="text-xs text-muted-foreground">Drafts use this to state a point of view. Without it they tend to ask questions, because nothing is invented in your name.</p>
           <p className="text-xs text-muted-foreground text-right">{form.comment_views.length}/{LIMITS.comment_views}</p>
         </div>
@@ -89,7 +89,7 @@ export default function CommentKnowledgeBase() {
         <div>
           <Label htmlFor="kb-terms">Search terms for posts of your connections (one per line)</Label>
           <Textarea id="kb-terms" rows={4} value={form.comment_search_terms} onChange={set('comment_search_terms')}
-            placeholder={"water loss\nleak detection\npredictive maintenance"} />
+            placeholder={"cash flow\nfield technicians\nspreadsheets"} />
           <p className="text-xs text-muted-foreground">A few times a day Olanovo searches last week's posts of your 1st-degree connections for one of these terms. Leave empty to turn it off.</p>
         </div>
         <Button size="sm" onClick={save} disabled={updateProfile.isPending}><Save className="w-3 h-3 mr-1" /> Save</Button>

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
+import { safeTimezone } from '@/lib/timezones';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -154,7 +155,7 @@ export default function Today() {
 
   useEffect(() => { if (!authLoading && !user) navigate('/'); }, [user, authLoading, navigate]);
 
-  const tz = s?.timezone || 'America/New_York';
+  const tz = safeTimezone(s?.timezone);
   const now = new Date();
   const hour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: tz }).format(now));
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
