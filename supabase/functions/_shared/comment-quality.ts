@@ -46,16 +46,20 @@ const PRAISE_OPENERS = [
 export function localIssues(comment: string, kind: PostKind = "on_topic"): string[] {
   const c = String(comment || "").trim();
   const issues: string[] = [];
-  if (c.length < 25) issues.push("too short to say anything specific");
-  if (c.length > 450) issues.push("too long for a LinkedIn comment");
-  const head = c.toLowerCase().replace(/^[^a-zà-ÿ]+/, "").slice(0, 40);
+  // Chinese, Japanese and Korean say in one character what other scripts say in a word, so the same
+  // limits in characters would reject a complete sentence as too short and allow an essay.
+  const dense = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(c);
+  if (c.length < (dense ? 8 : 25)) issues.push("too short to say anything specific");
+  if (c.length > (dense ? 220 : 450)) issues.push("too long for a LinkedIn comment");
+  const head = c.toLowerCase().replace(/^[^\p{L}]+/u, "").slice(0, 40);
   const opener = PRAISE_OPENERS.find((p) => head.startsWith(p));
   // A congratulation is the point of a milestone comment.
   if (opener && kind !== "milestone") issues.push(`opens with generic praise ("${opener}")`);
   if (kind !== "milestone") {
     // A comment has to say something: reject it when every sentence is a question.
-    const sentences = c.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
-    if (sentences.length && sentences.every((x) => x.endsWith("?"))) issues.push("is only a question: state a point of view, a question may only close it");
+    // Sentence ends and question marks of other scripts count too (。！？ and the Arabic ؟).
+    const sentences = c.split(/(?<=[.!?])\s+|(?<=[。！？؟])\s*/).map((x) => x.trim()).filter(Boolean);
+    if (sentences.length && sentences.every((x) => /[?？؟]$/.test(x))) issues.push("is only a question: state a point of view, a question may only close it");
   }
   if (/https?:\/\/|www\./i.test(c)) issues.push("contains a link");
   if (/#\w/.test(c)) issues.push("contains a hashtag");
