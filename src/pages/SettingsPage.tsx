@@ -117,7 +117,11 @@ export default function SettingsPage() {
   const latestLimits = useRef(extensionLimits);
   latestLimits.current = extensionLimits;
   const editLimits = (patch: Partial<typeof extensionLimits>) => {
-    Object.keys(patch).forEach(k => dirtyLimits.current.add(k));
+    // A field put back to its stored value is no longer "changed": it follows the server again.
+    Object.entries(patch).forEach(([k, v]) => {
+      if (storedLimits.current && sameValue(v, storedLimits.current[k])) dirtyLimits.current.delete(k);
+      else dirtyLimits.current.add(k);
+    });
     setExtensionLimits(prev => ({ ...prev, ...patch }));
   };
 
