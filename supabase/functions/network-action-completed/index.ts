@@ -294,16 +294,27 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
   {
     const authors = [...new Set(posts.map((p) => normalizeProfileUrl(p?.author_profile_url)).filter((u): u is string => !!u))];
     if (authors.length) {
-      const { data: stored, error: storedErr } = await supabase.from("monitored_posts")
-        .select("author_profile_url, post_text").eq("user_id", userId).in("author_profile_url", authors)
-        .order("created_at", { ascending: false }).limit(1000);
+      // Every stored post of these authors, page by page: a cut-off list would let an old post back in.
+      // deno-lint-ignore no-explicit-any
+      const stored: any[] = [];
+      // deno-lint-ignore no-explicit-any
+      let storedErr: any = null;
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error } = await supabase.from("monitored_posts")
+          .select("author_profile_url, post_text").eq("user_id", userId).in("author_profile_url", authors)
+          .order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, from + 999);
+        if (error) { storedErr = error; break; }
+        stored.push(...(page || []));
+        if ((page || []).length < 1000) break;
+        if (from >= 19000) { storedErr = new Error("stored posts list too long to read"); break; }
+      }
       // Without this list nothing can be told apart from what is already there: store nothing this run.
       if (storedErr) {
         console.error("stored posts lookup failed:", storedErr);
         if (runId) await supabase.from("network_search_runs").update({ status: "failed", completed_at: now }).eq("id", runId).eq("user_id", userId);
         return { ok: true };
       }
-      for (const r of stored || []) {
+      for (const r of stored) {
         const u = normalizeProfileUrl(r.author_profile_url);
         if (!u || !r.post_text) continue;
         (seenByAuthor.get(u) || seenByAuthor.set(u, []).get(u)!).push(String(r.post_text));

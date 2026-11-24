@@ -63,9 +63,9 @@ describe('readVerdicts', () => {
     expect(readVerdicts([{ index: 0, ok: true }], 2)[1]).toEqual({ ok: false, reason: 'not reviewed' });
   });
 
-  it('rejects a draft that got two verdicts, whatever their order', () => {
-    expect(readVerdicts([{ index: 0, ok: false }, { index: 0, ok: true }], 1)[0].ok).toBe(false);
-    expect(readVerdicts([{ index: 0, ok: true }, { index: 0, ok: false }], 1)[0].ok).toBe(false);
+  it('refuses the whole reply when a draft got two verdicts, whatever their order', () => {
+    expect(() => readVerdicts([{ index: 0, ok: false }, { index: 0, ok: true }], 1)).toThrow();
+    expect(() => readVerdicts([{ index: 0, ok: true }, { index: 0, ok: false }, { index: 1, ok: true }], 2)).toThrow();
   });
 
   it('refuses the whole reply when an index is not a whole number', () => {

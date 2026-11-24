@@ -250,10 +250,21 @@ serve(async (req) => {
     // a comment published to them in the last 7 days, also rests the lead.
     const authorUrl = normalizeProfileUrl(lead.linkedin_url);
     if (authorUrl) {
-      const { data: theirs, error: theirsErr } = await supabase.from("monitored_posts")
-        .select("id, status, post_text, commented_at, created_at")
-        .eq("user_id", lead.user_id).in("author_profile_url", [...new Set([authorUrl, String(lead.linkedin_url)])])
-        .order("created_at", { ascending: false }).limit(60);
+      // The author's whole history, page by page: a post skipped long ago is still the same post.
+      // deno-lint-ignore no-explicit-any
+      const theirs: any[] = [];
+      // deno-lint-ignore no-explicit-any
+      let theirsErr: any = null;
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error } = await supabase.from("monitored_posts")
+          .select("id, status, post_text, commented_at, created_at")
+          .eq("user_id", lead.user_id).in("author_profile_url", [...new Set([authorUrl, String(lead.linkedin_url)])])
+          .order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, from + 999);
+        if (error) { theirsErr = error; break; }
+        theirs.push(...(page || []));
+        if ((page || []).length < 1000) break;
+        if (from >= 19000) { theirsErr = new Error("author history too long to read"); break; }
+      }
       if (theirsErr) {
         console.error("generate-comment: author lookup failed", theirsErr);
         return fail("Failed to check the approval queue", 500);
@@ -266,7 +277,7 @@ serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       const waitingNow = (r: any) => r.status === "new" ? r.created_at >= since(2) : WAITING.includes(r.status) && r.created_at >= since(14);
       // deno-lint-ignore no-explicit-any
-      const other = (theirs || []).filter((r: any) => r.id !== existing?.id);
+      const other = theirs.filter((r: any) => r.id !== existing?.id);
       // deno-lint-ignore no-explicit-any
       const sameOne = other.find((r: any) => [...WAITING, "posted", "dismissed"].includes(r.status) && samePost(r.post_text, postText));
       // deno-lint-ignore no-explicit-any
