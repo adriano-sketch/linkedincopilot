@@ -27,7 +27,7 @@ export default function PrivacyPolicy() {
       {/* Content */}
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold text-white mb-2">Privacy Policy</h1>
-        <p className="text-gray-500 mb-12 text-sm">Last updated: November 21, 2026</p>
+        <p className="text-gray-500 mb-12 text-sm">Last updated: November 24, 2026</p>
 
         <Section title="1. What Olanovo Does">
           <p className="mb-4">
@@ -57,7 +57,7 @@ export default function PrivacyPolicy() {
         <Section title="2. Data We Collect">
           <p className="mb-4">
             Olanovo collects and processes only the data needed to do what is described
-            above:
+            above, and to see how its own site is used:
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-400">
             <li>
@@ -87,9 +87,9 @@ export default function PrivacyPolicy() {
             </li>
             <li>
               <strong className="text-gray-300">Visits to olanovo.com:</strong>{' '}
-              Which pages are opened, the site the visit came from, the country and region, and
-              the kind of device and browser. They are counted without cookies and used as totals
-              only, not tied to your account.
+              Which pages are opened, the site the visit came from, the approximate location
+              (country, region, city), and the kind of device, operating system and browser. They
+              are counted without cookies and used as totals only, not tied to your account.
             </li>
           </ul>
         </Section>

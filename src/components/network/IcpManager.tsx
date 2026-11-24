@@ -130,7 +130,7 @@ export default function IcpManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Ideal customer profiles</h2>
+          <h2 className="text-lg font-semibold">Your audiences</h2>
           <p className="text-sm text-muted-foreground">
             Each audience drives both features: finding people to connect with, and finding their posts to comment on.
           </p>

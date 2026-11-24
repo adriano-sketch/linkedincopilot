@@ -39,7 +39,7 @@ async function scoreProspects(supabase: Supa, userId: string, icps: Map<string, 
   for (const p of prospects) {
     const icp = p.icp_id ? icps.get(p.icp_id) : undefined;
     if (!icp) {
-      await supabase.from("network_prospects").update({ status: "skipped", last_error: "ICP removed or inactive" }).eq("id", p.id);
+      await supabase.from("network_prospects").update({ status: "skipped", last_error: "Audience removed or inactive" }).eq("id", p.id);
       continue;
     }
     if (matchesExclusion(icp, `${p.headline || ""} ${p.current_company || ""}`)) {
@@ -253,7 +253,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
     if (!icp || !p.post_text || p.post_text.trim().length < 40) {
       await supabase.from("monitored_posts").update({
         status: "ignored", icp_fit: false, signal_type: "ignore",
-        fit_reason: !icp ? "ICP removed or inactive" : "Post too short to comment meaningfully",
+        fit_reason: !icp ? "Audience removed or inactive" : "Post too short to comment meaningfully",
       }).eq("id", p.id);
       classified++;
       continue;
