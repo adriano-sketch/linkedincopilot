@@ -201,7 +201,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
           ))}
         </div>
         <p className="text-xs text-center text-muted-foreground mt-4">
-          Need higher volume? <a href="mailto:sale@olanovo.com" className="text-primary hover:underline font-medium">Contact sales</a>
+          Need higher volume? <a href="mailto:sales@olanovo.com" className="text-primary hover:underline font-medium">Contact sales</a>
         </p>
       </DialogContent>
     </Dialog>
