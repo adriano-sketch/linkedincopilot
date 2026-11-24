@@ -15,7 +15,7 @@ import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
   commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, reviewComments, triagePost, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
-import { callClaude, cleanComment, lastModelUsed, modelWriter, parseJsonArray } from "../_shared/network.ts";
+import { callClaude, cleanComment, lastModelUsed, modelWriter, parseJsonArray, resetLastModel } from "../_shared/network.ts";
 
 // Deployed with verify_jwt=false: authentication is enforced here.
 //  - service callers (schedule-actions, pg_cron) may target any lead.
@@ -140,13 +140,15 @@ serve(async (req) => {
         const postText = body.triage_only.slice(0, 2000);
         const author = typeof body.author === "string" ? body.author : "";
         const triageModel = lastModelUsed();
+        resetLastModel();
         const d = await writeDraft({
           facts: f, triage: t, postText, author,
           authorTitle: typeof body.author_title === "string" ? body.author_title : "", authorCompany: "", hint: "", feedback: null,
         });
         const writerModel = lastModelUsed();
+        resetLastModel();
         const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language }], f, t.kind);
-        return json({ success: true, triage: t, draft: d, review, models: { triage: triageModel, writer: writerModel, reviewer: lastModelUsed() } });
+        return json({ success: true, triage: t, draft: d, review, models: { triage: triageModel, writer: writerModel, reviewer: lastModelUsed() || null } });
       }
       return json({ success: true, triage: t, models: { triage: lastModelUsed() } });
     }

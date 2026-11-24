@@ -300,6 +300,8 @@ export function startOfNextMonthUtc(now = new Date()): string {
 
 // ── Models ───────────────────────────────────────────────────────────────────────────────────────
 // Two tiers: a fast one that reads and judges (triage, review, matching) and a writer for the comment.
+// ANTHROPIC_MODEL_ICP / ANTHROPIC_MODEL_DM override the defaults. Leave them unset: the retired outreach
+// functions read the same variables and still send the earlier request shape.
 // Request shape differs by generation (Anthropic migration guides for Claude Sonnet 5.5 and Haiku 5.5):
 //   current models  : no temperature/top_p/top_k (400), thinking runs by default and its tokens count
 //                     toward max_tokens, and the same text is about 30% more tokens.
@@ -311,9 +313,12 @@ const WRITER_DEFAULT = "claude-sonnet-5-5";
 const FAST_FALLBACK = "claude-haiku-4-5";
 const WRITER_FALLBACK = "claude-sonnet-4-6";
 
-/** Claude 3.x and 4.x: the request shape this code was first written for. */
+/**
+ * Claude 3.x and 4.x: the request shape this code was first written for. Opus 4.7 and 4.8 are the
+ * exception: they already reject a temperature, so they take the current shape.
+ */
 function isEarlierModel(model: string): boolean {
-  return /^claude-(3|[a-z]+-4)(\b|-)/.test(model);
+  return /^claude-(3|[a-z]+-4)(\b|-)/.test(model) && !/^claude-opus-4-[78](\b|-)/.test(model);
 }
 
 function requestBody(model: string, opts: { system: string; user: string; maxTokens?: number; temperature?: number }) {
@@ -322,7 +327,8 @@ function requestBody(model: string, opts: { system: string; user: string; maxTok
   if (isEarlierModel(model)) return { ...base, max_tokens: maxTokens, temperature: opts.temperature ?? 0.2 };
   // Room for the larger token count of the same answer.
   const body: Record<string, unknown> = { ...base, max_tokens: Math.ceil(maxTokens * 1.4) };
-  if (/^claude-haiku-5-5/.test(model)) body.thinking = { type: "disabled" };
+  // "disabled" is accepted at effort high or below; the effort is stated so that does not depend on a default.
+  if (/^claude-haiku-5-5/.test(model)) { body.thinking = { type: "disabled" }; body.output_config = { effort: "medium" }; }
   else if (/^claude-sonnet-5-5/.test(model)) body.thinking = { type: "between_tools" };
   // Any other current model: thinking stays adaptive, and needs room inside max_tokens.
   else body.max_tokens = Math.ceil(maxTokens * 1.4) + 4000;
@@ -333,6 +339,10 @@ function requestBody(model: string, opts: { system: string; user: string; maxTok
 let lastModel = "";
 export function lastModelUsed(): string {
   return lastModel;
+}
+/** Clears the read-out, so a step that made no call reports nothing instead of the previous step's model. */
+export function resetLastModel(): void {
+  lastModel = "";
 }
 
 async function callOnce(apiKey: string, model: string, opts: { system: string; user: string; maxTokens?: number; temperature?: number }): Promise<{ ok: true; text: string } | { ok: false; status: number; detail: string }> {
@@ -391,10 +401,10 @@ export function parseJsonArray<T = any>(text: string): T[] {
 }
 
 export function modelFast(): string {
-  return Deno.env.get("ANTHROPIC_MODEL_ICP") || FAST_DEFAULT;
+  return (Deno.env.get("ANTHROPIC_MODEL_ICP") || "").trim() || FAST_DEFAULT;
 }
 export function modelWriter(): string {
-  return Deno.env.get("ANTHROPIC_MODEL_DM") || WRITER_DEFAULT;
+  return (Deno.env.get("ANTHROPIC_MODEL_DM") || "").trim() || WRITER_DEFAULT;
 }
 
 /** Remove em/en dashes and collapse whitespace (comments must read as human-written). */

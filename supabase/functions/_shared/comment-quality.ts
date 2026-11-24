@@ -58,8 +58,8 @@ export function localIssues(comment: string, kind: PostKind = "on_topic"): strin
   if (opener && kind !== "milestone") issues.push(`opens with generic praise ("${opener}")`);
   if (kind !== "milestone") {
     // A comment has to say something: reject it when every sentence is a question.
-    // Sentence ends and question marks of other scripts count too (。！？ and the Arabic ؟).
-    const sentences = c.split(/(?<=[.!?])\s+|(?<=[。！？؟])\s*/).map((x) => x.trim()).filter(Boolean);
+    // Sentence ends and question marks of other scripts count too (。！？, the Arabic ؟ and the Urdu ۔).
+    const sentences = c.split(/(?<=[.!?])\s+|(?<=[。！？؟۔])\s*/).map((x) => x.trim()).filter(Boolean);
     if (sentences.length && sentences.every((x) => /[?？؟]$/.test(x))) issues.push("is only a question: state a point of view, a question may only close it");
   }
   if (/https?:\/\/|www\./i.test(c)) issues.push("contains a link");
