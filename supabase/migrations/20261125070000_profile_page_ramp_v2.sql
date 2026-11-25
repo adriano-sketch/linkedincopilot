@@ -24,7 +24,7 @@ update public.extension_status set daily_profile_page_limit = null where daily_p
 
 alter table public.extension_status
   add constraint extension_status_page_limit_range
-  check (daily_profile_page_limit is null or (daily_profile_page_limit >= 0 and daily_profile_page_limit <= 150));
+  check (daily_profile_page_limit is null or (daily_profile_page_limit >= 0 and daily_profile_page_limit <= 100));
 
 alter table public.extension_status alter column daily_limit_visits set default 100;
 update public.extension_status set daily_limit_visits = 100 where daily_limit_visits is null or daily_limit_visits = 80;

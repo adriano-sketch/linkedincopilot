@@ -717,7 +717,7 @@ Deno.serve(async (req) => {
         // Split budget: follows get up to 60% of daily limit, visits get the rest.
         // This keeps the pipeline flowing instead of alternating days.
         if (actionType === "visit_profile" || actionType === "follow_profile") {
-          const visitLimit = ext?.daily_limit_visits ?? 80;
+          const visitLimit = ext?.daily_limit_visits ?? 100;
           const userCampaignCount = dueWarmingCampaignsPerUser.get(lead.user_id)?.size || 1;
           const perCampaignVisitLimit = Math.max(1, Math.floor(visitLimit / userCampaignCount));
 
@@ -892,14 +892,25 @@ Deno.serve(async (req) => {
             let cursor = userPageCursor.get(lead.user_id);
             if (cursor === undefined) {
               const horizon = new Date(now.getTime() + (Number.isFinite(windowMinutesLeft) ? windowMinutesLeft : 24 * 60) * 60 * 1000).toISOString();
-              const { data: last, error: lastErr } = await supabase.from("action_queue").select("scheduled_for")
+              const { data: due, error: dueErr } = await supabase.from("action_queue").select("scheduled_for")
                 .eq("user_id", lead.user_id).eq("status", "pending")
                 // Only the checks and visits this branch schedules. Invitations are spread over the
                 // whole day on their own rhythm: waiting for the last of them would leave no room today.
                 .in("action_type", [...WARMUP_ACTIONS, "find_latest_post"])
-                .lte("scheduled_for", horizon).order("scheduled_for", { ascending: false }).limit(1).maybeSingle();
-              if (lastErr) console.error("page cursor read failed:", lastErr.message);
-              cursor = last?.scheduled_for ? new Date(last.scheduled_for).getTime() : 0;
+                .gte("scheduled_for", now.toISOString()).lte("scheduled_for", horizon)
+                .order("scheduled_for", { ascending: true }).limit(300);
+              if (dueErr) console.error("page cursor read failed:", dueErr.message);
+              // The end of the run of pages that follow one another from now. A page standing alone
+              // later in the day (a retry placed at a random hour) is not the end of the line: taking
+              // it as the cursor would leave the hours before it empty.
+              cursor = 0;
+              let prev = now.getTime();
+              for (const row of due || []) {
+                const t = new Date(row.scheduled_for).getTime();
+                if (t - prev > 15 * 60 * 1000) break;
+                cursor = t;
+                prev = t;
+              }
               userPageCursor.set(lead.user_id, cursor);
             }
             const gapMs = (4 + Math.random() * 4) * 60 * 1000;
@@ -915,7 +926,6 @@ Deno.serve(async (req) => {
             addSkip("window_full_today");
             continue;
           }
-          if (opensPage) userPageCursor.set(lead.user_id, scheduled.getTime());
           scheduledFor = scheduled.toISOString();
         } else {
           scheduledFor = computeThrottledTime(slotIndex, userStart, userEnd);
@@ -957,6 +967,10 @@ Deno.serve(async (req) => {
           errors.push(`Lead ${lead.id}: ${insertError.message}`);
         } else {
           scheduled++;
+          // Only once it is in the queue: a refused page must not leave a hole in the line.
+          if (WARMUP_ACTIONS.has(actionType) || actionType === "find_latest_post") {
+            userPageCursor.set(lead.user_id, new Date(scheduledFor).getTime());
+          }
           if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
             pendingChecksPerUser.set(lead.user_id, (pendingChecksPerUser.get(lead.user_id) || 0) + 1);
           } else if (WARMUP_ACTIONS.has(actionType)) {
