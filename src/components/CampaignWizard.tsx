@@ -206,7 +206,7 @@ export default function CampaignWizard({ onComplete, onCancel }: CampaignWizardP
               </Tabs>
               {/* The picker stays mounted while the other tab shows, so what was ticked is kept. */}
               <div className={source === 'contacts' ? '' : 'hidden'}>
-                <ContactPicker campaignId={listId} onChange={onPickedChange} />
+                <ContactPicker campaignId={listId} initialDescription={profile?.icp_description || ''} onChange={onPickedChange} />
               </div>
               {source === 'urls' && (
                 <div className="space-y-3">

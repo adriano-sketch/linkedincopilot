@@ -1,3 +1,4 @@
+import { useRelevantContacts } from '@/hooks/useContacts';
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -167,6 +168,7 @@ export default function Today() {
   const needs = s ? s.inbox.comments : 0;
   const minutes = Math.max(1, Math.round(needs * 0.4));
 
+  const { data: relevant } = useRelevantContacts();
   const extensionReady = !!extensionStatus && !!extensionStatus.last_heartbeat_at;
   const hasRunningCampaign = !!s?.campaigns.some(c => c.status === 'active');
   // Drafts need two things from the person: subjects (what every draft is built from) and at least
@@ -176,14 +178,14 @@ export default function Today() {
   const kb = profile as { comment_topics?: string | null; comment_search_terms?: string[] | null } | null | undefined;
   const hasSubjects = !!String(kb?.comment_topics || '').trim()
     && Array.isArray(kb?.comment_search_terms) && kb.comment_search_terms.some(t => String(t).trim());
-  // The others are optional paths and must not keep this card on screen: campaigns and audiences
-  // are things many people never use.
+  // Picking who matters among their contacts is part of the setup: without it the drafts are about
+  // whoever in the network happened to post, most of whom have nothing to do with their business.
+  // Meeting new people through an audience stays optional.
   const steps: { done: boolean; label: string; to: string; optional?: boolean }[] = [
     { done: extensionReady, label: 'Install the Chrome extension and sign in', to: '/setup-guide' },
     { done: hasSubjects, label: 'Tell Olanovo your subjects and search terms', to: '/settings' },
-    { done: (s?.contacts || 0) > 0, label: 'Import your LinkedIn contacts', to: '/dashboard?new=1', optional: true },
-    { done: !!s?.network_active, label: 'Describe an audience to meet new people', to: '/network?tab=icps', optional: true },
-    { done: hasRunningCampaign, label: 'Start a list of people to keep up with', to: '/dashboard?new=1', optional: true },
+    { done: hasRunningCampaign, label: 'Pick, among your contacts, the people who matter to your business', to: '/dashboard?new=1' },
+    { done: !!s?.network_active, label: 'Describe an audience to meet new people like them', to: '/network?tab=icps', optional: true },
   ];
   const required = steps.filter(x => !x.optional);
   const setupDone = required.filter(x => x.done).length;
@@ -203,7 +205,7 @@ export default function Today() {
             <p className="text-muted-foreground text-[17px] m-0 mt-2">
               {isLoading ? 'Getting your briefing…'
                 : needs > 0 ? <>{greeting}{name ? `, ${name}` : ''}. About {minutes} min of your time.</>
-                : showSetup ? 'Two steps and Olanovo starts working.'
+                : showSetup ? 'A few steps and Olanovo starts working.'
                 : 'Nothing needs you right now. Olanovo keeps working.'}
             </p>
           </div>
@@ -308,6 +310,22 @@ export default function Today() {
                 </div>
               </section>
             </div>
+
+            {relevant && relevant.analyzed > 0 && (
+              <section className="rounded-2xl border border-border bg-card p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="m-0 text-lg font-semibold">
+                    {relevant.relevant.toLocaleString()} of your {relevant.analyzed.toLocaleString()} contacts fit what you described.
+                  </h2>
+                  <p className="text-sm text-muted-foreground m-0 mt-1">
+                    Those are the people Olanovo keeps you close to. The rest of your network is left alone. To grow this group, meet new people with the same profile.
+                  </p>
+                </div>
+                <Link to="/network?tab=icps" className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold-dark hover:underline">
+                  Meet new people like them<ArrowRight className="w-4 h-4" />
+                </Link>
+              </section>
+            )}
 
             <section className="flex flex-col gap-3.5">
               <h2 className="m-0 text-lg font-semibold">Last 7 days</h2>
