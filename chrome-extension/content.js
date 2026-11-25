@@ -1404,3 +1404,41 @@ function detectLinkedInLimitBanner() {
   }
   return null;
 }
+
+// ── "Copy and open post" from Olanovo ──
+// LinkedIn's activity page gives no address for a single post, so Olanovo opens the author's
+// activity page with #lcpost=<the post's opening words>. Left there, the person has to scroll and
+// look for the post. This takes them to it: the page is scrolled to the post and it is outlined for a
+// few seconds. Nothing is clicked and nothing is written.
+async function lcShowLinkedPost() {
+  if (window.top !== window) return;
+  if (!/\/recent-activity\//.test(window.location.pathname)) return;
+  if (!/#lcpost=/.test(window.location.hash)) return;
+  if (window.__olanovoShownPost === window.location.href) return;
+  window.__olanovoShownPost = window.location.href;
+  try {
+    // The list arrives after the page: give it a moment before the first look.
+    await sleep(1500);
+    const card = await lcFindTargetCard(window.location.href);
+    if (!card || !card.el) return;
+    card.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const el = card.el;
+    const before = { outline: el.style.outline, outlineOffset: el.style.outlineOffset, borderRadius: el.style.borderRadius };
+    el.style.outline = '3px solid #6B2EF5';
+    el.style.outlineOffset = '4px';
+    el.style.borderRadius = '10px';
+    setTimeout(() => {
+      el.style.outline = before.outline;
+      el.style.outlineOffset = before.outlineOffset;
+      el.style.borderRadius = before.borderRadius;
+    }, 8000);
+  } catch (e) {
+    console.warn('[Olanovo] Could not scroll to the post:', e && e.message);
+  }
+}
+lcShowLinkedPost();
+// LinkedIn changes pages without reloading them: the address can gain the marker later.
+if (!window.__olanovoPostListener) {
+  window.__olanovoPostListener = true;
+  window.addEventListener('hashchange', () => { lcShowLinkedPost(); });
+}

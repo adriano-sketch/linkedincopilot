@@ -1,8 +1,17 @@
 // LinkedIn does not allow comments posted by an extension or script: the person has to click
 // "Comment" on LinkedIn. Olanovo only hands the draft over: it copies the text and opens the post.
 
-/** The post URL without Olanovo's internal "#lcpost=" marker. */
+/** The post URL without Olanovo's "#lcpost=" marker. For matching and comparing, not for opening. */
 export const cleanPostUrl = (url: string | null | undefined) => (url || '').replace(/#lcpost=.*$/, '');
+
+/**
+ * The address to open. On an activity-page link the marker is kept: it carries the post's opening
+ * words, and the extension uses it to scroll the page to that post. Only LinkedIn addresses.
+ */
+export const postLinkToOpen = (url: string | null | undefined) => {
+  const u = (url || '').trim();
+  return /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\//i.test(u) ? u : '';
+};
 
 /** True when the link leads to the person's recent activity (the post is in that list), not to the post itself. */
 export const isActivityUrl = (url: string | null | undefined) => /\/recent-activity\//.test(url || '');
@@ -62,7 +71,7 @@ export async function openPostWithDraft(postUrl: string | null | undefined, text
   // focus: once the new tab is open, a copy started from here can be rejected. Started, not waited
   // for, so the tab still opens inside the click.
   const fallback = copied ? null : copyText(draft);
-  const url = cleanPostUrl(postUrl);
+  const url = postLinkToOpen(postUrl);
   let opened = false;
   if (url) { window.open(url, '_blank', 'noopener,noreferrer'); opened = true; }
   if (fallback) copied = await fallback;
