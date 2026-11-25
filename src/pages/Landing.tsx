@@ -14,7 +14,7 @@ import {
   Gauge, Clock, ShieldAlert, Hand,
 } from 'lucide-react';
 import BrandMark from '@/components/BrandMark';
-import Logo from '@/components/Logo';
+import Logo, { Wordmark } from '@/components/Logo';
 import { motion } from 'framer-motion';
 
 const fadeUp = {
@@ -128,7 +128,7 @@ export default function Landing() {
         <div className="max-w-[1240px] mx-auto flex items-center justify-between h-[72px] px-4 sm:px-6 gap-4">
           <Link to="/" className="flex items-center gap-1.5 text-white" aria-label="Olanovo home">
             <BrandMark className="w-8 h-8" />
-            <span className="font-display font-bold text-xl sm:text-2xl tracking-tight whitespace-nowrap">Olanovo</span>
+            <span aria-hidden="true" className="font-display font-bold text-xl sm:text-2xl tracking-tight whitespace-nowrap leading-none"><Wordmark /></span>
           </Link>
           <div className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-300">
             <button onClick={() => scrollTo(productRef)} className="hover:text-white transition-colors">What it does</button>

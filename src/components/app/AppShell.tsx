@@ -9,6 +9,7 @@ import {
   CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
 } from '@/components/ui/command';
 import BrandMark from '@/components/BrandMark';
+import { Wordmark } from '@/components/Logo';
 import { useAuth } from '@/hooks/useAuth';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
 import { useInboxCount } from '@/hooks/useInbox';
@@ -92,9 +93,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col gap-6 px-3.5 py-5">
-      <Link to="/today" onClick={onNavigate} className="flex items-center gap-1.5 px-2 text-white">
+      <Link to="/today" onClick={onNavigate} aria-label="Olanovo" className="flex items-center gap-1.5 px-2 text-white">
         <BrandMark className="w-8 h-8" />
-        <span className="font-display font-bold text-xl tracking-tight">Olanovo</span>
+        <span aria-hidden="true" className="font-display font-bold text-xl tracking-tight leading-none"><Wordmark /></span>
       </Link>
       <nav aria-label="Main" className="flex flex-col gap-0.5">
         {nav.map(item => {
