@@ -41,7 +41,7 @@ const STATUS_LABELS: Record<string, { label: string; variant: 'default' | 'secon
 };
 
 export default function SettingsPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOutEverywhere } = useAuth();
   const { profile, isLoading, updateProfile } = useProfile();
   const { extensionStatus } = useExtensionStatus();
   const { isFree, isAgency, onTrial, trialDaysLeft, isLoading: planLoading, settings: planSettings, loadFailed: planFailed } = useUserPlan();
@@ -472,6 +472,21 @@ export default function SettingsPage() {
                     </a>
                   </Button>
                   <ConnectExtensionButton className="mt-2" />
+                  <p className="text-xs text-muted-foreground mt-3 mb-0">
+                    Signing out here leaves the extension connected.{' '}
+                    <button
+                      type="button"
+                      className="underline hover:text-foreground"
+                      onClick={async () => {
+                        if (!okToLeavePage()) return;
+                        const { error } = await signOutEverywhere();
+                        if (error) toast.error('Could not sign out everywhere. Try again.');
+                      }}
+                    >
+                      Sign out everywhere
+                    </button>{' '}
+                    ends every session of your account, including the extension on any computer.
+                  </p>
                 </div>
 
                 {!extensionStatus && (

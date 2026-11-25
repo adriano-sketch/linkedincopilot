@@ -13,8 +13,9 @@ import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.t
 // exchanged at once for a session. The email comes from the verified token of the caller, never
 // from the request body.
 //
-// One request per account every WAIT_SECONDS: each one opens a session that is not closed until
-// the account signs out, so they must not be created in a loop.
+// One request per account every WAIT_SECONDS: each one opens a session that nothing closes short of
+// "Sign out everywhere" (a normal sign-out on the site is local, and the extension's own sign-out
+// only forgets the session), so they must not be created in a loop.
 const WAIT_SECONDS = 30;
 
 serve(async (req) => {
