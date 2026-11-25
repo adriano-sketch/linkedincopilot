@@ -569,6 +569,12 @@ Deno.serve(async (req) => {
       const userScheduleSlots = new Map<string, number>();
       // When the last page-opening action of each user is due: the next one goes after it, whatever its type.
       const userPageCursor = new Map<string, number>();
+      // Pending pages of the user that stand apart from that line (retries placed later in the day):
+      // new pages keep their distance from these too. Users whose queue could not be read get no
+      // new page in this run.
+      const userPageBusy = new Map<string, number[]>();
+      const userPageUnreadable = new Set<string>();
+      const PAGE_MIN_GAP_MS = 4 * 60 * 1000;
       const windowFullKeys = new Set<string>(); // "userId:actionType" whose slots already run past today's window
 
       // ── Per-user caps: separate caps for checks vs warm-up vs other actions
@@ -889,6 +895,7 @@ Deno.serve(async (req) => {
             // Each page goes 4 to 8 minutes after the user's last check or visit already in the queue for
             // today, of either type and from any earlier run. (Counting slots per run and per type let two
             // chains overlap; at 8 to 16 minutes a ten-hour day fitted about 50 pages.)
+            if (userPageUnreadable.has(lead.user_id)) { addSkip("page_queue_unreadable"); continue; }
             let cursor = userPageCursor.get(lead.user_id);
             if (cursor === undefined) {
               const horizon = new Date(now.getTime() + (Number.isFinite(windowMinutesLeft) ? windowMinutesLeft : 24 * 60) * 60 * 1000).toISOString();
@@ -899,22 +906,36 @@ Deno.serve(async (req) => {
                 .in("action_type", [...WARMUP_ACTIONS, "find_latest_post"])
                 .gte("scheduled_for", now.toISOString()).lte("scheduled_for", horizon)
                 .order("scheduled_for", { ascending: true }).limit(300);
-              if (dueErr) console.error("page cursor read failed:", dueErr.message);
+              if (dueErr) {
+                // Without knowing what is already queued, a new page could land on top of one.
+                console.error("page cursor read failed:", dueErr.message);
+                userPageUnreadable.add(lead.user_id);
+                addSkip("page_queue_unreadable");
+                continue;
+              }
               // The end of the run of pages that follow one another from now. A page standing alone
               // later in the day (a retry placed at a random hour) is not the end of the line: taking
               // it as the cursor would leave the hours before it empty.
               cursor = 0;
               let prev = now.getTime();
+              const apart: number[] = [];
+              let inLine = true;
               for (const row of due || []) {
                 const t = new Date(row.scheduled_for).getTime();
-                if (t - prev > 15 * 60 * 1000) break;
-                cursor = t;
-                prev = t;
+                if (inLine && t - prev > 15 * 60 * 1000) inLine = false;
+                if (inLine) { cursor = t; prev = t; } else apart.push(t);
               }
+              userPageBusy.set(lead.user_id, apart);
               userPageCursor.set(lead.user_id, cursor);
             }
             const gapMs = (4 + Math.random() * 4) * 60 * 1000;
-            scheduled = new Date(Math.max(now.getTime() + initialDelayMs + jitterMs, cursor + gapMs));
+            let at = Math.max(now.getTime() + initialDelayMs + jitterMs, cursor + gapMs);
+            // Too close to a page standing apart: go after it instead (the list is in time order, so
+            // one pass is enough).
+            for (const t of userPageBusy.get(lead.user_id) || []) {
+              if (Math.abs(at - t) < PAGE_MIN_GAP_MS) at = t + gapMs;
+            }
+            scheduled = new Date(at);
           } else {
             const perSlotGapMs = slotIndex * (3 + Math.floor(Math.random() * 5)) * 60 * 1000;
             scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);

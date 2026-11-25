@@ -21,6 +21,9 @@ alter table public.extension_status
 
 -- 40 was the old default, not a choice anyone made: those rows follow the new rule.
 update public.extension_status set daily_profile_page_limit = null where daily_profile_page_limit = 40;
+-- Nothing in the product writes this column; a value outside the new range could only come from a
+-- direct edit, and would stop the check below.
+update public.extension_status set daily_profile_page_limit = null where daily_profile_page_limit < 0 or daily_profile_page_limit > 100;
 
 alter table public.extension_status
   add constraint extension_status_page_limit_range
