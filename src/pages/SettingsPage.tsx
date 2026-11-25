@@ -1,6 +1,7 @@
 import { hasUnsavedChanges, okToLeavePage, registerUnsavedCheck } from '@/lib/unsavedChanges';
 import CommentKnowledgeBase from '@/components/CommentKnowledgeBase';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
+import ConnectExtensionButton from '@/components/ConnectExtensionButton';
 import AppShell from '@/components/app/AppShell';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -463,13 +464,14 @@ export default function SettingsPage() {
                     Chrome extension
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Install it from the Chrome Web Store. Chrome keeps it up to date on its own. Then click the extension icon and sign in with the same email and password you use here. If you installed it from a .zip file before, remove that copy first: keep only one.
+                    Install it from the Chrome Web Store. Chrome keeps it up to date on its own. Then connect it to your account: use the button below when it appears, or click the extension icon and sign in with the email and password you use here. If you installed it from a .zip file before, remove that copy first: keep only one.
                   </p>
                   <Button size="sm" className="gap-1.5 mt-1" asChild>
                     <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">
                       <Chrome className="w-3 h-3" />Get it on the Chrome Web Store
                     </a>
                   </Button>
+                  <ConnectExtensionButton className="mt-2" />
                 </div>
 
                 {!extensionStatus && (

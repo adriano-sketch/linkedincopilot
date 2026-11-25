@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
+import ConnectExtensionButton from '@/components/ConnectExtensionButton';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
@@ -175,10 +176,12 @@ export default function Onboarding() {
                       <p className="text-sm font-medium">How to install:</p>
                       <ol className="text-sm text-muted-foreground space-y-2 list-decimal pl-4">
                         <li>Open <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">the Olanovo extension on the Chrome Web Store</a> and click "Add to Chrome"</li>
-                        <li>Click the extension icon in the Chrome toolbar and sign in with the same email and password you use here</li>
+                        <li>Connect it to your account: use the button below when it appears, or click the extension icon in the Chrome toolbar and sign in with the email and password you use here</li>
                         <li>Log in to LinkedIn in the same browser</li>
                       </ol>
                     </div>
+
+                    <ConnectExtensionButton />
 
                     {!waitingForExtension ? (
                       <Button onClick={handleStartWaiting} className="w-full">

@@ -197,3 +197,7 @@ body {
 .loading-text { text-align: center; color: var(--ink-soft); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } .schedule-caret { transition: none; } }
+
+/* Under the sign-in form: how to connect an account that has no password. */
+.login-hint { margin-top: 12px; font-size: 11px; line-height: 1.45; color: #8b8799; text-align: center; }
+.login-hint a { color: #A78BFF; text-decoration: underline; }

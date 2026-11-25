@@ -1,3 +1,4 @@
+import { useGoogleSignIn } from '@/lib/authProviders';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,7 +12,8 @@ import Logo from '@/components/Logo';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function AuthPage() {
-  const { user, loading: authLoading, signUpWithEmail, signInWithEmail } = useAuth();
+  const { user, loading: authLoading, signUpWithEmail, signInWithEmail, signInWithGoogle } = useAuth();
+  const googleOn = useGoogleSignIn();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -137,6 +139,17 @@ export default function AuthPage() {
             {mode === 'forgot' && 'We will email you a reset link'}
             {mode === 'recovery' && 'Choose a strong password to continue'}
           </p>
+
+          {googleOn && (mode === 'signin' || mode === 'signup') && (
+            <>
+              <Button type="button" variant="outline" className="w-full font-semibold" onClick={() => void signInWithGoogle()}>
+                Continue with Google
+              </Button>
+              <div className="flex items-center gap-3 my-4 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" />
+              </div>
+            </>
+          )}
 
           {(mode === 'signin' || mode === 'signup') && (
             <form onSubmit={handleEmailSubmit} className="space-y-3">

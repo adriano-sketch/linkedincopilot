@@ -141,6 +141,33 @@ const supabase = {
     return data;
   },
 
+  // A session handed over by the Olanovo site for the person signed in there (no password typed in
+  // the extension). It is only kept if the server confirms that the token is valid and belongs to
+  // the account it claims to be for.
+  async signInWithSession(session) {
+    const { access_token, refresh_token, expires_in, user_id } = session || {};
+    if (typeof access_token !== 'string' || typeof refresh_token !== 'string' || typeof user_id !== 'string'
+      || !access_token || !refresh_token || !user_id) {
+      throw new Error('Incomplete session');
+    }
+    const res = await fetch(`${this.url}/auth/v1/user`, {
+      headers: { 'apikey': this.anonKey, 'Authorization': `Bearer ${access_token}` }
+    });
+    if (!res.ok) throw new Error('Session not accepted');
+    const user = await res.json();
+    if (!user || user.id !== user_id) throw new Error('Session is for another account');
+    const seconds = Number(expires_in);
+    this.accessToken = access_token;
+    this.userId = user.id;
+    await setAuthToken({
+      access_token,
+      refresh_token,
+      user_id: user.id,
+      expires_at: Date.now() + ((Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000)
+    });
+    return { user };
+  },
+
   async verifyToken() {
     try {
       const res = await fetch(`${this.url}/auth/v1/user`, {
@@ -1765,6 +1792,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 });
+
+// ── MESSAGES FROM THE OLANOVO SITE ──
+// Only pages listed under externally_connectable in the manifest can reach this listener. The
+// origin is checked again here, so a change to the manifest alone cannot open it to another site.
+const SITE_ORIGINS = ['https://www.olanovo.com', 'https://olanovo.com'];
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  let origin = '';
+  try { origin = new URL(sender.url || sender.origin || '').origin; } catch { origin = ''; }
+  if (!SITE_ORIGINS.includes(origin)) {
+    sendResponse({ success: false, error: 'not_allowed' });
+    return false;
+  }
+  // Is the extension there, which version, and is it connected to an account?
+  if (message?.type === 'OLANOVO_PING') {
+    ensureAuth().then(hasAuth => {
+      sendResponse({
+        success: true,
+        version: chrome.runtime.getManifest().version,
+        authenticated: !!(hasAuth && supabase.accessToken),
+        userId: (hasAuth && supabase.userId) || null
+      });
+    }).catch(() => sendResponse({ success: true, version: chrome.runtime.getManifest().version, authenticated: false, userId: null }));
+    return true;
+  }
+  // Connect the extension to the account signed in on the site.
+  if (message?.type === 'OLANOVO_CONNECT') {
+    handleSiteConnect(message.session)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  sendResponse({ success: false, error: 'unknown_message' });
+  return false;
+});
+
+async function handleSiteConnect(session) {
+  try {
+    await supabase.signInWithSession(session);
+    await sendHeartbeat();
+    return { success: true, userId: supabase.userId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
 
 async function handleLogin(email, password) {
   try {
