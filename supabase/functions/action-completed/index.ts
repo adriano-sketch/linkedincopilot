@@ -801,12 +801,12 @@ serve(async (req) => {
       // ── Growth Mode Actions ──
       case "find_latest_post": {
         // A comment on a post from weeks ago does not read as attention. The extension applies its own
-        // age limit; this one holds whatever version of it is installed.
-        const postAge = Number(result?.post_age_days);
+        // age limit; this one holds whatever version of it is installed. A post whose age the reader
+        // could not tell (no label on the card) is taken as recent, as the extension does.
+        const postAge = result?.post_age_days == null ? NaN : Number(result.post_age_days);
         if (result?.found === true && Number.isFinite(postAge) && postAge > GROWTH_MAX_POST_AGE_DAYS) {
-          // Posts now and then: look again in two weeks.
           leadUpdate.status = "engagement_done";
-          leadUpdate.next_action_at = rbt(GROWTH_REST_OCCASIONAL_DAYS);
+          leadUpdate.next_action_at = rbt(postAge <= GROWTH_QUIET_AFTER_DAYS ? GROWTH_REST_OCCASIONAL_DAYS : GROWTH_REST_QUIET_DAYS);
           leadUpdate.error_message = `Newest post is ${Math.round(postAge)} days old (only the last ${GROWTH_MAX_POST_AGE_DAYS} days count)`;
         } else if (result?.found === true) {
           leadUpdate.post_url = result.post_url || null;
@@ -858,8 +858,16 @@ serve(async (req) => {
           // whose newest post is a few weeks old may post again soon; someone with nothing of their
           // own in a month rarely does, and checking them every week spends profile pages that
           // people who do post could use.
-          const newest = Number(result?.newest_post_age_days);
-          const occasional = result?.note === "no_recent_posts" && Number.isFinite(newest) && newest <= GROWTH_QUIET_AFTER_DAYS;
+          // Judged by the person's OWN posts, which the reader lists as it skips them: "old:<n>d" for
+          // one past the age limit, "no_text" for one with too little text to comment on (an image).
+          // The note and newest_post_age_days are not used for this: they count reposts too, and mean
+          // different things in different versions of the extension.
+          const skippedOwn: string[] = Array.isArray(result?.skipped) ? result.skipped.map((x: unknown) => String(x)) : [];
+          const occasional = skippedOwn.some((x) => {
+            if (x === "no_text") return true;
+            const m = x.match(/^old:(\d+)d$/);
+            return !!m && Number(m[1]) <= GROWTH_QUIET_AFTER_DAYS;
+          });
           leadUpdate.status = "engagement_done";
           leadUpdate.next_action_at = rbt(occasional ? GROWTH_REST_OCCASIONAL_DAYS : GROWTH_REST_QUIET_DAYS);
           const why = result?.note === "no_recent_posts"

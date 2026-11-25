@@ -350,10 +350,18 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
         const ids = (known || []).map((k) => k.id);
         if (ids.length) {
           const { data: scores, error: scoresErr } = await supabase.from("connection_matches")
-            .select("connection_id, score").eq("user_id", userId).in("connection_id", ids).limit(5000);
+            .select("connection_id, score, reason").eq("user_id", userId).in("connection_id", ids)
+            // Highest first: if the list is ever cut short, what is lost are low scores, and a person
+            // is only skipped when their BEST score is low.
+            .order("score", { ascending: false }).limit(1000);
           if (scoresErr) throw scoresErr;
           const best = new Map<string, number>();
-          for (const s of scores || []) best.set(s.connection_id, Math.max(best.get(s.connection_id) ?? -1, Number(s.score) || 0));
+          for (const s of scores || []) {
+            // A 0 with no reason is a placeholder (the analysis returned nothing for that person),
+            // not a judgment: such a contact counts as never analyzed.
+            if (!(Number(s.score) > 0) && !String(s.reason || "").trim()) continue;
+            best.set(s.connection_id, Math.max(best.get(s.connection_id) ?? -1, Number(s.score) || 0));
+          }
           for (const k of known || []) {
             const b = best.get(k.id);
             const u = normalizeProfileUrl(k.linkedin_url);
