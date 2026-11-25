@@ -1,4 +1,3 @@
-import { useRelevantContacts } from '@/hooks/useContacts';
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -12,6 +11,7 @@ import { useExtensionStatus } from '@/hooks/useExtensionStatus';
 import { safeTimezone } from '@/lib/timezones';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useRelevantContacts } from '@/hooks/useContacts';
 
 type Summary = {
   timezone: string;
@@ -170,7 +170,7 @@ export default function Today() {
 
   const { data: relevant } = useRelevantContacts();
   const extensionReady = !!extensionStatus && !!extensionStatus.last_heartbeat_at;
-  const hasRunningCampaign = !!s?.campaigns.some(c => c.status === 'active');
+  const hasList = (s?.campaigns.length || 0) > 0;
   // Drafts need two things from the person: subjects (what every draft is built from) and at least
   // one search term (what the "my network" search in network-scheduler looks for in the posts of
   // their connections; with no term that search is off). With the extension running and those two
@@ -178,13 +178,12 @@ export default function Today() {
   const kb = profile as { comment_topics?: string | null; comment_search_terms?: string[] | null } | null | undefined;
   const hasSubjects = !!String(kb?.comment_topics || '').trim()
     && Array.isArray(kb?.comment_search_terms) && kb.comment_search_terms.some(t => String(t).trim());
-  // Picking who matters among their contacts is part of the setup: without it the drafts are about
-  // whoever in the network happened to post, most of whom have nothing to do with their business.
-  // Meeting new people through an audience stays optional.
+  // Choosing who matters is part of the setup: a list of people (any state, a paused list is still a
+  // choice made) or an audience. Someone with neither gets drafts about whoever happened to post.
   const steps: { done: boolean; label: string; to: string; optional?: boolean }[] = [
     { done: extensionReady, label: 'Install the Chrome extension and sign in', to: '/setup-guide' },
     { done: hasSubjects, label: 'Tell Olanovo your subjects and search terms', to: '/settings' },
-    { done: hasRunningCampaign, label: 'Pick, among your contacts, the people who matter to your business', to: '/dashboard?new=1' },
+    { done: hasList || !!s?.network_active, label: 'Pick the people who matter to your business', to: hasList ? '/dashboard' : '/dashboard?new=1' },
     { done: !!s?.network_active, label: 'Describe an audience to meet new people like them', to: '/network?tab=icps', optional: true },
   ];
   const required = steps.filter(x => !x.optional);
@@ -315,10 +314,12 @@ export default function Today() {
               <section className="rounded-2xl border border-border bg-card p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="m-0 text-lg font-semibold">
-                    {relevant.relevant.toLocaleString()} of your {relevant.analyzed.toLocaleString()} contacts fit what you described.
+                    {relevant.relevant.toLocaleString()} of the {relevant.analyzed.toLocaleString()} contacts analyzed fit what you described.
                   </h2>
                   <p className="text-sm text-muted-foreground m-0 mt-1">
-                    Those are the people Olanovo keeps you close to. The rest of your network is left alone. To grow this group, meet new people with the same profile.
+                    {relevant.relevant > 0
+                      ? 'Keep the ones you picked in a list to follow their posts. To grow this group, meet new people with the same profile.'
+                      : 'Try describing them another way in a list, or meet new people with the profile you want.'}
                   </p>
                 </div>
                 <Link to="/network?tab=icps" className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold-dark hover:underline">

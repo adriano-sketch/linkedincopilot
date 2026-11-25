@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import ConnectExtensionButton from '@/components/ConnectExtensionButton';
 import { useNavigate } from 'react-router-dom';
@@ -14,8 +14,8 @@ import { toast } from 'sonner';
 import { User, ArrowRight, ArrowLeft, Chrome, Check, Loader2, AlertTriangle, RefreshCw, Users } from 'lucide-react';
 
 const STEPS = ['Your Profile', 'Who matters to your business', 'Install Extension'];
-/** Short of this, the description is a job title and nothing else: not enough to tell contacts apart. */
-const MIN_AUDIENCE_CHARS = 30;
+/** Same floor as the contact picker. Kept low on purpose: a full description in Chinese, Japanese or Korean is short. */
+const MIN_AUDIENCE_CHARS = 8;
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -26,6 +26,8 @@ export default function Onboarding() {
   const [extensionDetected, setExtensionDetected] = useState(false);
   const [waitingForExtension, setWaitingForExtension] = useState(false);
   const [waitStarted, setWaitStarted] = useState<number | null>(null);
+
+  const completing = useRef(false);
 
   const [form, setForm] = useState({
     sender_name: '',
@@ -48,7 +50,8 @@ export default function Onboarding() {
         company_description: profile.company_description || '',
         icp_description: profile.icp_description || '',
       });
-      if (profile.onboarding_completed) navigate('/today');
+      // Not while finishing: that path goes to the list wizard, and this would race it to /today.
+      if (profile.onboarding_completed && !completing.current) navigate('/today');
     }
   }, [profile, navigate]);
 
@@ -80,7 +83,7 @@ export default function Onboarding() {
     } else if (step === 1) {
       const description = form.icp_description.trim();
       if (description.length < MIN_AUDIENCE_CHARS) {
-        toast.error('Add a little more: their role, the kind of company, and where they are');
+        toast.error('Describe them in a few words first');
         return;
       }
       try {
@@ -98,6 +101,7 @@ export default function Onboarding() {
   };
 
   const handleComplete = async () => {
+    completing.current = true;
     try {
       await updateProfile.mutateAsync({
         sender_name: form.sender_name,
@@ -111,6 +115,7 @@ export default function Onboarding() {
       // who fit what they just described.
       navigate('/dashboard?new=1');
     } catch {
+      completing.current = false;
       toast.error('Failed to complete setup');
     }
   };
@@ -141,7 +146,7 @@ export default function Onboarding() {
             <CardTitle>Step {step + 1} of {STEPS.length}: {STEPS[step]}</CardTitle>
             <CardDescription>
               {step === 0 && "Tell us about you and your company."}
-              {step === 1 && "The most important step. Most of a LinkedIn network has nothing to do with what you sell: Olanovo uses this description to pick, among your contacts, the people worth staying close to, and to find new people like them. Everyone else is left alone."}
+              {step === 1 && "The most important step. Most of a LinkedIn network has nothing to do with your business. In the next screen Olanovo compares your contacts with this description and shows you the ones who fit, so you choose who to stay close to."}
               {step === 2 && "Install the Chrome extension. It reads LinkedIn for you; you approve and post everything yourself."}
             </CardDescription>
           </CardHeader>
@@ -191,10 +196,12 @@ export default function Onboarding() {
                     onChange={e => setForm({ ...form, icp_description: e.target.value.slice(0, 500) })}
                     rows={4}
                     className="mt-1"
+                    aria-required="true"
+                    aria-describedby="audience-hints"
                   />
                   <p className="text-xs mt-1 text-right text-muted-foreground">{form.icp_description.length}/500</p>
                 </div>
-                <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1 m-0">
+                <ul id="audience-hints" className="text-sm text-muted-foreground list-disc pl-5 space-y-1 m-0">
                   <li>Be specific. "Decision makers" matches everyone; a role in a kind of company in a place matches the right few.</li>
                   <li>Describe the person, not your product.</li>
                   <li>You can change it later, and add other descriptions for other groups.</li>
@@ -226,7 +233,7 @@ export default function Onboarding() {
 
                     {!waitingForExtension ? (
                       <Button onClick={handleStartWaiting} className="w-full">
-                        <RefreshCw className="w-4 h-4 mr-2" /> I've installed it — detect now
+                        <RefreshCw className="w-4 h-4 mr-2" /> I've installed it, detect now
                       </Button>
                     ) : (
                       <div className="text-center space-y-2">

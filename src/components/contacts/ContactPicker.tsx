@@ -67,7 +67,7 @@ export default function ContactPicker({
   const searching = runs.some(r => r.status === 'queued');
   const { data: matches = [], isLoading } = useContactMatches(campaignId, Number(minScore), searching);
   const { importConnections, suggestKeywords, score, searchLinkedIn, setSelected } = useContactActions(campaignId);
-  const { data: summary, refetch: refetchSummary } = useMatchSummary(campaignId, searching);
+  const { data: summary } = useMatchSummary(campaignId, searching);
 
   // Keep previously saved selections when the list loads.
   useEffect(() => {
@@ -128,7 +128,6 @@ export default function ContactPicker({
     try {
       await score(description.trim(), (done, total) => setProgress({ done, total }));
       toast.success('Done. Pick who you want to engage with.');
-      void refetchSummary();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Matching failed, try again');
     } finally {
@@ -274,14 +273,14 @@ export default function ContactPicker({
       </div>
 
       {summary && !scoring && (
-        <div className="rounded-xl border border-border bg-gold-bg/50 p-4">
+        <div role="status" className="rounded-xl border border-border bg-gold-bg/50 p-4">
           <p className="font-display font-semibold text-xl m-0">
-            {summary.fit.toLocaleString()} of {summary.analyzed.toLocaleString()} contacts fit what you described.
+            {summary.fit.toLocaleString()} of {summary.analyzed.toLocaleString()} contacts analyzed fit what you described.
           </p>
           <p className="text-sm text-muted-foreground mt-1 mb-0">
             {summary.fit === 0
               ? 'Nobody reached a likely fit. Try describing them another way: a role, a kind of company, a place.'
-              : `The other ${(summary.analyzed - summary.fit).toLocaleString()} are left alone: no visits, no drafts. Pick the people below to keep up with.`}
+              : 'Pick the people below to keep up with. Nobody is added to this list unless you pick them.'}
           </p>
         </div>
       )}
