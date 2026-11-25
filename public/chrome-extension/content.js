@@ -1420,6 +1420,10 @@ async function lcShowLinkedPost() {
   if (!marker) return;
   if (window.__olanovoShownPost === url) return;
   window.__olanovoShownPost = url;
+  // A newer search (the marker changed) retires this one: only the latest may move the page.
+  const turn = (window.__olanovoPostSearch || 0) + 1;
+  window.__olanovoPostSearch = turn;
+  const retired = () => window.__olanovoPostSearch !== turn;
   // The person's own scrolling, typing or clicking ends the search: the page is theirs.
   let stop = false;
   const halt = () => { stop = true; };
@@ -1431,16 +1435,15 @@ async function lcShowLinkedPost() {
     // The list arrives after the page: give it a moment before the first look.
     await sleep(1500);
     let card = null;
-    for (let attempt = 0; attempt < 7 && !stop; attempt++) {
-      card = lcCollectActivityCards().find((c) => c.fingerprint && (
-        c.fingerprint === wanted ||
-        c.fingerprint.startsWith(wanted.slice(0, 40)) ||
-        (c.fingerprint.length >= 30 && wanted.startsWith(c.fingerprint.slice(0, 40)))
-      )) || null;
+    for (let attempt = 0; attempt < 7 && !stop && !retired(); attempt++) {
+      // The post's text must begin with the whole marker. A shorter post that merely shares its
+      // opening words with the marker is a different post.
+      card = lcCollectActivityCards().find((c) => c.fingerprint && c.fingerprint.startsWith(wanted)) || null;
       if (card || attempt === 6) break;
       window.scrollBy(0, 700);
       await sleep(1100);
     }
+    if (retired()) return;
     if (!card || !card.el) {
       // Not found: back to where the page started, so the person is not left halfway down the list.
       if (!stop) window.scrollTo({ top: 0, behavior: 'smooth' });
