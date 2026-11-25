@@ -15,7 +15,9 @@ const OTHER_ACCOUNT = 'The extension in this browser is connected to another Ola
 export default function ConnectExtensionButton({ className, onConnected }: { className?: string; onConnected?: () => void }) {
   const { user } = useAuth();
   const userId = user?.id || null;
-  const [state, setState] = useState<ExtensionState | null>(null);
+  // Kept with the account it was asked for: after a change of account the old answer is not shown.
+  const [answer, setAnswer] = useState<{ forUser: string | null; found: ExtensionState } | null>(null);
+  const state = answer && answer.forUser === userId ? answer.found : null;
   const [busy, setBusy] = useState(false);
 
   // Returning to the tab fires two events at once: one question to the extension is enough. The
@@ -28,7 +30,7 @@ export default function ConnectExtensionButton({ className, onConnected }: { cla
     if (looking.current?.forUser === userId) return looking.current.done;
     const mine = { forUser: userId, done: Promise.resolve() };
     mine.done = findExtension(userId)
-      .then(found => { if (current.current === userId) setState(found); })
+      .then(found => { if (current.current === userId) setAnswer({ forUser: userId, found }); })
       .finally(() => { if (looking.current === mine) looking.current = null; });
     looking.current = mine;
     return mine.done;
