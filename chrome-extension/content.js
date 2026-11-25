@@ -1438,7 +1438,14 @@ async function lcShowLinkedPost() {
     for (let attempt = 0; attempt < 7 && !stop && !retired(); attempt++) {
       // The post's text must begin with the whole marker. A shorter post that merely shares its
       // opening words with the marker is a different post.
-      card = lcCollectActivityCards().find((c) => c.fingerprint && c.fingerprint.startsWith(wanted)) || null;
+      const cards = lcCollectActivityCards();
+      card = cards.find((c) => c.fingerprint && c.fingerprint.startsWith(wanted)) || null;
+      if (!card && attempt === 6 && wanted.length > 40) {
+        // Last look. A long marker can differ from the card near its end (a counter read as text, an
+        // edit, the text collapsed). Its first 40 characters decide, but only when one post has them.
+        const close = cards.filter((c) => c.fingerprint && c.fingerprint.startsWith(wanted.slice(0, 40)));
+        if (close.length === 1) card = close[0];
+      }
       if (card || attempt === 6) break;
       window.scrollBy(0, 700);
       await sleep(1100);
@@ -1451,16 +1458,23 @@ async function lcShowLinkedPost() {
     }
     if (stop) return;
     card.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // An outline still showing from an earlier search is taken off first: otherwise it would be read
+    // as the post's own style and put back for good.
+    if (window.__olanovoClearOutline) window.__olanovoClearOutline();
     const el = card.el;
     const before = { outline: el.style.outline, outlineOffset: el.style.outlineOffset, borderRadius: el.style.borderRadius };
     el.style.outline = '3px solid #6B2EF5';
     el.style.outlineOffset = '4px';
     el.style.borderRadius = '10px';
-    setTimeout(() => {
+    const timer = setTimeout(() => { if (window.__olanovoClearOutline === clear) clear(); }, 8000);
+    const clear = () => {
+      clearTimeout(timer);
       el.style.outline = before.outline;
       el.style.outlineOffset = before.outlineOffset;
       el.style.borderRadius = before.borderRadius;
-    }, 8000);
+      window.__olanovoClearOutline = null;
+    };
+    window.__olanovoClearOutline = clear;
   } catch (e) {
     console.warn('[Olanovo] Could not scroll to the post:', e && e.message);
   } finally {
