@@ -48,7 +48,7 @@ const STATUS_ORDER: Record<string, number> = {
 // found nothing to comment on. (After a comment, or a post that was off topic, the rest is 7 days.)
 const GROWTH_MAX_POST_AGE_DAYS = 10;
 const GROWTH_QUIET_AFTER_DAYS = 30;      // newest own post older than this: the person rarely posts
-const GROWTH_REST_OCCASIONAL_DAYS = 14;  // newest post between the two limits above
+const GROWTH_REST_OCCASIONAL_DAYS = 14;  // newest own post between the two limits above, or recent but without text
 const GROWTH_REST_QUIET_DAYS = 30;       // no own post, or none in GROWTH_QUIET_AFTER_DAYS
 
 function randomBusinessTime(
@@ -870,11 +870,15 @@ serve(async (req) => {
           });
           leadUpdate.status = "engagement_done";
           leadUpdate.next_action_at = rbt(occasional ? GROWTH_REST_OCCASIONAL_DAYS : GROWTH_REST_QUIET_DAYS);
-          const why = result?.note === "no_recent_posts"
-            ? `No post in the last ${GROWTH_MAX_POST_AGE_DAYS} days (newest is ${result?.newest_post_age_days ?? "?"} days old)`
-            : result?.note === "no_own_posts"
-              ? "Only reposts or other people's posts on the activity page"
-              : "No posts found on profile activity page";
+          // The reason shown to the owner comes from the same list, so it agrees with the rest chosen.
+          const ownAges = skippedOwn.map((x) => x.match(/^old:(\d+)d$/)).filter((m): m is RegExpMatchArray => !!m).map((m) => Number(m[1]));
+          const why = skippedOwn.includes("no_text")
+            ? "Their recent post has too little text to comment on"
+            : ownAges.length
+              ? `No post of their own in the last ${GROWTH_MAX_POST_AGE_DAYS} days (newest is ${Math.min(...ownAges)} days old)`
+              : result?.note === "no_posts_found"
+                ? "No posts found on profile activity page"
+                : "Only reposts or other people's posts on the activity page";
           leadUpdate.error_message = why;
         }
         break;
