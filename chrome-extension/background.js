@@ -33,6 +33,16 @@ function getAuthToken() {
 
 // Rejects when the browser could not write: a session that was not stored is gone the next time the
 // worker restarts, so callers must not treat it as signed in.
+// Changes to the stored session run one at a time. A sign-in, a renewal and a sign-out each read
+// the stored session and then write it; interleaved, the renewal of one account could land on top
+// of a sign-in to another.
+let sessionQueue = Promise.resolve();
+function withSessionLock(fn) {
+  const run = sessionQueue.then(fn);
+  sessionQueue = run.catch(() => {});
+  return run;
+}
+
 function setAuthToken(auth) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.set({ auth }, () => {
@@ -116,7 +126,7 @@ const supabase = {
       }
       
       console.warn('[LC:Auth] All recovery attempts failed, clearing auth');
-      await this.clearAuth();
+      await this.clearAuth(stored);
       return false;
     }
     return false;
@@ -136,13 +146,15 @@ const supabase = {
       throw new Error(error.error_description || error.msg || 'Login failed');
     }
     const data = await res.json();
-    await setAuthToken({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      user_id: data.user.id,
-      expires_at: Date.now() + (data.expires_in * 1000)
+    await withSessionLock(async () => {
+      await setAuthToken({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        user_id: data.user.id,
+        expires_at: Date.now() + (data.expires_in * 1000)
+      });
+      this.publish(data.access_token, data.user.id);
     });
-    this.publish(data.access_token, data.user.id);
     return data;
   },
 
@@ -175,16 +187,18 @@ const supabase = {
     // must never be able to point this browser's LinkedIn at someone else's Olanovo account, and
     // a switch in the middle of an action would leave that action unreported. The person
     // disconnects in the popup first.
-    const current = await getAuthToken();
-    if (current?.user_id && current.user_id !== user.id) throw new Error('other_account');
-    const seconds = Number(expires_in);
-    await setAuthToken({
-      access_token,
-      refresh_token,
-      user_id: user.id,
-      expires_at: Date.now() + ((Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000)
+    await withSessionLock(async () => {
+      const current = await getAuthToken();
+      if (current?.user_id && current.user_id !== user.id) throw new Error('other_account');
+      const seconds = Number(expires_in);
+      await setAuthToken({
+        access_token,
+        refresh_token,
+        user_id: user.id,
+        expires_at: Date.now() + ((Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000)
+      });
+      this.publish(access_token, user.id);
     });
-    this.publish(access_token, user.id);
     return { user };
   },
 
@@ -216,8 +230,9 @@ const supabase = {
     // The stored session may have been replaced while this request was on its way (a new sign-in):
     // then this answer, good or bad, belongs to the old one. It is dropped: not written over the new
     // session, and a failure is not taken as the new session having failed.
-    // The answer is read first, so that nothing is awaited between this check and the write below.
+    // The check and the write below hold the session lock, so no sign-in can slip between them.
     const data = res.ok ? await res.json().catch(() => null) : null;
+    return withSessionLock(async () => {
     const now = await getAuthToken();
     if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
     if (!res.ok || !data) return false;
@@ -243,14 +258,24 @@ const supabase = {
       console.error('[LC:Auth] Could not store the renewed session:', e.message);
       return false;
     }
-    this.accessToken = data.access_token;
+    // Only for the account in use (nothing in use yet at start-up: then the stored one is it).
+    if (!this.userId || this.userId === stored.user_id) this.accessToken = data.access_token;
     return true;
+    });
   },
 
-  async clearAuth() {
-    this.accessToken = null;
-    this.userId = null;
-    await clearAuthToken();
+  // With `expected` (the session whose renewal failed), the stored session is cleared only if it is
+  // still that one: a sign-in that landed in the meantime is kept.
+  async clearAuth(expected) {
+    await withSessionLock(async () => {
+      if (expected) {
+        const now = await getAuthToken();
+        if (now && (now.refresh_token !== expected.refresh_token || now.user_id !== expected.user_id)) return;
+      }
+      this.accessToken = null;
+      this.userId = null;
+      await clearAuthToken();
+    });
   },
 
   getHeaders() {
@@ -830,6 +855,8 @@ const queueProcessor = {
   async executeAction(action) {
     this.isProcessing = true;
     try {
+      // An action picked for the previous account is not touched with the new account's session.
+      if (action.user_id && action.user_id !== supabase.userId) return;
       const safetyCheck = await safetyManager.canExecute(action.action_type);
       if (!safetyCheck.allowed) {
         console.log(`[QueueProcessor] Action blocked: ${safetyCheck.reason}`);
@@ -864,6 +891,12 @@ const queueProcessor = {
       // filter lets only one of them take it, and the database refuses a second claim outright.
       // The claim carries a random id: if the request went through but its answer was lost and the
       // retry found nothing to update, reading the row back tells our own claim from another copy's.
+      // The account may have changed while this poll was waiting (a sign-in from the site). Nothing
+      // is claimed until the new account's own pause state has arrived, nor for another account.
+      if (!this.pauseSynced || this.isPaused || (action.user_id && action.user_id !== supabase.userId)) {
+        console.log('[QueueProcessor] Account changed or paused before the claim; action left pending');
+        return;
+      }
       const claimId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
       let claimed = null;
       let claimError = null;
@@ -1653,7 +1686,7 @@ async function ensureAuth() {
     const refreshed = await supabase.refreshSession();
     if (!refreshed) {
       console.warn('[LC:Auth] ensureAuth: refresh failed, clearing');
-      await supabase.clearAuth();
+      await supabase.clearAuth(stored);
       return false;
     }
   }

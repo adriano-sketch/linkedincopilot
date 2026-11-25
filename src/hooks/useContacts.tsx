@@ -176,6 +176,8 @@ export function useContactActions(campaignId: string | null) {
     };
     let first = true;
     let transientRetries = 0;
+    // Also after a failure: the batches that went through before it changed the counts.
+    try {
     for (let guard = 0; guard < 200; guard++) {
       const { data, error } = await supabase.functions.invoke('contacts-match', {
         body: { op: 'score', campaign_id: campaignId, ...(first ? { description } : {}) },
@@ -198,7 +200,9 @@ export function useContactActions(campaignId: string | null) {
       qc.invalidateQueries({ queryKey: ['connection_matches', campaignId] });
       if (remaining <= 0 || !data?.scored) break;
     }
-    refresh();
+    } finally {
+      refresh();
+    }
   };
 
   const searchLinkedIn = useMutation({

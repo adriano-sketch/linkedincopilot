@@ -178,8 +178,8 @@ export default function Today() {
   const kb = profile as { comment_topics?: string | null; comment_search_terms?: string[] | null } | null | undefined;
   const hasSubjects = !!String(kb?.comment_topics || '').trim()
     && Array.isArray(kb?.comment_search_terms) && kb.comment_search_terms.some(t => String(t).trim());
-  // Choosing who matters is part of the setup: a list of people (any state, a paused list is still a
-  // choice made) or an audience. Someone with neither gets drafts about whoever happened to post.
+  // Choosing who matters is part of the setup: a list of people (running or paused; a list
+  // never started has nobody in it and does not count) or an audience. Someone with neither gets drafts about whoever happened to post.
   const steps: { done: boolean; label: string; to: string; optional?: boolean }[] = [
     { done: extensionReady, label: 'Install the Chrome extension and sign in', to: '/setup-guide' },
     { done: hasSubjects, label: 'Tell Olanovo your subjects and search terms', to: '/settings' },
