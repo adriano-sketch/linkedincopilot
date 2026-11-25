@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Check, X, ExternalLink, MessageSquareText, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMonitoredPosts, type MonitoredPost, type PostFilter } from '@/hooks/useNetwork';
-import { cleanPostUrl, isActivityUrl, openPostWithDraft } from '@/lib/commentHandoff';
+import { isActivityUrl, openPostWithDraft, postLinkToOpen } from '@/lib/commentHandoff';
 
 const SIGNALS: Record<string, { label: string; className: string }> = {
   business_opportunity: { label: 'Business signal', className: 'bg-gold-bg text-[#A01268] border-transparent' },
@@ -62,8 +62,8 @@ export function PostCard({
                 {[post.author_headline, post.author_degree, post.posted_label].filter(Boolean).join(' · ')}
               </div>
             </div>
-            {post.post_url && (
-              <a href={cleanPostUrl(post.post_url)} target="_blank" rel="noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary" aria-label="Open post on LinkedIn">
+            {postLinkToOpen(post.post_url) && (
+              <a href={postLinkToOpen(post.post_url)} target="_blank" rel="noreferrer" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary" aria-label="Open post on LinkedIn">
                 <ExternalLink className="w-4 h-4" />
               </a>
             )}
@@ -112,7 +112,7 @@ export function PostCard({
                 {opened
                   ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here.'
                   : 'Olanovo copies the draft and opens the post. You paste it and click Comment on LinkedIn.'}
-                {isActivityUrl(post.post_url) && ' The link opens their recent activity; the post is the one shown here.'}
+                {isActivityUrl(post.post_url) && ' The link opens their recent activity. With the extension up to date, the page scrolls to the post and outlines it. It is the one shown here.'}
               </p>
             </>
           ) : (
