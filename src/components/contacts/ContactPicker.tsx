@@ -12,7 +12,7 @@ import { readConnectionsFile } from '@/lib/linkedinExport';
 import { supabase } from '@/integrations/supabase/client';
 import { useNetworkSettings } from '@/hooks/useNetwork';
 import {
-  useConnectionsCount, useContactActions, useContactMatches, useContactSearchStatus, type ContactMatch,
+  useConnectionsCount, useContactActions, useContactMatches, useContactSearchStatus, useMatchSummary, type ContactMatch,
 } from '@/hooks/useContacts';
 
 export type PickedContact = {
@@ -46,6 +46,11 @@ export default function ContactPicker({
   onChange: (picked: PickedContact[]) => void;
 }) {
   const [description, setDescription] = useState(initialDescription || '');
+  // The profile can arrive after this mounts. Fill the box only while the person has not typed.
+  const typed = useRef(false);
+  useEffect(() => {
+    if (initialDescription && !typed.current) setDescription(d => d || initialDescription);
+  }, [initialDescription]);
   const [minScore, setMinScore] = useState('60');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
@@ -62,6 +67,7 @@ export default function ContactPicker({
   const searching = runs.some(r => r.status === 'queued');
   const { data: matches = [], isLoading } = useContactMatches(campaignId, Number(minScore), searching);
   const { importConnections, suggestKeywords, score, searchLinkedIn, setSelected } = useContactActions(campaignId);
+  const { data: summary } = useMatchSummary(campaignId, searching);
 
   // Keep previously saved selections when the list loads.
   useEffect(() => {
@@ -181,8 +187,8 @@ export default function ContactPicker({
           id="contact-target"
           rows={3}
           value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="e.g. Finance directors, controllers and people responsible for purchasing in mid-size manufacturers"
+          onChange={e => { typed.current = true; setDescription(e.target.value); }}
+          placeholder="Their role, the kind of company they work at, its size, and where they are"
         />
       </div>
 
@@ -225,7 +231,7 @@ export default function ContactPicker({
             {salesNav && (
               <label className="flex items-start gap-2 text-xs cursor-pointer rounded-md bg-secondary/60 p-2">
                 <Checkbox checked={postedRecently} onCheckedChange={v => setPostedRecently(v === true)} className="mt-0.5" />
-                <span><strong>Only people who posted in the last 30 days.</strong> They have recent posts for you to comment on, which is what Growth needs.</span>
+                <span><strong>Only people who posted in the last 30 days.</strong> They have recent posts for you to comment on.</span>
               </label>
             )}
             <div className="flex flex-wrap gap-1.5">
@@ -265,6 +271,19 @@ export default function ContactPicker({
           </div>
         )}
       </div>
+
+      {summary && !scoring && (
+        <div role="status" className="rounded-xl border border-border bg-gold-bg/50 p-4">
+          <p className="font-display font-semibold text-xl m-0">
+            {summary.fit.toLocaleString()} of {summary.analyzed.toLocaleString()} contacts analyzed fit what you described.
+          </p>
+          <p className="text-sm text-muted-foreground mt-1 mb-0">
+            {summary.fit === 0
+              ? 'Nobody reached a likely fit. Try describing them another way: a role, a kind of company, a place.'
+              : 'Pick the people below to keep up with. Nobody is added to this list unless you pick them.'}
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">

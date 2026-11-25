@@ -40,6 +40,51 @@ export function useConnectionsCount() {
 }
 
 /** Matches for a campaign, best first. Polls while a LinkedIn search is running. */
+/**
+ * How the list's contacts were sorted: how many were analyzed, and how many fit (score 60 or more,
+ * the same line as the picker's default filter). Null while nothing was analyzed.
+ */
+export const FIT_SCORE = 60;
+
+export type RelevantContacts = { contacts: number; analyzed: number; relevant: number };
+/** Of everyone in the person's network, how many fit what they described (rpc relevant_contacts). */
+export function useRelevantContacts() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['relevant_contacts', user?.id],
+    enabled: !!user,
+    staleTime: 60000,
+    queryFn: async (): Promise<RelevantContacts> => {
+      const { data, error } = await db.rpc('relevant_contacts');
+      if (error) throw error;
+      return {
+        contacts: Number(data?.contacts) || 0,
+        analyzed: Number(data?.analyzed) || 0,
+        relevant: Number(data?.relevant) || 0,
+      };
+    },
+  });
+}
+export function useMatchSummary(campaignId: string | null, polling = false) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['connection_matches_summary', campaignId],
+    enabled: !!user && !!campaignId,
+    refetchInterval: polling ? 8000 : false,
+    queryFn: async (): Promise<{ analyzed: number; fit: number } | null> => {
+      const count = async (min: number | null) => {
+        let q = db.from('connection_matches').select('id', { count: 'exact', head: true }).eq('campaign_profile_id', campaignId);
+        if (min != null) q = q.gte('score', min);
+        const { count: n, error } = await q;
+        if (error) throw error;
+        return n || 0;
+      };
+      const [analyzed, fit] = await Promise.all([count(null), count(FIT_SCORE)]);
+      return analyzed > 0 ? { analyzed, fit } : null;
+    },
+  });
+}
+
 export function useContactMatches(campaignId: string | null, minScore: number, polling: boolean) {
   const { user } = useAuth();
   return useQuery({
@@ -87,6 +132,8 @@ export function useContactActions(campaignId: string | null) {
     qc.invalidateQueries({ queryKey: ['connection_matches', campaignId] });
     qc.invalidateQueries({ queryKey: ['linkedin_connections_count'] });
     qc.invalidateQueries({ queryKey: ['connection_search_runs', campaignId] });
+    qc.invalidateQueries({ queryKey: ['connection_matches_summary', campaignId] });
+    qc.invalidateQueries({ queryKey: ['relevant_contacts'] });
   };
 
   const importConnections = useMutation({
