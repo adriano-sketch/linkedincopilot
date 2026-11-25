@@ -10,7 +10,7 @@
 ## Usage
 
 1. Click the extension icon in Chrome toolbar
-2. Log in with your Olanovo email and password
+2. Connect it to your account: on olanovo.com, in Settings, click "Connect the extension"; or log in here with your Olanovo email and password
 3. Open a LinkedIn tab — the extension starts working automatically
 4. It polls the action queue every 30 seconds and executes pending actions
 

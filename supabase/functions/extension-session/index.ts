@@ -6,12 +6,17 @@ import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.t
 // the extension does not need a password (an account created with a sign-in provider has none).
 //
 // The site calls this with the person's own token and hands the result to the extension. The
-// session is a new one, not a copy of the site's: each side renews its own, and signing out of one
-// does not sign out the other.
+// session is a new one, not a copy of the site's: each side renews its own. (Signing out on the
+// site still ends every session of the account, this one included, as it does for a session opened
+// with a password.)
 //
 // How: a one-time sign-in token is generated for the caller's own email (no email is sent) and is
 // exchanged at once for a session. The email comes from the verified token of the caller, never
 // from the request body.
+//
+// One request per account every WAIT_SECONDS: each one opens a session that is not closed until
+// the account signs out, so they must not be created in a loop.
+const WAIT_SECONDS = 30;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -31,6 +36,22 @@ serve(async (req) => {
     }
 
     const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+
+    const { data: last, error: lastErr } = await admin.from("extension_connects").select("last_at").eq("user_id", auth.userId).maybeSingle();
+    if (lastErr) {
+      console.error("extension-session: could not read the last request", lastErr.message);
+      return json({ error: "Could not connect the extension", code: "unexpected" }, 500);
+    }
+    const lastAt = last?.last_at ? Date.parse(String(last.last_at)) : NaN;
+    if (Number.isFinite(lastAt) && Date.now() - lastAt < WAIT_SECONDS * 1000) {
+      return json({ error: "Requested a moment ago. Try again in a minute.", code: "too_soon" }, 429);
+    }
+    // Recorded before the session is created: if this cannot be written, no session is handed out.
+    const { error: markErr } = await admin.from("extension_connects").upsert({ user_id: auth.userId, last_at: new Date().toISOString() });
+    if (markErr) {
+      console.error("extension-session: could not record the request", markErr.message);
+      return json({ error: "Could not connect the extension", code: "unexpected" }, 500);
+    }
     const { data: link, error: linkErr } = await admin.auth.admin.generateLink({ type: "magiclink", email: auth.email });
     const tokenHash = link?.properties?.hashed_token;
     if (linkErr || !tokenHash) {

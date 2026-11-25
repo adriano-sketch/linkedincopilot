@@ -51,23 +51,37 @@ function ask<T>(message: unknown, timeoutMs = 4000): Promise<T | null> {
 
 export type ExtensionState =
   | { found: false }
-  | { found: true; version: string; authenticated: boolean; userId: string | null };
+  | { found: true; version: string; authenticated: boolean; sameUser: boolean };
 
-/** Is the extension installed in this browser, and which account is it connected to? */
-export async function findExtension(): Promise<ExtensionState> {
-  const r = await ask<{ success?: boolean; version?: string; authenticated?: boolean; userId?: string | null }>({ type: 'OLANOVO_PING' });
+/**
+ * Is the extension installed in this browser, is it connected, and is it on this account? The
+ * extension answers "same account or not"; it does not say which account it holds.
+ */
+export async function findExtension(userId?: string | null): Promise<ExtensionState> {
+  const r = await ask<{ success?: boolean; version?: string; authenticated?: boolean; sameUser?: boolean }>({ type: 'OLANOVO_PING', userId: userId || '' });
   if (!r || r.success !== true) return { found: false };
-  return { found: true, version: String(r.version || ''), authenticated: r.authenticated === true, userId: r.userId || null };
+  return { found: true, version: String(r.version || ''), authenticated: r.authenticated === true, sameUser: r.sameUser === true };
 }
 
 /**
  * Connects the extension to the account signed in on this site. The extension gets a session of
  * its own (asked from the server for this account), not a copy of this page's.
  */
-export async function connectExtension(): Promise<{ ok: true } | { ok: false; reason: 'not_found' | 'server' | 'refused' }> {
-  if (!(await findExtension()).found) return { ok: false, reason: 'not_found' };
+export type ConnectResult = { ok: true } | { ok: false; reason: 'not_found' | 'other_account' | 'too_soon' | 'server' | 'refused' };
+
+export async function connectExtension(userId: string): Promise<ConnectResult> {
+  const before = await findExtension(userId);
+  if (!before.found) return { ok: false, reason: 'not_found' };
+  // Connected to another account: the extension refuses to be switched from the site, so no
+  // session is asked for. The person disconnects in the extension first.
+  if (before.authenticated && !before.sameUser) return { ok: false, reason: 'other_account' };
   const { data, error } = await supabase.functions.invoke('extension-session', { body: {} });
-  if (error || !data?.access_token || !data?.refresh_token || !data?.user_id) return { ok: false, reason: 'server' };
-  const r = await ask<{ success?: boolean }>({ type: 'OLANOVO_CONNECT', session: data }, 15000);
-  return r?.success === true ? { ok: true } : { ok: false, reason: 'refused' };
+  if (error) {
+    const status = (error as { context?: { status?: number } }).context?.status;
+    return { ok: false, reason: status === 429 ? 'too_soon' : 'server' };
+  }
+  if (!data?.access_token || !data?.refresh_token || !data?.user_id) return { ok: false, reason: 'server' };
+  const r = await ask<{ success?: boolean; error?: string }>({ type: 'OLANOVO_CONNECT', session: data }, 15000);
+  if (r?.success === true) return { ok: true };
+  return { ok: false, reason: r?.error === 'other_account' ? 'other_account' : 'refused' };
 }

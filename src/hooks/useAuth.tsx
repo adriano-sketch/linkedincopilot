@@ -39,7 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      // A new account starts at the first steps; an account that finished them is sent on from there.
+      options: { redirectTo: `${window.location.origin}/onboarding` },
     });
   };
 

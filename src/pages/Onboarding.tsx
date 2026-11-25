@@ -181,7 +181,7 @@ export default function Onboarding() {
                       </ol>
                     </div>
 
-                    <ConnectExtensionButton />
+                    <ConnectExtensionButton onConnected={handleStartWaiting} />
 
                     {!waitingForExtension ? (
                       <Button onClick={handleStartWaiting} className="w-full">

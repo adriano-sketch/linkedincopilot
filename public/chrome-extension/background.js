@@ -141,6 +141,39 @@ const supabase = {
     return data;
   },
 
+  // A session handed over by the Olanovo site for the person signed in there (no password typed in
+  // the extension). It is only kept if the server confirms that the token is valid and belongs to
+  // the account it claims to be for.
+  async signInWithSession(session) {
+    const { access_token, refresh_token, expires_in, user_id } = session || {};
+    if (typeof access_token !== 'string' || typeof refresh_token !== 'string' || typeof user_id !== 'string'
+      || !access_token || !refresh_token || !user_id) {
+      throw new Error('Incomplete session');
+    }
+    const res = await fetch(`${this.url}/auth/v1/user`, {
+      headers: { 'apikey': this.anonKey, 'Authorization': `Bearer ${access_token}` }
+    });
+    if (!res.ok) throw new Error('Session not accepted');
+    const user = await res.json();
+    if (!user || user.id !== user_id) throw new Error('Session is for another account');
+    // Already connected to a different account: the site cannot switch it. A script on the site
+    // must never be able to point this browser's LinkedIn at someone else's Olanovo account, and
+    // a switch in the middle of an action would leave that action unreported. The person
+    // disconnects in the popup first.
+    const current = await getAuthToken();
+    if (current?.user_id && current.user_id !== user.id) throw new Error('other_account');
+    const seconds = Number(expires_in);
+    this.accessToken = access_token;
+    this.userId = user.id;
+    await setAuthToken({
+      access_token,
+      refresh_token,
+      user_id: user.id,
+      expires_at: Date.now() + ((Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000)
+    });
+    return { user };
+  },
+
   async verifyToken() {
     try {
       const res = await fetch(`${this.url}/auth/v1/user`, {
@@ -168,6 +201,10 @@ const supabase = {
     });
     if (!res.ok) return false;
     const data = await res.json();
+    // The stored session may have been replaced while this request was on its way (a new sign-in):
+    // then this answer belongs to the old one and is dropped, not written over the new one.
+    const now = await getAuthToken();
+    if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
     this.accessToken = data.access_token;
     await setAuthToken({
       access_token: data.access_token,
@@ -1765,6 +1802,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 });
+
+// ── MESSAGES FROM THE OLANOVO SITE ──
+// Only pages listed under externally_connectable in the manifest can reach this listener. The
+// origin is checked again here, so a change to the manifest alone cannot open it to another site.
+const SITE_ORIGINS = ['https://www.olanovo.com', 'https://olanovo.com'];
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  let origin = '';
+  try { origin = new URL(sender.origin || sender.url || '').origin; } catch { origin = ''; }
+  if (!SITE_ORIGINS.includes(origin)) {
+    sendResponse({ success: false, error: 'not_allowed' });
+    return false;
+  }
+  // Is the extension there, which version, and is it connected? The page says which account it
+  // is signed in as and is told only whether the extension is on that same account: the id of the
+  // account the extension holds is never sent to the page.
+  if (message?.type === 'OLANOVO_PING') {
+    const asked = typeof message.userId === 'string' ? message.userId : '';
+    ensureAuth().then(hasAuth => {
+      const connected = !!(hasAuth && supabase.accessToken && supabase.userId);
+      sendResponse({
+        success: true,
+        version: chrome.runtime.getManifest().version,
+        authenticated: connected,
+        sameUser: connected && !!asked && asked === supabase.userId
+      });
+    }).catch(() => sendResponse({ success: true, version: chrome.runtime.getManifest().version, authenticated: false, sameUser: false }));
+    return true;
+  }
+  // Connect the extension to the account signed in on the site.
+  if (message?.type === 'OLANOVO_CONNECT') {
+    handleSiteConnect(message.session)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  sendResponse({ success: false, error: 'unknown_message' });
+  return false;
+});
+
+async function handleSiteConnect(session) {
+  try {
+    await supabase.signInWithSession(session);
+    await sendHeartbeat();
+    return { success: true, userId: supabase.userId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
 
 async function handleLogin(email, password) {
   try {
