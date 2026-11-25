@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Plug } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -18,14 +18,31 @@ export default function ConnectExtensionButton({ className, onConnected }: { cla
   const [state, setState] = useState<ExtensionState | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const look = useCallback(async () => { setState(await findExtension(userId)); }, [userId]);
+  // Returning to the tab fires two events at once: one question to the extension is enough. The
+  // question in flight is reused only if it was asked for the same account, and an answer is shown
+  // only if it is for the account signed in now (the account loads a moment after the page).
+  const looking = useRef<{ forUser: string | null; done: Promise<void> } | null>(null);
+  const current = useRef(userId);
+  current.current = userId;
+  const look = useCallback(() => {
+    if (looking.current?.forUser === userId) return looking.current.done;
+    const mine = { forUser: userId, done: Promise.resolve() };
+    mine.done = findExtension(userId)
+      .then(found => { if (current.current === userId) setState(found); })
+      .finally(() => { if (looking.current === mine) looking.current = null; });
+    looking.current = mine;
+    return mine.done;
+  }, [userId]);
 
   // The person may install the extension while this page is open: look again when they come back to it.
   useEffect(() => {
     void look();
     const again = () => { if (document.visibilityState === 'visible') void look(); };
     document.addEventListener('visibilitychange', again);
-    return () => document.removeEventListener('visibilitychange', again);
+    // Closing the extension's popup gives the focus back without a visibility change: that is when
+    // the person has just disconnected or signed in there.
+    window.addEventListener('focus', again);
+    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('focus', again); };
   }, [look]);
 
   if (!userId || !state?.found) return null;
@@ -58,6 +75,8 @@ export default function ConnectExtensionButton({ className, onConnected }: { cla
       else if (reason === 'too_soon') toast.error('That was just tried. Wait a minute and try again.');
       else toast.error('Could not connect the extension. Try again, or sign in from the extension itself.');
     } finally {
+      // A question asked before the connection was made would show the old state: wait for it, then ask again.
+      await looking.current?.done;
       await look();
       setBusy(false);
     }

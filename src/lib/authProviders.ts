@@ -7,23 +7,29 @@ import { useEffect, useState } from 'react';
 const URL_ = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/^['"]|['"]$/g, '');
 const KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '').replace(/\s+/g, '');
 
-let cached: Promise<boolean> | null = null;
+// One request at a time, and an answer is kept only when the service gave one. A request that
+// failed is asked again the next time the sign-in page is opened, so a short outage does not hide
+// the button until the page is reloaded.
+let known: boolean | null = null;
+let asking: Promise<boolean> | null = null;
 
 function googleSwitchedOn(): Promise<boolean> {
-  if (!cached) {
-    cached = (async () => {
+  if (known !== null) return Promise.resolve(known);
+  if (!asking) {
+    asking = (async () => {
       if (!URL_ || !KEY) return false;
       try {
         const res = await fetch(`${URL_}/auth/v1/settings`, { headers: { apikey: KEY } });
         if (!res.ok) return false;
         const body = await res.json();
-        return body?.external?.google === true;
+        known = body?.external?.google === true;
+        return known;
       } catch {
         return false;
       }
-    })();
+    })().finally(() => { asking = null; });
   }
-  return cached;
+  return asking;
 }
 
 /** True once the sign-in service says Google sign-in is switched on. False while unknown. */

@@ -37,21 +37,17 @@ serve(async (req) => {
 
     const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-    const { data: last, error: lastErr } = await admin.from("extension_connects").select("last_at").eq("user_id", auth.userId).maybeSingle();
-    if (lastErr) {
-      console.error("extension-session: could not read the last request", lastErr.message);
+    // Check and mark in one database statement: two requests arriving together cannot both pass.
+    // Taken before the session is created: if the turn cannot be taken, no session is handed out.
+    const { data: claimed, error: claimErr } = await admin.rpc("claim_extension_connect", { p_user: auth.userId, p_wait_seconds: WAIT_SECONDS });
+    if (claimErr) {
+      console.error("extension-session: could not take the turn", claimErr.message);
       return json({ error: "Could not connect the extension", code: "unexpected" }, 500);
     }
-    const lastAt = last?.last_at ? Date.parse(String(last.last_at)) : NaN;
-    if (Number.isFinite(lastAt) && Date.now() - lastAt < WAIT_SECONDS * 1000) {
+    if (claimed !== true) {
       return json({ error: "Requested a moment ago. Try again in a minute.", code: "too_soon" }, 429);
     }
-    // Recorded before the session is created: if this cannot be written, no session is handed out.
-    const { error: markErr } = await admin.from("extension_connects").upsert({ user_id: auth.userId, last_at: new Date().toISOString() });
-    if (markErr) {
-      console.error("extension-session: could not record the request", markErr.message);
-      return json({ error: "Could not connect the extension", code: "unexpected" }, 500);
-    }
+
     const { data: link, error: linkErr } = await admin.auth.admin.generateLink({ type: "magiclink", email: auth.email });
     const tokenHash = link?.properties?.hashed_token;
     if (linkErr || !tokenHash) {
