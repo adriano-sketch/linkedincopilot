@@ -159,7 +159,7 @@ export default function SettingsPage() {
   const [savingLimits, setSavingLimits] = useState(false);
   const handleSaveExtension = async () => {
     // One save at a time: a second request on its way would confuse which fields are still unsaved.
-    if (!user || !extensionStatus || savingLimits) return;
+    if (!user || !extensionStatus || savingLimits || saveInFlight.current) return;
     setSavingLimits(true);
     saveInFlight.current = true;
     const sent = extensionLimits;
@@ -175,8 +175,11 @@ export default function SettingsPage() {
       // Saved fields are no longer pending. A field changed again while the request was on its way
       // was not in it, so it stays pending.
       (Object.keys(sent) as (keyof typeof sent)[]).forEach(k => {
-        if (JSON.stringify(latestLimits.current[k]) === JSON.stringify(sent[k])) dirtyLimits.current.delete(k);
+        if (sameValue(latestLimits.current[k], sent[k])) dirtyLimits.current.delete(k);
       });
+      // What was sent is what is stored now, even if the fetch below fails or is slow: a later edit
+      // is compared with it, not with the values from before this save.
+      storedLimits.current = { ...(storedLimits.current || {}), ...sent };
       // Drop any fetch that read the row before this save, so it cannot put the old values back.
       await queryClient.invalidateQueries({ queryKey: ['extension-status'] });
       toast.success('Extension settings saved');
