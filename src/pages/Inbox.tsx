@@ -226,7 +226,7 @@ export default function InboxPage() {
                     {current.headline && <div className="text-sm text-muted-foreground">{current.headline}</div>}
                   </div>
                   <div className="flex gap-3 text-sm">
-                    {current.postUrl && <a href={postLinkToOpen(current.postUrl)} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Post<ExternalLink className="w-3.5 h-3.5" /></a>}
+                    {postLinkToOpen(current.postUrl) && <a href={postLinkToOpen(current.postUrl)} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Post<ExternalLink className="w-3.5 h-3.5" /></a>}
                     {current.profileUrl && <a href={current.profileUrl} target="_blank" rel="noreferrer" className="text-gold-dark font-medium inline-flex items-center gap-1">Profile<ExternalLink className="w-3.5 h-3.5" /></a>}
                   </div>
                 </div>
@@ -287,7 +287,7 @@ export default function InboxPage() {
                   {opened.has(current.key)
                     ? 'Paste the comment on the post and click Comment on LinkedIn. Then confirm here with "I posted it".'
                     : 'You post every comment yourself: Olanovo copies the draft and opens the post, you paste it and click Comment on LinkedIn.'}
-                  {isActivityUrl(current.postUrl) && ` The link opens ${current.name.split(' ')[0]}'s recent activity and the extension scrolls to the post, the one shown above.`}
+                  {isActivityUrl(current.postUrl) && ` The link opens ${current.name.split(' ')[0]}'s recent activity. With the extension up to date, the page scrolls to the post and outlines it. It is the one shown above.`}
                 </p>
               </>
             ) : (

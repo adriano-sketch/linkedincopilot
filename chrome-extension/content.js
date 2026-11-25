@@ -1412,15 +1412,41 @@ function detectLinkedInLimitBanner() {
 // few seconds. Nothing is clicked and nothing is written.
 async function lcShowLinkedPost() {
   if (window.top !== window) return;
+  // The address is read once: if LinkedIn drops the marker a moment later, this must not go on to
+  // outline some other post.
+  const url = window.location.href;
   if (!/\/recent-activity\//.test(window.location.pathname)) return;
-  if (!/#lcpost=/.test(window.location.hash)) return;
-  if (window.__olanovoShownPost === window.location.href) return;
-  window.__olanovoShownPost = window.location.href;
+  const marker = url.match(/#lcpost=([^&]+)/);
+  if (!marker) return;
+  if (window.__olanovoShownPost === url) return;
+  window.__olanovoShownPost = url;
+  // The person's own scrolling, typing or clicking ends the search: the page is theirs.
+  let stop = false;
+  const halt = () => { stop = true; };
+  const signs = ['wheel', 'keydown', 'touchstart', 'mousedown'];
+  for (const ev of signs) window.addEventListener(ev, halt, { passive: true });
   try {
+    const wanted = decodeURIComponent(marker[1]).trim();
+    if (wanted.length < 10) return;
     // The list arrives after the page: give it a moment before the first look.
     await sleep(1500);
-    const card = await lcFindTargetCard(window.location.href);
-    if (!card || !card.el) return;
+    let card = null;
+    for (let attempt = 0; attempt < 7 && !stop; attempt++) {
+      card = lcCollectActivityCards().find((c) => c.fingerprint && (
+        c.fingerprint === wanted ||
+        c.fingerprint.startsWith(wanted.slice(0, 40)) ||
+        (c.fingerprint.length >= 30 && wanted.startsWith(c.fingerprint.slice(0, 40)))
+      )) || null;
+      if (card || attempt === 6) break;
+      window.scrollBy(0, 700);
+      await sleep(1100);
+    }
+    if (!card || !card.el) {
+      // Not found: back to where the page started, so the person is not left halfway down the list.
+      if (!stop) window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (stop) return;
     card.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     const el = card.el;
     const before = { outline: el.style.outline, outlineOffset: el.style.outlineOffset, borderRadius: el.style.borderRadius };
@@ -1434,10 +1460,12 @@ async function lcShowLinkedPost() {
     }, 8000);
   } catch (e) {
     console.warn('[Olanovo] Could not scroll to the post:', e && e.message);
+  } finally {
+    for (const ev of signs) window.removeEventListener(ev, halt);
   }
 }
 lcShowLinkedPost();
-// LinkedIn changes pages without reloading them: the address can gain the marker later.
+// Covers the marker arriving or changing on a page already open.
 if (!window.__olanovoPostListener) {
   window.__olanovoPostListener = true;
   window.addEventListener('hashchange', () => { lcShowLinkedPost(); });
