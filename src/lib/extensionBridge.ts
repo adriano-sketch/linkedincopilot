@@ -8,7 +8,18 @@ import { supabase } from '@/integrations/supabase/client';
 // "not found", and the page keeps showing how to sign in from the extension itself.
 
 /** The extension's id on the Chrome Web Store. */
-const EXTENSION_ID = 'ddcdamnmknicgdafjooejmfapamgohgo';
+const STORE_ID = 'ddcdamnmknicgdafjooejmfapamgohgo';
+
+// For testing a copy of the extension loaded from a folder, which gets another id: the id can be
+// set in this browser's storage for this site (key "olanovo_extension_id"), from the developer
+// console. Never read from the address of the page, which a link from someone else could set.
+function extensionId(): string {
+  try {
+    const own = localStorage.getItem('olanovo_extension_id') || '';
+    if (/^[a-p]{32}$/.test(own)) return own;
+  } catch { /* storage not available */ }
+  return STORE_ID;
+}
 
 type Runtime = { sendMessage: (id: string, message: unknown, callback: (response: unknown) => void) => void; lastError?: { message?: string } };
 const runtime = (): Runtime | null => {
@@ -25,7 +36,7 @@ function ask<T>(message: unknown, timeoutMs = 4000): Promise<T | null> {
     const finish = (value: T | null) => { if (!done) { done = true; resolve(value); } };
     const timer = setTimeout(() => finish(null), timeoutMs);
     try {
-      rt.sendMessage(EXTENSION_ID, message, response => {
+      rt.sendMessage(extensionId(), message, response => {
         clearTimeout(timer);
         // Reading lastError tells the browser the failure was seen (no extension, or an older one).
         const failed = !!runtime()?.lastError;
