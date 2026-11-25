@@ -472,20 +472,26 @@ export default function SettingsPage() {
                     </a>
                   </Button>
                   <ConnectExtensionButton className="mt-2" />
-                  <p className="text-xs text-muted-foreground mt-3 mb-0">
+                  <p className="text-xs text-muted-foreground mt-3">
                     Signing out here leaves the extension connected.{' '}
                     <button
                       type="button"
                       className="underline hover:text-foreground"
                       onClick={async () => {
                         if (!okToLeavePage()) return;
-                        const { error } = await signOutEverywhere();
-                        if (error) toast.error('Could not sign out everywhere. Try again.');
+                        // One click must not stop the extension everywhere by accident.
+                        if (!window.confirm('Sign out of every browser and disconnect the extension on every computer?')) return;
+                        try {
+                          const { error } = await signOutEverywhere();
+                          if (error) toast.error('Could not sign out everywhere. Try again.');
+                        } catch {
+                          toast.error('Could not sign out everywhere. Try again.');
+                        }
                       }}
                     >
                       Sign out everywhere
                     </button>{' '}
-                    ends every session of your account, including the extension on any computer.
+                    ends every session of your account, including the extension on any computer. The extension can take up to an hour to stop.
                   </p>
                 </div>
 
