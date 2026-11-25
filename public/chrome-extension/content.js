@@ -1420,6 +1420,10 @@ async function lcShowLinkedPost() {
   if (!marker) return;
   if (window.__olanovoShownPost === url) return;
   window.__olanovoShownPost = url;
+  // A newer search (the marker changed) retires this one: only the latest may move the page.
+  const turn = (window.__olanovoPostSearch || 0) + 1;
+  window.__olanovoPostSearch = turn;
+  const retired = () => window.__olanovoPostSearch !== turn;
   // The person's own scrolling, typing or clicking ends the search: the page is theirs.
   let stop = false;
   const halt = () => { stop = true; };
@@ -1431,16 +1435,22 @@ async function lcShowLinkedPost() {
     // The list arrives after the page: give it a moment before the first look.
     await sleep(1500);
     let card = null;
-    for (let attempt = 0; attempt < 7 && !stop; attempt++) {
-      card = lcCollectActivityCards().find((c) => c.fingerprint && (
-        c.fingerprint === wanted ||
-        c.fingerprint.startsWith(wanted.slice(0, 40)) ||
-        (c.fingerprint.length >= 30 && wanted.startsWith(c.fingerprint.slice(0, 40)))
-      )) || null;
+    for (let attempt = 0; attempt < 7 && !stop && !retired(); attempt++) {
+      // The post's text must begin with the whole marker. A shorter post that merely shares its
+      // opening words with the marker is a different post.
+      const cards = lcCollectActivityCards();
+      card = cards.find((c) => c.fingerprint && c.fingerprint.startsWith(wanted)) || null;
+      if (!card && attempt === 6 && wanted.length > 40) {
+        // Last look. A long marker can differ from the card near its end (a counter read as text, an
+        // edit, the text collapsed). Its first 40 characters decide, but only when one post has them.
+        const close = cards.filter((c) => c.fingerprint && c.fingerprint.startsWith(wanted.slice(0, 40)));
+        if (close.length === 1) card = close[0];
+      }
       if (card || attempt === 6) break;
       window.scrollBy(0, 700);
       await sleep(1100);
     }
+    if (retired()) return;
     if (!card || !card.el) {
       // Not found: back to where the page started, so the person is not left halfway down the list.
       if (!stop) window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1448,16 +1458,23 @@ async function lcShowLinkedPost() {
     }
     if (stop) return;
     card.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // An outline still showing from an earlier search is taken off first: otherwise it would be read
+    // as the post's own style and put back for good.
+    if (window.__olanovoClearOutline) window.__olanovoClearOutline();
     const el = card.el;
     const before = { outline: el.style.outline, outlineOffset: el.style.outlineOffset, borderRadius: el.style.borderRadius };
     el.style.outline = '3px solid #6B2EF5';
     el.style.outlineOffset = '4px';
     el.style.borderRadius = '10px';
-    setTimeout(() => {
+    const timer = setTimeout(() => { if (window.__olanovoClearOutline === clear) clear(); }, 8000);
+    const clear = () => {
+      clearTimeout(timer);
       el.style.outline = before.outline;
       el.style.outlineOffset = before.outlineOffset;
       el.style.borderRadius = before.borderRadius;
-    }, 8000);
+      window.__olanovoClearOutline = null;
+    };
+    window.__olanovoClearOutline = clear;
   } catch (e) {
     console.warn('[Olanovo] Could not scroll to the post:', e && e.message);
   } finally {
