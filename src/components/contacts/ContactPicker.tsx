@@ -69,11 +69,18 @@ export default function ContactPicker({
   const { importConnections, suggestKeywords, score, searchLinkedIn, setSelected } = useContactActions(campaignId);
   const { data: summary } = useMatchSummary(campaignId, searching);
 
+  // Unticked here, but the save may not have reached the server yet: a refetch in that window still
+  // says "selected" and must not tick the contact again. Cleared once the server agrees.
+  const unticked = useRef<Set<string>>(new Set());
+
   // Keep previously saved selections when the list loads.
   useEffect(() => {
     setPicked(prev => {
       const next = new Map(prev);
-      for (const m of matches) if (m.selected && !next.has(m.id)) next.set(m.id, m);
+      for (const m of matches) {
+        if (!m.selected) unticked.current.delete(m.id);
+        else if (!next.has(m.id) && !unticked.current.has(m.id)) next.set(m.id, m);
+      }
       return next;
     });
   }, [matches]);
@@ -88,6 +95,7 @@ export default function ContactPicker({
   }, [picked, onChange]);
 
   const toggle = (m: ContactMatch, on: boolean) => {
+    if (on) unticked.current.delete(m.id); else unticked.current.add(m.id);
     setPicked(prev => {
       const next = new Map(prev);
       if (on) next.set(m.id, m); else next.delete(m.id);
@@ -98,6 +106,7 @@ export default function ContactPicker({
   const allShownPicked = matches.length > 0 && matches.every(m => picked.has(m.id));
   const toggleAll = () => {
     const on = !allShownPicked;
+    for (const m of matches) { if (on) unticked.current.delete(m.id); else unticked.current.add(m.id); }
     setPicked(prev => {
       const next = new Map(prev);
       for (const m of matches) { if (on) next.set(m.id, m); else next.delete(m.id); }
