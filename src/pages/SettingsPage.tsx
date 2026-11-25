@@ -116,10 +116,13 @@ export default function SettingsPage() {
 
   const latestLimits = useRef(extensionLimits);
   latestLimits.current = extensionLimits;
+  const saveInFlight = useRef(false);
   const editLimits = (patch: Partial<typeof extensionLimits>) => {
     // A field put back to its stored value is no longer "changed": it follows the server again.
+    // Not while a save is on its way, though: "stored" is about to become what that save sent, so
+    // an edit made now stays pending until the save is done and compared with what it carried.
     Object.entries(patch).forEach(([k, v]) => {
-      if (storedLimits.current && sameValue(v, storedLimits.current[k])) dirtyLimits.current.delete(k);
+      if (!saveInFlight.current && storedLimits.current && sameValue(v, storedLimits.current[k])) dirtyLimits.current.delete(k);
       else dirtyLimits.current.add(k);
     });
     setExtensionLimits(prev => ({ ...prev, ...patch }));
@@ -156,8 +159,9 @@ export default function SettingsPage() {
   const [savingLimits, setSavingLimits] = useState(false);
   const handleSaveExtension = async () => {
     // One save at a time: a second request on its way would confuse which fields are still unsaved.
-    if (!user || !extensionStatus || savingLimits) return;
+    if (!user || !extensionStatus || savingLimits || saveInFlight.current) return;
     setSavingLimits(true);
+    saveInFlight.current = true;
     const sent = extensionLimits;
     try {
       // A zone saved here is the person's choice: it is never replaced by the browser's.
@@ -171,13 +175,16 @@ export default function SettingsPage() {
       // Saved fields are no longer pending. A field changed again while the request was on its way
       // was not in it, so it stays pending.
       (Object.keys(sent) as (keyof typeof sent)[]).forEach(k => {
-        if (JSON.stringify(latestLimits.current[k]) === JSON.stringify(sent[k])) dirtyLimits.current.delete(k);
+        if (sameValue(latestLimits.current[k], sent[k])) dirtyLimits.current.delete(k);
       });
+      // What was sent is what is stored now, even if the fetch below fails or is slow: a later edit
+      // is compared with it, not with the values from before this save.
+      storedLimits.current = { ...(storedLimits.current || {}), ...sent };
       // Drop any fetch that read the row before this save, so it cannot put the old values back.
       await queryClient.invalidateQueries({ queryKey: ['extension-status'] });
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
-    finally { setSavingLimits(false); }
+    finally { saveInFlight.current = false; setSavingLimits(false); }
   };
 
   const handleTogglePause = async () => {
