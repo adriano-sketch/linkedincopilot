@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Chrome, Monitor, CheckCircle2, ShieldAlert, Moon } from 'lucide-react';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
+import ConnectExtensionButton from '@/components/ConnectExtensionButton';
 
 const Step = ({ number, title, children }: { number: number; title: string; children: React.ReactNode }) => (
   <div className="flex gap-3">
@@ -45,8 +46,9 @@ export default function SetupGuide() {
               <p>Keep one copy only. If you installed the extension from a .zip file in the past, remove that copy first.</p>
             </Step>
 
-            <Step number={2} title="Sign in to the extension">
-              <p>Click the puzzle icon in the Chrome toolbar, pin the Olanovo extension, click its icon and sign in with the same email and password you use on this site.</p>
+            <Step number={2} title="Connect the extension to your account">
+              <p>If you are signed in to Olanovo in this browser, a "Connect the extension" button appears here once the extension is installed. Or click the puzzle icon in the Chrome toolbar, pin the Olanovo extension, click its icon and sign in with the email and password you use on this site.</p>
+              <ConnectExtensionButton className="mt-3" />
             </Step>
 
             <Step number={3} title="Be signed in to LinkedIn in the same Chrome">

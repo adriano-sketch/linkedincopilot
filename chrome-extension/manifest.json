@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Olanovo: comment drafts for your LinkedIn® network",
   "short_name": "Olanovo",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Say hello again to the people who already know you: see who posted on LinkedIn, get a comment draft, and post it yourself.",
   "permissions": [
     "storage",
@@ -14,6 +14,9 @@
     "https://www.linkedin.com/*",
     "https://gdwpkojugtggozyofpmw.supabase.co/*"
   ],
+  "externally_connectable": {
+    "matches": ["https://www.olanovo.com/*", "https://olanovo.com/*"]
+  },
   "background": {
     "service_worker": "background.js"
   },
