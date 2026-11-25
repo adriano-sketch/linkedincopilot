@@ -41,7 +41,10 @@ const STATUS_LABELS: Record<string, { label: string; variant: 'default' | 'secon
 };
 
 export default function SettingsPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOutEverywhere } = useAuth();
+  // While "Sign out everywhere" is on its way the page is covered: an edit typed in that moment
+  // would be lost when the session ends, with no warning.
+  const [leavingEverywhere, setLeavingEverywhere] = useState(false);
   const { profile, isLoading, updateProfile } = useProfile();
   const { extensionStatus } = useExtensionStatus();
   const { isFree, isAgency, onTrial, trialDaysLeft, isLoading: planLoading, settings: planSettings, loadFailed: planFailed } = useUserPlan();
@@ -263,7 +266,13 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <div className="max-w-3xl space-y-4">
+      {leavingEverywhere && (
+        <div role="status" aria-live="polite" className="fixed inset-0 z-50 bg-background/80 flex items-center justify-center text-sm text-muted-foreground">
+          Signing out everywhere…
+        </div>
+      )}
+      {/* inert: no clicks and no typing underneath. Passed as a plain attribute; this React version has no prop for it. */}
+      <div className="max-w-3xl space-y-4" {...(leavingEverywhere ? ({ inert: '' } as Record<string, string>) : {})}>
         <h1 className="font-display font-bold text-4xl leading-none m-0 mb-2">Settings</h1>
 
         {/* Master Profile */}
@@ -472,6 +481,32 @@ export default function SettingsPage() {
                     </a>
                   </Button>
                   <ConnectExtensionButton className="mt-2" />
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Signing out here leaves the extension connected.{' '}
+                    <button
+                      type="button"
+                      className="underline hover:text-foreground"
+                      onClick={async () => {
+                        if (!okToLeavePage()) return;
+                        // One click must not stop the extension everywhere by accident.
+                        if (!window.confirm('Sign out of every browser and disconnect the extension on every computer?')) return;
+                        setLeavingEverywhere(true);
+                        // A request that never answers must not keep the page covered.
+                        const giveUp = new Promise<{ error: Error | null }>((resolve) =>
+                          setTimeout(() => resolve({ error: new Error('timeout') }), 15000));
+                        try {
+                          const { error } = await Promise.race([signOutEverywhere(), giveUp]);
+                          if (error) { setLeavingEverywhere(false); toast.error('Could not sign out everywhere. Try again.'); }
+                        } catch {
+                          setLeavingEverywhere(false);
+                          toast.error('Could not sign out everywhere. Try again.');
+                        }
+                      }}
+                    >
+                      Sign out everywhere
+                    </button>{' '}
+                    ends every session of your account, including the extension on any computer. The extension can take up to an hour to stop.
+                  </p>
                 </div>
 
                 {!extensionStatus && (

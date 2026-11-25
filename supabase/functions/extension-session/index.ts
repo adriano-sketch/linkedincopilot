@@ -7,15 +7,16 @@ import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.t
 //
 // The site calls this with the person's own token and hands the result to the extension. The
 // session is a new one, not a copy of the site's: each side renews its own. (Signing out on the
-// site still ends every session of the account, this one included, as it does for a session opened
-// with a password.)
+// site ends the site's own session only; the extension stays connected until "Sign out everywhere" or
+// its own sign-out.)
 //
 // How: a one-time sign-in token is generated for the caller's own email (no email is sent) and is
 // exchanged at once for a session. The email comes from the verified token of the caller, never
 // from the request body.
 //
-// One request per account every WAIT_SECONDS: each one opens a session that is not closed until
-// the account signs out, so they must not be created in a loop.
+// One request per account every WAIT_SECONDS: each one opens a session that nothing closes short of
+// "Sign out everywhere" (a normal sign-out on the site is local, and the extension's own sign-out
+// only forgets the session), so they must not be created in a loop.
 const WAIT_SECONDS = 30;
 
 serve(async (req) => {

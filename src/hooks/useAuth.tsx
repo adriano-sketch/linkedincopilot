@@ -11,6 +11,8 @@ interface AuthContextType {
   signUpWithEmail: (email: string, password: string) => Promise<{ error: Error | null; data?: { session: Session | null } }>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  /** Ends every session of the account: this browser, other browsers and the Chrome extension. */
+  signOutEverywhere: () => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -66,11 +68,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // This browser's session only. The default ends every session of the account, which also signed
+    // the Chrome extension out a few minutes later: the list stopped running with nothing on screen to
+    // say why.
+    await supabase.auth.signOut({ scope: 'local' });
+  };
+
+  // The deliberate way to cut the extension off from somewhere else (a lost computer, for example).
+  const signOutEverywhere = async () => {
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
+    return { error: error ? new Error(error.message) : null };
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signInWithGoogle, signInWithApple, signUpWithEmail, signInWithEmail, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signInWithGoogle, signInWithApple, signUpWithEmail, signInWithEmail, signOut, signOutEverywhere }}>
       {children}
     </AuthContext.Provider>
   );
