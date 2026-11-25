@@ -167,6 +167,7 @@ export default function HelpPage() {
                   <li>• Contact checks and invitations share that ceiling</li>
                   <li>• Work happens only inside the days and hours you set, with irregular gaps between actions</li>
                   <li>• After you comment on someone's post, that contact rests for 7 days</li>
+                  <li>• Only posts from the last 10 days get a draft. A contact with nothing recent is checked again in two weeks, or in a month if they rarely post</li>
                 </ul>
               </CardContent>
             </Card>

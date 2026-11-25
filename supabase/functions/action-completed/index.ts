@@ -44,6 +44,13 @@ const STATUS_ORDER: Record<string, number> = {
   icp_rejected: 15,
 };
 
+// Growth: how old a post may be to get a comment, and how long a contact rests after a check that
+// found nothing to comment on. (After a comment, or a post that was off topic, the rest is 7 days.)
+const GROWTH_MAX_POST_AGE_DAYS = 10;
+const GROWTH_QUIET_AFTER_DAYS = 30;      // newest own post older than this: the person rarely posts
+const GROWTH_REST_OCCASIONAL_DAYS = 14;  // newest own post between the two limits above, or recent but without text
+const GROWTH_REST_QUIET_DAYS = 30;       // no own post, or none in GROWTH_QUIET_AFTER_DAYS
+
 function randomBusinessTime(
   daysAhead: number = 1,
   activeDays: string[] = ['mon','tue','wed','thu','fri','sat','sun'],
@@ -793,7 +800,15 @@ serve(async (req) => {
 
       // ── Growth Mode Actions ──
       case "find_latest_post": {
-        if (result?.found === true) {
+        // A comment on a post from weeks ago does not read as attention. The extension applies its own
+        // age limit; this one holds whatever version of it is installed. A post whose age the reader
+        // could not tell (no label on the card) is taken as recent, as the extension does.
+        const postAge = result?.post_age_days == null ? NaN : Number(result.post_age_days);
+        if (result?.found === true && Number.isFinite(postAge) && postAge > GROWTH_MAX_POST_AGE_DAYS) {
+          leadUpdate.status = "engagement_done";
+          leadUpdate.next_action_at = rbt(postAge <= GROWTH_QUIET_AFTER_DAYS ? GROWTH_REST_OCCASIONAL_DAYS : GROWTH_REST_QUIET_DAYS);
+          leadUpdate.error_message = `Newest post is ${Math.round(postAge)} days old (only the last ${GROWTH_MAX_POST_AGE_DAYS} days count)`;
+        } else if (result?.found === true) {
           leadUpdate.post_url = result.post_url || null;
           leadUpdate.post_content = result.post_content ? String(result.post_content).slice(0, 2000) : null;
           leadUpdate.error_message = null;
@@ -839,15 +854,31 @@ serve(async (req) => {
             console.error("unreadable-page pause check failed:", e);
           }
         } else {
-          // No usable post (none at all, none of their own, or none in the last 30 days):
-          // skip this engagement cycle, try again in 7 days
+          // No usable post. How soon to look again depends on how often the person posts: someone
+          // whose newest post is a few weeks old may post again soon; someone with nothing of their
+          // own in a month rarely does, and checking them every week spends profile pages that
+          // people who do post could use.
+          // Judged by the person's OWN posts, which the reader lists as it skips them: "old:<n>d" for
+          // one past the age limit, "no_text" for one with too little text to comment on (an image).
+          // The note and newest_post_age_days are not used for this: they count reposts too, and mean
+          // different things in different versions of the extension.
+          const skippedOwn: string[] = Array.isArray(result?.skipped) ? result.skipped.map((x: unknown) => String(x)) : [];
+          const occasional = skippedOwn.some((x) => {
+            if (x === "no_text") return true;
+            const m = x.match(/^old:(\d+)d$/);
+            return !!m && Number(m[1]) <= GROWTH_QUIET_AFTER_DAYS;
+          });
           leadUpdate.status = "engagement_done";
-          leadUpdate.next_action_at = rbt(7);
-          const why = result?.note === "no_recent_posts"
-            ? `No post in the last 30 days (newest is ${result?.newest_post_age_days ?? "?"} days old)`
-            : result?.note === "no_own_posts"
-              ? "Only reposts or other people's posts on the activity page"
-              : "No posts found on profile activity page";
+          leadUpdate.next_action_at = rbt(occasional ? GROWTH_REST_OCCASIONAL_DAYS : GROWTH_REST_QUIET_DAYS);
+          // The reason shown to the owner comes from the same list, so it agrees with the rest chosen.
+          const ownAges = skippedOwn.map((x) => x.match(/^old:(\d+)d$/)).filter((m): m is RegExpMatchArray => !!m).map((m) => Number(m[1]));
+          const why = skippedOwn.includes("no_text")
+            ? "Their recent post has too little text to comment on"
+            : ownAges.length
+              ? `No post of their own in the last ${GROWTH_MAX_POST_AGE_DAYS} days (newest is ${Math.min(...ownAges)} days old)`
+              : result?.note === "no_posts_found"
+                ? "No posts found on profile activity page"
+                : "Only reposts or other people's posts on the activity page";
           leadUpdate.error_message = why;
         }
         break;

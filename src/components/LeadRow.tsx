@@ -54,7 +54,7 @@ function getInitialsColor(name: string): string {
 
 // Why a contact finished a cycle without a comment, in plain words.
 const GROWTH_NOTES: Record<string, string> = {
-  no_recent_posts: 'No post in the last 30 days',
+  no_recent_posts: 'No recent post',
   no_own_posts: 'Only reposts lately',
   no_posts_found: 'No posts yet',
   cards_not_recognized: 'Could not read their activity page',
