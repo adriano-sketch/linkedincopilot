@@ -182,13 +182,13 @@ export default function SettingsPage() {
       storedLimits.current = { ...(storedLimits.current || {}), ...sent };
       // Drop any fetch that read the row before this save, so it cannot put the old values back.
       await queryClient.invalidateQueries({ queryKey: ['extension-status'] });
-      // While the save was on its way every edit was kept as "changed". Now that the stored values are
-      // known, a field whose value equals the stored one follows the server again. Only after a save
-      // that succeeded: after a failure the request may still have been written, the stored values
-      // here may be old, and letting go of the field could replace what the person typed.
-      const stored = storedLimits.current;
-      if (stored) [...dirtyLimits.current].forEach(k => {
-        if (sameValue((latestLimits.current as Record<string, unknown>)[k], stored[k])) dirtyLimits.current.delete(k);
+      // While the save was on its way every edit was kept as "changed". Now a field whose value is
+      // what this save sent follows the server again. Compared with what was sent, not with the stored
+      // values kept here, which a fetch that started before the save can still set back for a moment.
+      // Only after a save that succeeded: after a failure the request may still have been written,
+      // and letting go of the field could replace what the person typed.
+      (Object.keys(sent) as (keyof typeof sent)[]).forEach(k => {
+        if (sameValue(latestLimits.current[k], sent[k])) dirtyLimits.current.delete(k);
       });
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
