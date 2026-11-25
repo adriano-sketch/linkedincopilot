@@ -385,7 +385,7 @@ async function checkConnectionStatus() {
 // ══════════════════════════════════════════════
 // Only the person's OWN posts from the last GROWTH_MAX_POST_AGE_DAYS count: liking and commenting on
 // a months-old post, or on something they merely reposted, reads as automation, not as attention.
-const GROWTH_MAX_POST_AGE_DAYS = 30;
+const GROWTH_MAX_POST_AGE_DAYS = 10;
 
 // Age of a post in days from LinkedIn's relative label ("2w", "3mo", "1yr", "5d", "3h", "2 sem", "3 m",
 // "1 a", "2 weeks ago", "há 3 meses"...). Returns null when no label is recognised.

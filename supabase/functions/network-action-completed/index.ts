@@ -16,6 +16,10 @@ import {
   buildConnectionsSearchUrl, buildSalesNavConnectionsSearchUrl, fireAndForget, normalizeProfileUrl, postFingerprint, startOfNextMonthUtc, samePost,
 } from "../_shared/network.ts";
 
+// Fit scores: 80+ strong, 60+ likely, 30+ possible (the contact picker's own bands). Under this, the
+// analysis said the person has nothing to do with what the user described.
+const NOT_A_FIT_BELOW = 30;
+
 // deno-lint-ignore no-explicit-any
 type Supa = any;
 
@@ -331,6 +335,38 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
     }
   }
 
+  // Contacts the user's own analysis found unrelated to their business (best fit score under
+  // NOT_A_FIT_BELOW in every list): their posts are left alone even when the subject matches. Authors
+  // never analyzed are kept, and so is everyone when this lookup fails: it narrows, it does not guard.
+  const notAFit = new Set<string>();
+  let skippedNotAFit = 0;
+  if (myNetwork) {
+    try {
+      const authors = [...new Set(posts.map((p) => normalizeProfileUrl(p?.author_profile_url)).filter((u): u is string => !!u))];
+      if (authors.length) {
+        const { data: known, error: knownErr } = await supabase.from("linkedin_connections")
+          .select("id, linkedin_url").eq("user_id", userId).in("linkedin_url", authors);
+        if (knownErr) throw knownErr;
+        const ids = (known || []).map((k) => k.id);
+        if (ids.length) {
+          const { data: scores, error: scoresErr } = await supabase.from("connection_matches")
+            .select("connection_id, score").eq("user_id", userId).in("connection_id", ids).limit(5000);
+          if (scoresErr) throw scoresErr;
+          const best = new Map<string, number>();
+          for (const s of scores || []) best.set(s.connection_id, Math.max(best.get(s.connection_id) ?? -1, Number(s.score) || 0));
+          for (const k of known || []) {
+            const b = best.get(k.id);
+            const u = normalizeProfileUrl(k.linkedin_url);
+            if (u && b !== undefined && b < NOT_A_FIT_BELOW) notAFit.add(u);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("fit lookup failed, keeping every author:", e);
+      notAFit.clear();
+    }
+  }
+
   const rows = [];
   for (const p of posts) {
     let urn = typeof p.urn === "string" ? p.urn.trim() : "";
@@ -352,6 +388,7 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
     }
     if (myNetwork) {
       if (p.author_degree && !/^1/.test(String(p.author_degree))) continue; // connections only
+      if (notAFit.has(authorUrl)) { skippedNotAFit++; continue; }
       if (busyAuthors.has(authorUrl)) continue;
       busyAuthors.add(authorUrl); // at most one post per author per search
     }
@@ -387,7 +424,8 @@ async function handleSearchPosts(supabase: Supa, userId: string, action: any, su
     }).eq("id", runId).eq("user_id", userId);
   }
   if (inserted > 0) fireAndForget("network-process", { user_id: userId });
-  return { ok: true, found: posts.length, new: inserted };
+  if (skippedNotAFit) console.log(`my_network: ${skippedNotAFit} post(s) left alone, author analyzed as not a fit`);
+  return { ok: true, found: posts.length, new: inserted, not_a_fit: skippedNotAFit };
 }
 
 async function handleConnectionRequest(supabase: Supa, userId: string, action: any, success: boolean, result: any, errorMessage: string | null) {

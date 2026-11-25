@@ -9,7 +9,7 @@ interface CampaignStepperProps {
 
 const GROWTH_STEPS = [
   { key: 'pick', label: 'Contacts chosen', description: 'People from your own network that match who you described.', icon: UserPlus },
-  { key: 'post', label: 'Find their post', description: 'Their own latest post, from the last 30 days. No reposts. A few contacts a day.', icon: Camera },
+  { key: 'post', label: 'Find their post', description: 'Their own latest post, from the last 10 days. No reposts. People who rarely post are checked less often.', icon: Camera },
   { key: 'like', label: 'Post read', description: 'Olanovo reads the post. Likes are yours to give.', icon: CheckCircle },
   { key: 'comment', label: 'You post the comment', description: 'A comment is drafted only when the post is about your subjects. You review it and post it yourself from the Inbox.', icon: MessageSquare },
   { key: 'rest', label: 'Back in 7 days', description: 'The contact rests, then the cycle repeats with a new post.', icon: Clock },
