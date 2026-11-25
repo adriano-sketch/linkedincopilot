@@ -10,8 +10,16 @@ export type MonitoredPost = Database['public']['Tables']['monitored_posts']['Row
 
 export type NetworkStats = {
   period_days: number;
+  /** Invites sent in the period. */
   invited: number;
+  /** Connections made in the period, whenever the invite was sent. */
   accepted: number;
+  /** Of the invites sent in the period: accepted so far, settled (answered or 14 days old), still too recent. */
+  accepted_of_sent?: number;
+  settled?: number;
+  waiting?: number;
+  /** accepted_of_sent / settled, in percent; null while nothing is settled. */
+  acceptance_rate?: number | null;
   pending_invites: number;
   qualified_waiting: number;
   invited_last_7d: number;
@@ -22,11 +30,17 @@ export type NetworkStats = {
   by_icp: {
     icp_id: string;
     name: string;
+    /** Invites sent in the period, and of those: accepted so far, settled, still too recent. */
     invited: number;
     accepted: number;
+    settled?: number;
+    waiting?: number;
     acceptance_rate: number | null;
     pending: number;
     ready_to_invite: number;
+    /** People the search brought in the period, and how many the fit check let through. */
+    found?: number;
+    passed_filter?: number;
   }[];
 };
 

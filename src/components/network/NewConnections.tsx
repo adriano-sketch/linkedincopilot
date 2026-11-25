@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ExternalLink, UserPlus, UserCheck, Clock, Search, MessageSquareText, Sparkles } from 'lucide-react';
 import { useIcps, useNetworkProspects, useNetworkStats } from '@/hooks/useNetwork';
+import { acceptance, SETTLE_DAYS } from '@/lib/acceptance';
 
 function Stat({ icon: Icon, label, value, hint, featured = false, progress }: {
   icon: typeof UserPlus; label: string; value: string | number; hint?: string; featured?: boolean; progress?: number;
@@ -28,6 +29,16 @@ function Stat({ icon: Icon, label, value, hint, featured = false, progress }: {
 
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString() : '');
 
+function AcceptanceCell({ row }: { row: { accepted: number; settled?: number; waiting?: number; invited: number } }) {
+  const a = acceptance(row);
+  if (!a.rate) return <span className="text-muted-foreground">{row.invited > 0 ? 'Too early' : '—'}</span>;
+  return (
+    <span>
+      {a.rate} <span className="text-muted-foreground text-xs">({a.basis}{a.few ? ', few so far' : ''})</span>
+    </span>
+  );
+}
+
 export default function NewConnections({ searchBudget }: { searchBudget?: number | null }) {
   const [days, setDays] = useState(30);
   const [list, setList] = useState<'accepted' | 'invited' | 'qualified'>('accepted');
@@ -36,7 +47,11 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
   const { icps } = useIcps();
   const icpName = (id: string | null) => icps.find(i => i.id === id)?.name || '';
 
-  const rate = stats && stats.invited > 0 ? `${Math.round((stats.accepted / stats.invited) * 100)}%` : '—';
+  // Accepted out of the invites that had time for an answer; an invite sent this week is not counted against it.
+  const overall = acceptance({ accepted: stats?.accepted_of_sent, settled: stats?.settled, waiting: stats?.waiting });
+  const rateHint = overall.rate
+    ? `Acceptance ${overall.rate} (${overall.basis} invites${overall.few ? ', few so far' : ''})`
+    : stats && stats.invited > 0 ? `Acceptance: too early (${SETTLE_DAYS} days per invite)` : 'Acceptance: no invites yet';
 
   return (
     <div className="space-y-4">
@@ -52,7 +67,7 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
       </div>
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Stat icon={UserCheck} label="New connections" value={stats?.accepted ?? 0} hint={`Acceptance rate ${rate}`} featured />
+        <Stat icon={UserCheck} label="New connections" value={stats?.accepted ?? 0} hint={rateHint} featured />
         <Stat icon={UserPlus} label="Invites sent" value={stats?.invited ?? 0} hint={`${stats?.invited_last_7d ?? 0} in the last 7 days`} />
         <Stat icon={Clock} label="Pending invites" value={stats?.pending_invites ?? 0} hint="Withdrawn after 21 days" />
         <Stat icon={Sparkles} label="Qualified, ready to invite" value={stats?.qualified_waiting ?? 0} />
@@ -73,8 +88,9 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
                   <TableHead>Audience</TableHead>
                   <TableHead className="text-right">Invited</TableHead>
                   <TableHead className="text-right">Accepted</TableHead>
-                  <TableHead className="text-right">Rate</TableHead>
-                  <TableHead className="text-right">Pending</TableHead>
+                  <TableHead className="text-right">Acceptance</TableHead>
+                  <TableHead className="text-right">Too recent</TableHead>
+                  <TableHead className="text-right">Passed the fit check</TableHead>
                   <TableHead className="text-right">Ready</TableHead>
                 </TableRow>
               </TableHeader>
@@ -84,13 +100,19 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
                     <TableCell>{r.name}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.invited}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.accepted}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.acceptance_rate != null ? `${r.acceptance_rate}%` : '—'}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.pending}</TableCell>
+                    <TableCell className="text-right tabular-nums"><AcceptanceCell row={r} /></TableCell>
+                    <TableCell className="text-right tabular-nums">{r.waiting ?? '—'}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.found ? `${r.passed_filter ?? 0} of ${r.found}` : '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.ready_to_invite}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            <p className="text-xs text-muted-foreground mt-3">
+              Acceptance is counted on invites sent in the period that have an answer or are at least {SETTLE_DAYS} days old.
+              An invite still too recent to count is not held against the audience. A connection shows here when the
+              extension notices it, which can be a day after the person accepted.
+            </p>
           </CardContent>
         </Card>
       ) : null}
