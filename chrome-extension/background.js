@@ -216,14 +216,19 @@ const supabase = {
     // The stored session may have been replaced while this request was on its way (a new sign-in):
     // then this answer, good or bad, belongs to the old one. It is dropped: not written over the new
     // session, and a failure is not taken as the new session having failed.
+    // The answer is read first, so that nothing is awaited between this check and the write below.
+    const data = res.ok ? await res.json().catch(() => null) : null;
     const now = await getAuthToken();
     if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
-    if (!res.ok) return false;
-    const data = await res.json();
+    if (!res.ok || !data) return false;
     // The renewed token must be for the account this session is stored under (the answer names the
     // account; if it ever does not, the check is skipped, not failed). Tokens that say otherwise are
     // not kept: the stored identity and the credentials would no longer match.
-    if (!data?.access_token || !data?.refresh_token || (data.user?.id && data.user.id !== stored.user_id)) {
+    if (!data.access_token || !data.refresh_token) {
+      console.error('[LC:Auth] Renewed session is incomplete; not kept');
+      return false;
+    }
+    if (data.user?.id && data.user.id !== stored.user_id) {
       console.error('[LC:Auth] Renewed session is not for the stored account; not kept');
       return false;
     }
@@ -1722,6 +1727,11 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  // Created again when the browser starts: timers are not guaranteed to survive a restart, and the
+  // queue waits for a heartbeat before it runs. Creating one that exists just replaces it.
+  chrome.alarms.create('heartbeat', { periodInMinutes: 1 });
+  chrome.alarms.create('pollQueue', { periodInMinutes: 0.5 });
+  chrome.alarms.create('refreshToken', { periodInMinutes: 30 });
   chrome.alarms.create('verifyConnections', { periodInMinutes: 720 });
   const authenticated = await supabase.init();
   if (authenticated) {
