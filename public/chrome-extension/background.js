@@ -38,7 +38,7 @@ function getAuthToken() {
 // of a sign-in to another.
 let sessionQueue = Promise.resolve();
 function withSessionLock(fn) {
-  const run = sessionQueue.then(fn, fn);
+  const run = sessionQueue.then(fn);
   sessionQueue = run.catch(() => {});
   return run;
 }
@@ -126,7 +126,7 @@ const supabase = {
       }
       
       console.warn('[LC:Auth] All recovery attempts failed, clearing auth');
-      await this.clearAuth();
+      await this.clearAuth(stored);
       return false;
     }
     return false;
@@ -264,8 +264,14 @@ const supabase = {
     });
   },
 
-  async clearAuth() {
+  // With `expected` (the session whose renewal failed), the stored session is cleared only if it is
+  // still that one: a sign-in that landed in the meantime is kept.
+  async clearAuth(expected) {
     await withSessionLock(async () => {
+      if (expected) {
+        const now = await getAuthToken();
+        if (now && (now.refresh_token !== expected.refresh_token || now.user_id !== expected.user_id)) return;
+      }
       this.accessToken = null;
       this.userId = null;
       await clearAuthToken();
@@ -849,6 +855,8 @@ const queueProcessor = {
   async executeAction(action) {
     this.isProcessing = true;
     try {
+      // An action picked for the previous account is not touched with the new account's session.
+      if (action.user_id && action.user_id !== supabase.userId) return;
       const safetyCheck = await safetyManager.canExecute(action.action_type);
       if (!safetyCheck.allowed) {
         console.log(`[QueueProcessor] Action blocked: ${safetyCheck.reason}`);
@@ -1678,7 +1686,7 @@ async function ensureAuth() {
     const refreshed = await supabase.refreshSession();
     if (!refreshed) {
       console.warn('[LC:Auth] ensureAuth: refresh failed, clearing');
-      await supabase.clearAuth();
+      await supabase.clearAuth(stored);
       return false;
     }
   }
