@@ -66,7 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // This browser's session only. The default ends every session of the account, which also signed
+    // the Chrome extension out a few minutes later: the list stopped running with nothing on screen to
+    // say why.
+    await supabase.auth.signOut({ scope: 'local' });
   };
 
   return (

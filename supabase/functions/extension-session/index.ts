@@ -7,8 +7,7 @@ import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.t
 //
 // The site calls this with the person's own token and hands the result to the extension. The
 // session is a new one, not a copy of the site's: each side renews its own. (Signing out on the
-// site still ends every session of the account, this one included, as it does for a session opened
-// with a password.)
+// site ends the site's own session only; the extension stays connected until it is signed out itself.)
 //
 // How: a one-time sign-in token is generated for the caller's own email (no email is sent) and is
 // exchanged at once for a session. The email comes from the verified token of the caller, never
