@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ExternalLink, UserPlus, UserCheck, Clock, Search, MessageSquareText, Sparkles } from 'lucide-react';
 import { useIcps, useNetworkProspects, useNetworkStats } from '@/hooks/useNetwork';
+import { acceptance, waitingText, MATURE_DAYS } from '@/lib/acceptance';
 
 function Stat({ icon: Icon, label, value, hint, featured = false, progress }: {
   icon: typeof UserPlus; label: string; value: string | number; hint?: string; featured?: boolean; progress?: number;
@@ -28,6 +29,17 @@ function Stat({ icon: Icon, label, value, hint, featured = false, progress }: {
 
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString() : '');
 
+function AcceptanceCell({ row }: { row: Parameters<typeof acceptance>[0] & { invited: number } }) {
+  const a = acceptance(row);
+  if (!a.known) return <span className="text-muted-foreground">—</span>;
+  if (!a.rate) return <span className="text-muted-foreground">{row.invited > 0 ? 'Too early' : '—'}</span>;
+  return (
+    <span>
+      {a.rate} <span className="text-muted-foreground text-xs">({a.basis}{a.few ? ', few so far' : ''})</span>
+    </span>
+  );
+}
+
 export default function NewConnections({ searchBudget }: { searchBudget?: number | null }) {
   const [days, setDays] = useState(30);
   const [list, setList] = useState<'accepted' | 'invited' | 'qualified'>('accepted');
@@ -36,7 +48,12 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
   const { icps } = useIcps();
   const icpName = (id: string | null) => icps.find(i => i.id === id)?.name || '';
 
-  const rate = stats && stats.invited > 0 ? `${Math.round((stats.accepted / stats.invited) * 100)}%` : '—';
+  // Counted on invites at least 14 days old; a newer invite is not in the rate, accepted or not.
+  const overall = acceptance(stats || {});
+  const rateHint = !overall.known ? ''
+    : overall.rate ? `Acceptance ${overall.rate} (${overall.basis} invites${overall.few ? ', few so far' : ''})`
+    : stats && stats.invited > 0 ? (days < MATURE_DAYS ? `Acceptance needs ${MATURE_DAYS} days per invite. Choose 30 or 90 days.` : `Acceptance: no invite is ${MATURE_DAYS} days old yet`)
+    : 'Acceptance: no invites yet';
 
   return (
     <div className="space-y-4">
@@ -52,7 +69,7 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
       </div>
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Stat icon={UserCheck} label="New connections" value={stats?.accepted ?? 0} hint={`Acceptance rate ${rate}`} featured />
+        <Stat icon={UserCheck} label="New connections" value={stats?.accepted ?? 0} hint={rateHint || undefined} featured />
         <Stat icon={UserPlus} label="Invites sent" value={stats?.invited ?? 0} hint={`${stats?.invited_last_7d ?? 0} in the last 7 days`} />
         <Stat icon={Clock} label="Pending invites" value={stats?.pending_invites ?? 0} hint="Withdrawn after 21 days" />
         <Stat icon={Sparkles} label="Qualified, ready to invite" value={stats?.qualified_waiting ?? 0} />
@@ -72,9 +89,9 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
                 <TableRow>
                   <TableHead>Audience</TableHead>
                   <TableHead className="text-right">Invited</TableHead>
-                  <TableHead className="text-right">Accepted</TableHead>
-                  <TableHead className="text-right">Rate</TableHead>
-                  <TableHead className="text-right">Pending</TableHead>
+                  <TableHead className="text-right">Acceptance</TableHead>
+                  <TableHead className="text-right">Too recent</TableHead>
+                  <TableHead className="text-right">Passed the fit check</TableHead>
                   <TableHead className="text-right">Ready</TableHead>
                 </TableRow>
               </TableHeader>
@@ -83,14 +100,21 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
                   <TableRow key={r.icp_id}>
                     <TableCell>{r.name}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.invited}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.accepted}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.acceptance_rate != null ? `${r.acceptance_rate}%` : '—'}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.pending}</TableCell>
+                    <TableCell className="text-right tabular-nums"><AcceptanceCell row={r} /></TableCell>
+                    <TableCell className="text-right tabular-nums">{waitingText(acceptance(r))}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.checked ? `${r.passed_filter ?? 0} of ${r.checked}` : '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.ready_to_invite}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            <p className="text-xs text-muted-foreground mt-3">
+              Acceptance is counted on invites sent in the period that are at least {MATURE_DAYS} days old. A newer
+              invite is left out, accepted or not, so that it neither lowers nor raises the rate; it is under "Too
+              recent". A connection shows here when the extension notices it, which can be a day or more after the
+              person accepted. "New connections" at the top counts every connection noticed in the period, whenever
+              the invite was sent, so it is not the sum of this table.
+            </p>
           </CardContent>
         </Card>
       ) : null}
