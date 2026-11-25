@@ -36,7 +36,7 @@ export default function Logo({
   tone = 'light', short = false, className = '', markClassName = 'w-8 h-8',
 }: { tone?: 'light' | 'dark'; short?: boolean; className?: string; markClassName?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1.5', className)} aria-label="Olanovo">
+    <span className={cn('inline-flex items-center gap-1.5', className)} role="img" aria-label="Olanovo">
       <BrandMark className={markClassName} />
       <span
         aria-hidden="true"
