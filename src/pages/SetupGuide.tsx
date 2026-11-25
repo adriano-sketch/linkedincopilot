@@ -97,8 +97,7 @@ export default function SetupGuide() {
               Drafts appear in the <Link to="/inbox" className="text-primary font-medium hover:underline">Inbox</Link> when a post is about one of your subjects; other posts are skipped on purpose.
             </p>
             <p>
-              The pace is low by design: every profile page counts toward one daily ceiling that starts at 15 and grows by 5 a week, up to 40.
-              A large network is covered over weeks, not days.
+              The pace rises gradually by design: every profile page counts toward one daily ceiling that starts at 20 and grows by 20 a week, up to 100 (150 on a paid LinkedIn plan).
             </p>
           </CardContent>
         </Card>

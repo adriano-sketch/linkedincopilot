@@ -64,11 +64,11 @@ const quickGuides = [
 const faqs = [
   { q: 'Does Olanovo post comments for me?', a: 'No. Olanovo finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn.' },
   { q: 'What does the extension do by itself?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote. It does not send messages, and it does not like or comment on posts.' },
-  { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. Olanovo keeps the activity low and stops when LinkedIn objects: one daily ceiling for profile pages that starts at 15, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision.' },
+  { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. Olanovo raises the activity gradually and stops when LinkedIn objects: one daily ceiling for profile pages that starts at 20, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision.' },
   { q: 'Why did I get no draft today?', a: 'The usual reasons: none of the posts found were about your subjects (those are skipped on purpose), your subjects or search terms are not saved yet, Chrome was closed or the computer asleep during your active hours, or the day\'s ceiling of profile pages was already used. The Today page shows how many posts were read and how many were left alone.' },
   { q: 'Do I need to keep my computer on all day?', a: 'No. The extension works while Chrome is open and the computer is awake, inside the hours you chose. When the computer sleeps it simply pauses. When it wakes up, it waits a few minutes and continues at the normal pace; it does not rush to make up for lost time.' },
-  { q: 'How long does it take to go through my whole network?', a: 'Weeks, not days. Every profile page counts toward the daily ceiling (15 a day at first, growing by 5 a week up to 40), and a contact rests for 7 days after you comment on their post. That pace is deliberate: it is what keeps the activity on your account low.' },
-  { q: 'How many invitations does it send?', a: 'You set a weekly number in Network and Olanovo spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first weeks that means a handful a day.' },
+  { q: 'How long does it take to go through my whole network?', a: 'It depends on its size and on how long you have been using Olanovo. Every profile page counts toward the daily ceiling (20 a day at first, growing by 20 a week up to 100, or 150 on a paid LinkedIn plan), and a contact rests for 7 days after you comment on their post. The gradual start is deliberate: a sudden jump in activity is what gets an account noticed.' },
+  { q: 'How many invitations does it send?', a: 'You set a weekly number in Network and Olanovo spreads it over the week. Each invitation also counts toward the daily ceiling of profile pages, so in the first week that means a handful a day.' },
   { q: 'Can I install the extension on two computers?', a: 'Use one copy per LinkedIn account. If you installed the extension from a .zip file in the past, remove that copy before installing from the Chrome Web Store.' },
   { q: 'What happens when my free trial ends?', a: 'Nothing is charged. If you have not subscribed, Olanovo stops looking for posts, writing drafts and sending invitations. What is already in your Inbox stays there, and everything resumes when you subscribe.' },
   { q: 'What data does it read, and where does it go?', a: 'The extension reads the LinkedIn pages it opens in your session: names, headlines, companies and post text of your connections and of people who match your audiences. It never reads or stores your LinkedIn password. The privacy policy has the full list.' },
@@ -163,7 +163,7 @@ export default function HelpPage() {
                   <Gauge className="w-4 h-4 text-primary" /> Daily pace
                 </h3>
                 <ul className="text-xs text-muted-foreground space-y-1.5">
-                  <li>• One ceiling for every profile page the extension opens: 15 a day at first, plus 5 each week, up to 40</li>
+                  <li>• One ceiling for every profile page the extension opens: 20 a day at first, plus 20 each week, up to 100 (150 on a paid LinkedIn plan)</li>
                   <li>• Contact checks and invitations share that ceiling</li>
                   <li>• Work happens only inside the days and hours you set, with irregular gaps between actions</li>
                   <li>• After you comment on someone's post, that contact rests for 7 days</li>
@@ -221,8 +221,8 @@ export default function HelpPage() {
                 in a list. Each profile opened counts toward the same daily ceiling.
               </p>
               <p>
-                Run one list at a time. The ceiling starts at 15 profile pages a day, shared with invitations, so a list of a few
-                hundred people takes weeks to go through once. Two lists would only split the same ceiling.
+                Run one list at a time. The ceiling starts at 20 profile pages a day, shared with invitations, so in the first weeks a list of a few
+                hundred people takes a while to go through once. Two lists would only split the same ceiling.
               </p>
             </CardContent>
           </Card>

@@ -880,10 +880,11 @@ Deno.serve(async (req) => {
           // Schedule from NOW with short gaps, ignoring business hours
           const now = new Date();
           const initialDelayMs = (2 + Math.floor(Math.random() * 3)) * 60 * 1000;
-          // Actions that open a contact's page are spaced 8 to 16 minutes apart.
+          // Actions that open a contact's page are spaced 4 to 8 minutes apart: at 8 to 16 a ten-hour
+          // day fitted about 50 pages, under the daily ceiling of profile pages once the ramp is done.
           const opensPage = WARMUP_ACTIONS.has(actionType) || actionType === "find_latest_post";
-          const gapMin = opensPage ? 8 : 3;
-          const gapRange = opensPage ? 8 : 5;
+          const gapMin = opensPage ? 4 : 3;
+          const gapRange = opensPage ? 4 : 5;
           const perSlotGapMs = slotIndex * (gapMin + Math.floor(Math.random() * gapRange)) * 60 * 1000;
           const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);
           const scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
