@@ -31,9 +31,15 @@ function getAuthToken() {
   });
 }
 
+// Rejects when the browser could not write: a session that was not stored is gone the next time the
+// worker restarts, so callers must not treat it as signed in.
 function setAuthToken(auth) {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ auth }, resolve);
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ auth }, () => {
+      const err = chrome.runtime.lastError;
+      if (err) reject(new Error(err.message || 'Could not store the session'));
+      else resolve();
+    });
   });
 }
 
@@ -130,15 +136,24 @@ const supabase = {
       throw new Error(error.error_description || error.msg || 'Login failed');
     }
     const data = await res.json();
-    this.accessToken = data.access_token;
-    this.userId = data.user.id;
     await setAuthToken({
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       user_id: data.user.id,
       expires_at: Date.now() + (data.expires_in * 1000)
     });
+    this.publish(data.access_token, data.user.id);
     return data;
+  },
+
+  // Makes a stored session the one in use. Whether this account is paused is not known until its own
+  // heartbeat answers, so the queue waits for that answer (it does not run on what the previous
+  // account's heartbeat said).
+  publish(accessToken, userId) {
+    const changed = this.userId !== userId;
+    this.accessToken = accessToken;
+    this.userId = userId;
+    if (changed) queueProcessor.pauseSynced = false;
   },
 
   // A session handed over by the Olanovo site for the person signed in there (no password typed in
@@ -163,14 +178,13 @@ const supabase = {
     const current = await getAuthToken();
     if (current?.user_id && current.user_id !== user.id) throw new Error('other_account');
     const seconds = Number(expires_in);
-    this.accessToken = access_token;
-    this.userId = user.id;
     await setAuthToken({
       access_token,
       refresh_token,
       user_id: user.id,
       expires_at: Date.now() + ((Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000)
     });
+    this.publish(access_token, user.id);
     return { user };
   },
 
@@ -199,19 +213,32 @@ const supabase = {
       },
       body: JSON.stringify({ refresh_token: stored.refresh_token })
     });
-    if (!res.ok) return false;
-    const data = await res.json();
     // The stored session may have been replaced while this request was on its way (a new sign-in):
-    // then this answer belongs to the old one and is dropped, not written over the new one.
+    // then this answer, good or bad, belongs to the old one. It is dropped: not written over the new
+    // session, and a failure is not taken as the new session having failed.
     const now = await getAuthToken();
     if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
+    if (!res.ok) return false;
+    const data = await res.json();
+    // The renewed token must be for the account this session is stored under (the answer names the
+    // account; if it ever does not, the check is skipped, not failed). Tokens that say otherwise are
+    // not kept: the stored identity and the credentials would no longer match.
+    if (!data?.access_token || !data?.refresh_token || (data.user?.id && data.user.id !== stored.user_id)) {
+      console.error('[LC:Auth] Renewed session is not for the stored account; not kept');
+      return false;
+    }
+    try {
+      await setAuthToken({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        user_id: stored.user_id,
+        expires_at: Date.now() + (data.expires_in * 1000)
+      });
+    } catch (e) {
+      console.error('[LC:Auth] Could not store the renewed session:', e.message);
+      return false;
+    }
     this.accessToken = data.access_token;
-    await setAuthToken({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      user_id: stored.user_id,
-      expires_at: Date.now() + (data.expires_in * 1000)
-    });
     return true;
   },
 
@@ -565,6 +592,9 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
 // ── HEARTBEAT ──
 async function sendHeartbeat() {
   if (!supabase.userId) return;
+  // Whose heartbeat this is. If the account changes while it is on its way, its answer (schedule,
+  // limits, paused or not) is about the other account and is not applied.
+  const forUser = supabase.userId;
   try {
     let counters = await getLocalData('daily_counters');
     const today = new Date().toDateString();
@@ -646,6 +676,8 @@ async function sendHeartbeat() {
     }
 
     if (CONFIG.DEBUG) console.log('[Heartbeat] Sent successfully');
+
+    if (supabase.userId !== forUser) return;
 
     // Sync schedule settings from server
     if (data && data.length > 0) {
@@ -1845,11 +1877,14 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
 async function handleSiteConnect(session) {
   try {
     await supabase.signInWithSession(session);
-    await sendHeartbeat();
-    return { success: true, userId: supabase.userId };
   } catch (error) {
     return { success: false, error: error.message };
   }
+  // The site is answered as soon as the session is stored. The heartbeat follows on its own: it can
+  // take longer than the site waits, and the queue does not run until it has answered anyway. The
+  // answer carries no account id.
+  sendHeartbeat().catch(() => {});
+  return { success: true };
 }
 
 async function handleLogin(email, password) {

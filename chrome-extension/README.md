@@ -10,7 +10,7 @@
 ## Usage
 
 1. Click the extension icon in Chrome toolbar
-2. Connect it to your account: on olanovo.com, in Settings, click "Connect the extension"; or log in here with your Olanovo email and password
+2. Connect it to your account: on olanovo.com, in Settings, click "Connect the extension"; or log in here with your Olanovo email and password. The button talks to the copy installed from the Chrome Web Store. For a copy loaded from this folder, which gets another id, first tell the site that id: on olanovo.com open the developer console and run `localStorage.setItem('olanovo_extension_id', '<the id shown on chrome://extensions>')`, then reload the page
 3. Open a LinkedIn tab — the extension starts working automatically
 4. It polls the action queue every 30 seconds and executes pending actions
 

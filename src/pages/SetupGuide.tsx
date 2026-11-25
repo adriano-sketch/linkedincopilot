@@ -47,7 +47,7 @@ export default function SetupGuide() {
             </Step>
 
             <Step number={2} title="Connect the extension to your account">
-              <p>If you are signed in to Olanovo in this browser, a "Connect the extension" button appears here once the extension is installed. Or click the puzzle icon in the Chrome toolbar, pin the Olanovo extension, click its icon and sign in with the email and password you use on this site.</p>
+              <p>If you are signed in to Olanovo in this browser, a "Connect the extension" button appears here once the extension is installed (version 0.6.8 or later). Or click the puzzle icon in the Chrome toolbar, pin the Olanovo extension, click its icon and sign in with the email and password you use on this site. No password? Open Settings on this site and click "Connect the extension".</p>
               <ConnectExtensionButton className="mt-3" />
             </Step>
 

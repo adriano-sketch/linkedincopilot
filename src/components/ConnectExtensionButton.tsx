@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Plug } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -18,14 +18,24 @@ export default function ConnectExtensionButton({ className, onConnected }: { cla
   const [state, setState] = useState<ExtensionState | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const look = useCallback(async () => { setState(await findExtension(userId)); }, [userId]);
+  // Returning to the tab fires two events at once: one question to the extension is enough.
+  const looking = useRef<Promise<void> | null>(null);
+  const look = useCallback(() => {
+    if (!looking.current) {
+      looking.current = findExtension(userId).then(setState).finally(() => { looking.current = null; });
+    }
+    return looking.current;
+  }, [userId]);
 
   // The person may install the extension while this page is open: look again when they come back to it.
   useEffect(() => {
     void look();
     const again = () => { if (document.visibilityState === 'visible') void look(); };
     document.addEventListener('visibilitychange', again);
-    return () => document.removeEventListener('visibilitychange', again);
+    // Closing the extension's popup gives the focus back without a visibility change: that is when
+    // the person has just disconnected or signed in there.
+    window.addEventListener('focus', again);
+    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('focus', again); };
   }, [look]);
 
   if (!userId || !state?.found) return null;
