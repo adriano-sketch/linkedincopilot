@@ -1,4 +1,4 @@
-import { okToLeavePage, registerUnsavedCheck } from '@/lib/unsavedChanges';
+import { hasUnsavedChanges, okToLeavePage, registerUnsavedCheck } from '@/lib/unsavedChanges';
 import CommentKnowledgeBase from '@/components/CommentKnowledgeBase';
 import { EXTENSION_STORE_URL } from '@/lib/extensionStore';
 import AppShell from '@/components/app/AppShell';
@@ -94,16 +94,34 @@ export default function SettingsPage() {
   const dirtyLimits = useRef(new Set<string>());
   // Checkout and the billing portal leave this page: they ask first when something here is not saved.
   // (Limits can only be saved once the extension has connected, so before that they do not count.)
+  // A limit counts when its value differs from the stored one, not merely because it was touched:
+  // 40 changed to 41 and back to 40 is not an unsaved change.
+  const storedLimits = useRef<Record<string, unknown> | null>(null);
+  const sameValue = (a: unknown, b: unknown) => Array.isArray(a) && Array.isArray(b)
+    ? JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
+    : JSON.stringify(a) === JSON.stringify(b);
   const unsavedRef = useRef<() => boolean>(() => false);
-  unsavedRef.current = () => (!!extensionStatus && dirtyLimits.current.size > 0) || (!!profile && (
-    masterForm.sender_name !== (profile.sender_name || '') || masterForm.sender_title !== (profile.sender_title || '')
-    || masterForm.company_name !== (profile.company_name || '') || masterForm.company_description !== (profile.company_description || '')));
+  // Kept current after each render (not during it), for the check registered once below.
+  useEffect(() => {
+    unsavedRef.current = () => {
+      const stored = storedLimits.current;
+      const limitsChanged = !!extensionStatus && !!stored && [...dirtyLimits.current]
+        .some(k => !sameValue((extensionLimits as Record<string, unknown>)[k], stored[k]));
+      return limitsChanged || (!!profile && (
+        masterForm.sender_name !== (profile.sender_name || '') || masterForm.sender_title !== (profile.sender_title || '')
+        || masterForm.company_name !== (profile.company_name || '') || masterForm.company_description !== (profile.company_description || '')));
+    };
+  });
   useEffect(() => registerUnsavedCheck(() => unsavedRef.current()), []);
 
   const latestLimits = useRef(extensionLimits);
   latestLimits.current = extensionLimits;
   const editLimits = (patch: Partial<typeof extensionLimits>) => {
-    Object.keys(patch).forEach(k => dirtyLimits.current.add(k));
+    // A field put back to its stored value is no longer "changed": it follows the server again.
+    Object.entries(patch).forEach(([k, v]) => {
+      if (storedLimits.current && sameValue(v, storedLimits.current[k])) dirtyLimits.current.delete(k);
+      else dirtyLimits.current.add(k);
+    });
     setExtensionLimits(prev => ({ ...prev, ...patch }));
   };
 
@@ -119,6 +137,7 @@ export default function SettingsPage() {
       active_hours_start: ext.active_hours_start ?? '08:00',
       active_hours_end: ext.active_hours_end ?? '18:00',
     };
+    storedLimits.current = fromServer;
     setExtensionLimits(prev => {
       const next = { ...fromServer } as typeof prev;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -173,12 +192,16 @@ export default function SettingsPage() {
   const toggle = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const handleBillingPortal = async () => {
+    const asked = hasUnsavedChanges();
     if (!okToLeavePage()) return;
     setBillingLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('customer-portal');
       if (error) throw error;
       if (data?.url) {
+        // Something typed while the server was answering is asked about too (once: not again if the
+        // person already agreed to leave).
+        if (!asked && !okToLeavePage()) return;
         // Same tab: a tab opened after waiting for the server is blocked by some browsers.
         window.location.assign(data.url);
       }

@@ -10,11 +10,15 @@ export function registerUnsavedCheck(check: () => boolean): () => void {
   return () => { checks.delete(check); };
 }
 
+/** True when some registered form holds edits that were not saved. */
+export function hasUnsavedChanges(): boolean {
+  for (const check of checks) {
+    try { if (check()) return true; } catch (e) { console.error('unsaved check failed:', e); }
+  }
+  return false;
+}
+
 /** True when it is fine to leave: nothing unsaved, or the person agreed to lose it. */
 export function okToLeavePage(): boolean {
-  let unsaved = false;
-  for (const check of checks) {
-    try { if (check()) { unsaved = true; break; } } catch (e) { console.error('unsaved check failed:', e); }
-  }
-  return !unsaved || window.confirm('You have changes that are not saved. Leave this page and lose them?');
+  return !hasUnsavedChanges() || window.confirm('You have changes that are not saved. Leave this page and lose them?');
 }
