@@ -116,10 +116,13 @@ export default function SettingsPage() {
 
   const latestLimits = useRef(extensionLimits);
   latestLimits.current = extensionLimits;
+  const saveInFlight = useRef(false);
   const editLimits = (patch: Partial<typeof extensionLimits>) => {
     // A field put back to its stored value is no longer "changed": it follows the server again.
+    // Not while a save is on its way, though: "stored" is about to become what that save sent, so
+    // an edit made now stays pending until the save is done and compared with what it carried.
     Object.entries(patch).forEach(([k, v]) => {
-      if (storedLimits.current && sameValue(v, storedLimits.current[k])) dirtyLimits.current.delete(k);
+      if (!saveInFlight.current && storedLimits.current && sameValue(v, storedLimits.current[k])) dirtyLimits.current.delete(k);
       else dirtyLimits.current.add(k);
     });
     setExtensionLimits(prev => ({ ...prev, ...patch }));
@@ -158,6 +161,7 @@ export default function SettingsPage() {
     // One save at a time: a second request on its way would confuse which fields are still unsaved.
     if (!user || !extensionStatus || savingLimits) return;
     setSavingLimits(true);
+    saveInFlight.current = true;
     const sent = extensionLimits;
     try {
       // A zone saved here is the person's choice: it is never replaced by the browser's.
@@ -177,7 +181,7 @@ export default function SettingsPage() {
       await queryClient.invalidateQueries({ queryKey: ['extension-status'] });
       toast.success('Extension settings saved');
     } catch { toast.error('Failed to save extension settings'); }
-    finally { setSavingLimits(false); }
+    finally { saveInFlight.current = false; setSavingLimits(false); }
   };
 
   const handleTogglePause = async () => {
