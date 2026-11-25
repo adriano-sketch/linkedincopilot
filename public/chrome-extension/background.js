@@ -337,7 +337,7 @@ const RETIRED_ACTIONS = ['send_dm', 'send_followup', 'check_reply_status'];
 const LIMITS = {
   connection_requests: 40,
   messages: 100,
-  profile_visits: 80,
+  profile_visits: 100,
   
   post_likes: 30,
   total_actions: 200,
@@ -828,8 +828,8 @@ const queueProcessor = {
       if (!data || data.length === 0) return;
       // ── Backlog pacing ──
       // An action more than 10 minutes late is backlog (the machine was away). Backlog does not run
-      // back to back: each late action waits 6 to 12 minutes after the previous action, the same
-      // rhythm as a normal day. What does not fit before the queue's own expiry simply does not run.
+      // back to back: each late action waits 4 to 8 minutes after the previous action, the same
+      // rhythm the server schedules pages at. What does not fit before the queue's own expiry simply does not run.
       const lateMs = Date.now() - new Date(data[0].scheduled_for).getTime();
       if (lateMs > 10 * 60 * 1000) {
         const lastActionAt = Math.max(
@@ -838,7 +838,7 @@ const queueProcessor = {
         );
         let gap = await getLocalData('catchup_gap_ms');
         if (!gap) {
-          gap = (6 + Math.random() * 6) * 60 * 1000;
+          gap = (4 + Math.random() * 4) * 60 * 1000;
           await setLocalData('catchup_gap_ms', gap);
         }
         if (lastActionAt && Date.now() - lastActionAt < gap) return;

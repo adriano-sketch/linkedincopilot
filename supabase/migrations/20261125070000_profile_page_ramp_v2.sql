@@ -8,10 +8,13 @@
 --
 -- New rule, in one place (profile_page_day_limit) so that the scheduler's reading and the queue
 -- guard cannot drift apart:
---   * 20 pages a day, plus 20 for every full week since profile_page_ramp_start.
---   * Ceiling: daily_profile_page_limit when set; otherwise 100 on a free LinkedIn account and 150
---     on Premium or Sales Navigator (LinkedIn widens its browsing limit on paid plans).
+--   * 20 pages a day, growing by 20 a week since profile_page_ramp_start, a little every day
+--     (no step from one day to the next).
+--   * Ceiling: daily_profile_page_limit when set, otherwise 100. The same for every LinkedIn plan:
+--     the plan is declared by the user, and nothing here has been run above 100.
 --   * Resuming after an automatic pause still restarts the ramp (now at 20).
+--   * The per-day cap of contact checks (daily_limit_visits, default 80) sat under the new ceiling:
+--     its default becomes 100.
 alter table public.extension_status
   alter column daily_profile_page_limit drop not null,
   alter column daily_profile_page_limit drop default;
@@ -19,8 +22,15 @@ alter table public.extension_status
 -- 40 was the old default, not a choice anyone made: those rows follow the new rule.
 update public.extension_status set daily_profile_page_limit = null where daily_profile_page_limit = 40;
 
-comment on column public.extension_status.daily_profile_page_limit is 'Ceiling of LinkedIn profile pages (/in/...) per local day once the ramp is complete. Null: 100 on a free account, 150 on a paid one';
-comment on column public.extension_status.profile_page_ramp_start is 'The daily profile page budget is 20 + 20 per full week since this date, up to the ceiling';
+alter table public.extension_status
+  add constraint extension_status_page_limit_range
+  check (daily_profile_page_limit is null or (daily_profile_page_limit >= 0 and daily_profile_page_limit <= 150));
+
+alter table public.extension_status alter column daily_limit_visits set default 100;
+update public.extension_status set daily_limit_visits = 100 where daily_limit_visits is null or daily_limit_visits = 80;
+
+comment on column public.extension_status.daily_profile_page_limit is 'Ceiling of LinkedIn profile pages (/in/...) per local day once the ramp is complete. Null: 100';
+comment on column public.extension_status.profile_page_ramp_start is 'The daily profile page budget is 20 + 20 a week since this date (growing daily), up to the ceiling';
 
 create or replace function public.profile_page_day_limit(p_user_id uuid)
 returns integer
@@ -30,9 +40,8 @@ security definer
 set search_path = public
 as $$
   select least(
-    coalesce(e.daily_profile_page_limit,
-             case when e.linkedin_account_tier in ('premium', 'sales_navigator') then 150 else 100 end),
-    20 + 20 * greatest(0, floor(extract(epoch from (now() - coalesce(e.profile_page_ramp_start, now()))) / 604800)::int)
+    coalesce(e.daily_profile_page_limit, 100),
+    20 + greatest(0, floor(extract(epoch from (now() - coalesce(e.profile_page_ramp_start, now()))) / 86400 * 20 / 7)::int)
   )
   from (select 1) one
   left join public.extension_status e on e.user_id = p_user_id;
@@ -129,8 +138,8 @@ begin
        and status in ('pending', 'in_progress', 'completed')
        and scheduled_for >= day_start
        and scheduled_for < day_start + interval '1 day';
-    if used >= coalesce(ext.daily_limit_visits, 80) then
-      raise exception 'human_hours_guard: daily visit limit reached (% of %)', used, coalesce(ext.daily_limit_visits, 80) using errcode = 'P0001';
+    if used >= coalesce(ext.daily_limit_visits, 100) then
+      raise exception 'human_hours_guard: daily visit limit reached (% of %)', used, coalesce(ext.daily_limit_visits, 100) using errcode = 'P0001';
     end if;
   end if;
 

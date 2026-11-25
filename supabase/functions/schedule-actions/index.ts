@@ -567,6 +567,8 @@ Deno.serve(async (req) => {
       // ── Throttling: track how many actions we schedule per user per type
       // so we can spread scheduled_for across remaining business hours
       const userScheduleSlots = new Map<string, number>();
+      // When the last page-opening action of each user is due: the next one goes after it, whatever its type.
+      const userPageCursor = new Map<string, number>();
       const windowFullKeys = new Set<string>(); // "userId:actionType" whose slots already run past today's window
 
       // ── Per-user caps: separate caps for checks vs warm-up vs other actions
@@ -693,7 +695,7 @@ Deno.serve(async (req) => {
           windowMinutesLeft = minutesLeftInActiveWindow(ext, Date.now());
           if (windowMinutesLeft < 10) { addSkip("outside_active_hours"); continue; }
           if (windowFullKeys.has(`${lead.user_id}:${actionType}`)) { addSkip("window_full_today"); continue; }
-          const dayLimit = ext?.daily_limit_visits ?? 80;
+          const dayLimit = ext?.daily_limit_visits ?? 100;
           if (WARMUP_ACTIONS.has(actionType) && (localWarmToday.get(lead.user_id) || 0) >= dayLimit) {
             addSkip("daily_visit_limit_local"); continue;
           }
@@ -880,14 +882,32 @@ Deno.serve(async (req) => {
           // Schedule from NOW with short gaps, ignoring business hours
           const now = new Date();
           const initialDelayMs = (2 + Math.floor(Math.random() * 3)) * 60 * 1000;
-          // Actions that open a contact's page are spaced 4 to 8 minutes apart: at 8 to 16 a ten-hour
-          // day fitted about 50 pages, under the daily ceiling of profile pages once the ramp is done.
           const opensPage = WARMUP_ACTIONS.has(actionType) || actionType === "find_latest_post";
-          const gapMin = opensPage ? 4 : 3;
-          const gapRange = opensPage ? 4 : 5;
-          const perSlotGapMs = slotIndex * (gapMin + Math.floor(Math.random() * gapRange)) * 60 * 1000;
           const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);
-          const scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
+          let scheduled: Date;
+          if (opensPage) {
+            // Each page goes 4 to 8 minutes after the user's last check or visit already in the queue for
+            // today, of either type and from any earlier run. (Counting slots per run and per type let two
+            // chains overlap; at 8 to 16 minutes a ten-hour day fitted about 50 pages.)
+            let cursor = userPageCursor.get(lead.user_id);
+            if (cursor === undefined) {
+              const horizon = new Date(now.getTime() + (Number.isFinite(windowMinutesLeft) ? windowMinutesLeft : 24 * 60) * 60 * 1000).toISOString();
+              const { data: last, error: lastErr } = await supabase.from("action_queue").select("scheduled_for")
+                .eq("user_id", lead.user_id).eq("status", "pending")
+                // Only the checks and visits this branch schedules. Invitations are spread over the
+                // whole day on their own rhythm: waiting for the last of them would leave no room today.
+                .in("action_type", [...WARMUP_ACTIONS, "find_latest_post"])
+                .lte("scheduled_for", horizon).order("scheduled_for", { ascending: false }).limit(1).maybeSingle();
+              if (lastErr) console.error("page cursor read failed:", lastErr.message);
+              cursor = last?.scheduled_for ? new Date(last.scheduled_for).getTime() : 0;
+              userPageCursor.set(lead.user_id, cursor);
+            }
+            const gapMs = (4 + Math.random() * 4) * 60 * 1000;
+            scheduled = new Date(Math.max(now.getTime() + initialDelayMs + jitterMs, cursor + gapMs));
+          } else {
+            const perSlotGapMs = slotIndex * (3 + Math.floor(Math.random() * 5)) * 60 * 1000;
+            scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
+          }
           // Past the end of today's active window: leave it for a later run (tomorrow's window).
           if ((WARMUP_ACTIONS.has(actionType) || GROWTH_ACTIONS.has(actionType)) &&
               scheduled.getTime() > now.getTime() + (windowMinutesLeft - 5) * 60 * 1000) {
@@ -895,6 +915,7 @@ Deno.serve(async (req) => {
             addSkip("window_full_today");
             continue;
           }
+          if (opensPage) userPageCursor.set(lead.user_id, scheduled.getTime());
           scheduledFor = scheduled.toISOString();
         } else {
           scheduledFor = computeThrottledTime(slotIndex, userStart, userEnd);
