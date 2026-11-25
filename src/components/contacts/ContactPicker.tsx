@@ -22,6 +22,9 @@ export type PickedContact = {
   company: string | null;
 };
 
+/** One array for "nothing loaded": a new one each render would re-run every effect that reads it. */
+const NO_MATCHES: ContactMatch[] = [];
+
 const SCORE_FILTERS = [
   { value: '80', label: 'Strong fit (80+): clearly matches' },
   { value: '60', label: 'Likely fit (60+): probably matches' },
@@ -65,15 +68,21 @@ export default function ContactPicker({
   const { data: contactCount = 0 } = useConnectionsCount();
   const { data: runs = [] } = useContactSearchStatus(campaignId);
   const searching = runs.some(r => r.status === 'queued');
-  const { data: matches = [], isLoading } = useContactMatches(campaignId, Number(minScore), searching);
+  const { data: matches = NO_MATCHES, isLoading } = useContactMatches(campaignId, Number(minScore), searching);
   const { importConnections, suggestKeywords, score, searchLinkedIn, setSelected } = useContactActions(campaignId);
   const { data: summary } = useMatchSummary(campaignId, searching);
+
+  // Unticked here. What the server says about it afterwards can be old (the save still on its way, or
+  // rows kept from another score filter), so it never ticks the contact again: only the person does.
+  const unticked = useRef<Set<string>>(new Set());
 
   // Keep previously saved selections when the list loads.
   useEffect(() => {
     setPicked(prev => {
+      const add = matches.filter(m => m.selected && !prev.has(m.id) && !unticked.current.has(m.id));
+      if (add.length === 0) return prev; // same object: no re-render, no loop while nothing loaded
       const next = new Map(prev);
-      for (const m of matches) if (m.selected && !next.has(m.id)) next.set(m.id, m);
+      for (const m of add) next.set(m.id, m);
       return next;
     });
   }, [matches]);
@@ -88,6 +97,7 @@ export default function ContactPicker({
   }, [picked, onChange]);
 
   const toggle = (m: ContactMatch, on: boolean) => {
+    if (on) unticked.current.delete(m.id); else unticked.current.add(m.id);
     setPicked(prev => {
       const next = new Map(prev);
       if (on) next.set(m.id, m); else next.delete(m.id);
@@ -98,6 +108,7 @@ export default function ContactPicker({
   const allShownPicked = matches.length > 0 && matches.every(m => picked.has(m.id));
   const toggleAll = () => {
     const on = !allShownPicked;
+    for (const m of matches) { if (on) unticked.current.delete(m.id); else unticked.current.add(m.id); }
     setPicked(prev => {
       const next = new Map(prev);
       for (const m of matches) { if (on) next.set(m.id, m); else next.delete(m.id); }

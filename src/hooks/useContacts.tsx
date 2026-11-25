@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -223,6 +224,8 @@ export function useContactActions(campaignId: string | null) {
   });
 
   const setSelected = useMutation({
+    // One at a time, in the order clicked: "untick all" then "tick one" must end with that one ticked.
+    scope: { id: `contact-selected-${campaignId}` },
     mutationFn: async ({ ids, selected }: { ids: string[]; selected: boolean }) => {
       for (let i = 0; i < ids.length; i += 200) {
         const { error } = await db.from('connection_matches').update({ selected }).in('id', ids.slice(i, i + 200));
@@ -230,6 +233,7 @@ export function useContactActions(campaignId: string | null) {
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['connection_matches', campaignId] }),
+    onError: () => { toast.error('Could not save your selection. Check your connection and try again.'); },
   });
 
   return { importConnections, suggestKeywords, score, searchLinkedIn, setSelected };
