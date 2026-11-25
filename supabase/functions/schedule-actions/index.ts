@@ -567,6 +567,14 @@ Deno.serve(async (req) => {
       // ── Throttling: track how many actions we schedule per user per type
       // so we can spread scheduled_for across remaining business hours
       const userScheduleSlots = new Map<string, number>();
+      // When the last page-opening action of each user is due: the next one goes after it, whatever its type.
+      const userPageCursor = new Map<string, number>();
+      // Pending pages of the user that stand apart from that line (retries placed later in the day):
+      // new pages keep their distance from these too. Users whose queue could not be read get no
+      // new page in this run.
+      const userPageBusy = new Map<string, number[]>();
+      const userPageUnreadable = new Set<string>();
+      const PAGE_MIN_GAP_MS = 4 * 60 * 1000;
       const windowFullKeys = new Set<string>(); // "userId:actionType" whose slots already run past today's window
 
       // ── Per-user caps: separate caps for checks vs warm-up vs other actions
@@ -693,7 +701,7 @@ Deno.serve(async (req) => {
           windowMinutesLeft = minutesLeftInActiveWindow(ext, Date.now());
           if (windowMinutesLeft < 10) { addSkip("outside_active_hours"); continue; }
           if (windowFullKeys.has(`${lead.user_id}:${actionType}`)) { addSkip("window_full_today"); continue; }
-          const dayLimit = ext?.daily_limit_visits ?? 80;
+          const dayLimit = ext?.daily_limit_visits ?? 100;
           if (WARMUP_ACTIONS.has(actionType) && (localWarmToday.get(lead.user_id) || 0) >= dayLimit) {
             addSkip("daily_visit_limit_local"); continue;
           }
@@ -715,7 +723,7 @@ Deno.serve(async (req) => {
         // Split budget: follows get up to 60% of daily limit, visits get the rest.
         // This keeps the pipeline flowing instead of alternating days.
         if (actionType === "visit_profile" || actionType === "follow_profile") {
-          const visitLimit = ext?.daily_limit_visits ?? 80;
+          const visitLimit = ext?.daily_limit_visits ?? 100;
           const userCampaignCount = dueWarmingCampaignsPerUser.get(lead.user_id)?.size || 1;
           const perCampaignVisitLimit = Math.max(1, Math.floor(visitLimit / userCampaignCount));
 
@@ -880,13 +888,58 @@ Deno.serve(async (req) => {
           // Schedule from NOW with short gaps, ignoring business hours
           const now = new Date();
           const initialDelayMs = (2 + Math.floor(Math.random() * 3)) * 60 * 1000;
-          // Actions that open a contact's page are spaced 8 to 16 minutes apart.
           const opensPage = WARMUP_ACTIONS.has(actionType) || actionType === "find_latest_post";
-          const gapMin = opensPage ? 8 : 3;
-          const gapRange = opensPage ? 8 : 5;
-          const perSlotGapMs = slotIndex * (gapMin + Math.floor(Math.random() * gapRange)) * 60 * 1000;
           const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);
-          const scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
+          let scheduled: Date;
+          if (opensPage) {
+            // Each page goes 4 to 8 minutes after the user's last check or visit already in the queue for
+            // today, of either type and from any earlier run. (Counting slots per run and per type let two
+            // chains overlap; at 8 to 16 minutes a ten-hour day fitted about 50 pages.)
+            if (userPageUnreadable.has(lead.user_id)) { addSkip("page_queue_unreadable"); continue; }
+            let cursor = userPageCursor.get(lead.user_id);
+            if (cursor === undefined) {
+              const horizon = new Date(now.getTime() + (Number.isFinite(windowMinutesLeft) ? windowMinutesLeft : 24 * 60) * 60 * 1000).toISOString();
+              const { data: due, error: dueErr } = await supabase.from("action_queue").select("scheduled_for")
+                .eq("user_id", lead.user_id).eq("status", "pending")
+                // Only the checks and visits this branch schedules. Invitations are spread over the
+                // whole day on their own rhythm: waiting for the last of them would leave no room today.
+                .in("action_type", [...WARMUP_ACTIONS, "find_latest_post"])
+                .gte("scheduled_for", now.toISOString()).lte("scheduled_for", horizon)
+                .order("scheduled_for", { ascending: true }).limit(300);
+              if (dueErr) {
+                // Without knowing what is already queued, a new page could land on top of one.
+                console.error("page cursor read failed:", dueErr.message);
+                userPageUnreadable.add(lead.user_id);
+                addSkip("page_queue_unreadable");
+                continue;
+              }
+              // The end of the run of pages that follow one another from now. A page standing alone
+              // later in the day (a retry placed at a random hour) is not the end of the line: taking
+              // it as the cursor would leave the hours before it empty.
+              cursor = 0;
+              let prev = now.getTime();
+              const apart: number[] = [];
+              let inLine = true;
+              for (const row of due || []) {
+                const t = new Date(row.scheduled_for).getTime();
+                if (inLine && t - prev > 15 * 60 * 1000) inLine = false;
+                if (inLine) { cursor = t; prev = t; } else apart.push(t);
+              }
+              userPageBusy.set(lead.user_id, apart);
+              userPageCursor.set(lead.user_id, cursor);
+            }
+            const gapMs = (4 + Math.random() * 4) * 60 * 1000;
+            let at = Math.max(now.getTime() + initialDelayMs + jitterMs, cursor + gapMs);
+            // Too close to a page standing apart: go after it instead (the list is in time order, so
+            // one pass is enough).
+            for (const t of userPageBusy.get(lead.user_id) || []) {
+              if (Math.abs(at - t) < PAGE_MIN_GAP_MS) at = t + gapMs;
+            }
+            scheduled = new Date(at);
+          } else {
+            const perSlotGapMs = slotIndex * (3 + Math.floor(Math.random() * 5)) * 60 * 1000;
+            scheduled = new Date(now.getTime() + initialDelayMs + perSlotGapMs + jitterMs);
+          }
           // Past the end of today's active window: leave it for a later run (tomorrow's window).
           if ((WARMUP_ACTIONS.has(actionType) || GROWTH_ACTIONS.has(actionType)) &&
               scheduled.getTime() > now.getTime() + (windowMinutesLeft - 5) * 60 * 1000) {
@@ -935,6 +988,10 @@ Deno.serve(async (req) => {
           errors.push(`Lead ${lead.id}: ${insertError.message}`);
         } else {
           scheduled++;
+          // Only once it is in the queue: a refused page must not leave a hole in the line.
+          if (WARMUP_ACTIONS.has(actionType) || actionType === "find_latest_post") {
+            userPageCursor.set(lead.user_id, new Date(scheduledFor).getTime());
+          }
           if (LIGHTWEIGHT_ACTIONS.has(actionType)) {
             pendingChecksPerUser.set(lead.user_id, (pendingChecksPerUser.get(lead.user_id) || 0) + 1);
           } else if (WARMUP_ACTIONS.has(actionType)) {
