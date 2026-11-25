@@ -491,8 +491,11 @@ export default function SettingsPage() {
                         // One click must not stop the extension everywhere by accident.
                         if (!window.confirm('Sign out of every browser and disconnect the extension on every computer?')) return;
                         setLeavingEverywhere(true);
+                        // A request that never answers must not keep the page covered.
+                        const giveUp = new Promise<{ error: Error | null }>((resolve) =>
+                          setTimeout(() => resolve({ error: new Error('timeout') }), 15000));
                         try {
-                          const { error } = await signOutEverywhere();
+                          const { error } = await Promise.race([signOutEverywhere(), giveUp]);
                           if (error) { setLeavingEverywhere(false); toast.error('Could not sign out everywhere. Try again.'); }
                         } catch {
                           setLeavingEverywhere(false);
