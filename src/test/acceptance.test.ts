@@ -1,28 +1,54 @@
-import { describe, expect, it } from 'vitest';
-import { acceptance, FEW_INVITES } from '../lib/acceptance';
+import { describe, expect, it, vi } from 'vitest';
+import { acceptance, waitingText, FEW_INVITES } from '../lib/acceptance';
 
 describe('acceptance rate display', () => {
-  it('is accepted out of settled, not out of all invites', () => {
-    expect(acceptance({ accepted: 8, settled: 30, waiting: 9 })).toEqual({ rate: '27%', basis: '8 of 30', few: false, waiting: 9 });
+  it('is accepted out of matured invites, not out of all invites', () => {
+    expect(acceptance({ matured: 30, accepted_matured: 8, waiting: 9, accepted_early: 0 }))
+      .toEqual({ rate: '27%', basis: '8 of 30', few: false, waiting: 9, acceptedEarly: 0, known: true });
   });
 
-  it('has no rate while nothing is settled, and still says how many are waiting', () => {
-    expect(acceptance({ accepted: 0, settled: 0, waiting: 6 })).toEqual({ rate: null, basis: '', few: false, waiting: 6 });
+  it('has no rate while nothing has matured, and still says how many are waiting', () => {
+    const a = acceptance({ matured: 0, accepted_matured: 0, waiting: 6, accepted_early: 2 });
+    expect(a.rate).toBe(null);
+    expect(a.known).toBe(true);
+    expect(waitingText(a)).toBe('6 (2 already accepted)');
   });
 
-  it('shows 0% when invites settled and none was accepted', () => {
-    expect(acceptance({ accepted: 0, settled: 12, waiting: 0 }).rate).toBe('0%');
+  it('keeps an early acceptance out of the rate', () => {
+    // 1 matured invite not accepted, 1 young invite accepted: 0%, not 50% or 100%.
+    const a = acceptance({ matured: 1, accepted_matured: 0, waiting: 1, accepted_early: 1 });
+    expect(a.rate).toBe('0%');
+    expect(a.basis).toBe('0 of 1');
+  });
+
+  it('shows 0% when invites matured and none was accepted', () => {
+    expect(acceptance({ matured: 12, accepted_matured: 0 }).rate).toBe('0%');
   });
 
   it('warns while the rate rests on few invites', () => {
-    expect(acceptance({ accepted: 2, settled: FEW_INVITES - 1 }).few).toBe(true);
-    expect(acceptance({ accepted: 2, settled: FEW_INVITES }).few).toBe(false);
+    expect(acceptance({ matured: FEW_INVITES - 1, accepted_matured: 2 }).few).toBe(true);
+    expect(acceptance({ matured: FEW_INVITES, accepted_matured: 2 }).few).toBe(false);
   });
 
-  it('never shows more than 100%, and reads missing or odd numbers as zero', () => {
-    expect(acceptance({ accepted: 5, settled: 3 }).rate).toBe('100%');
-    expect(acceptance({})).toEqual({ rate: null, basis: '', few: false, waiting: 0 });
-    expect(acceptance({ accepted: '4', settled: '8', waiting: -2 })).toEqual({ rate: '50%', basis: '4 of 8', few: true, waiting: 0 });
-    expect(acceptance({ accepted: NaN, settled: null }).rate).toBe(null);
+  it('never shows more than 100%, and says so in the console', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = acceptance({ matured: 3, accepted_matured: 5 });
+    expect(a.rate).toBe('100%');
+    expect(a.basis).toBe('3 of 3');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('reads missing or odd numbers as zero, and knows when the server did not send them', () => {
+    const none = acceptance({});
+    expect(none.rate).toBe(null);
+    expect(none.known).toBe(false);
+    expect(waitingText(none)).toBe('—');
+    expect(acceptance({ matured: '8', accepted_matured: '4', waiting: -2 }).rate).toBe('50%');
+    expect(acceptance({ matured: null, accepted_matured: NaN }).known).toBe(false);
+  });
+
+  it('never counts more early acceptances than invites waiting', () => {
+    expect(waitingText(acceptance({ matured: 0, waiting: 2, accepted_early: 5 }))).toBe('2 (2 already accepted)');
   });
 });

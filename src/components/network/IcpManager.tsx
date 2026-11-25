@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Plus, Pencil, Trash2, Target, Loader2, Radar } from 'lucide-react';
 import { toast } from 'sonner';
 import { useIcps, useNetworkSettings, useNetworkStats, type Icp } from '@/hooks/useNetwork';
-import { acceptance, SETTLE_DAYS } from '@/lib/acceptance';
+import { acceptance, waitingText, MATURE_DAYS } from '@/lib/acceptance';
 
 const SENIORITIES: { key: string; label: string }[] = [
   { key: 'entry', label: 'Entry level' },
@@ -70,19 +70,19 @@ function toForm(i: Icp): Form {
 }
 
 /** What the audience has produced in the last 90 days: who passed the fit check, and how many accepted. */
-function AudienceResult({ row }: { row?: { invited: number; accepted: number; settled?: number; waiting?: number; found?: number; passed_filter?: number } }) {
-  if (!row || (!row.invited && !row.found)) return null;
+function AudienceResult({ row }: { row?: Parameters<typeof acceptance>[0] & { invited: number; checked?: number; passed_filter?: number } }) {
+  if (!row || (!row.invited && !row.checked)) return null;
   const a = acceptance(row);
   return (
     <div className="border-t border-border mt-2 pt-2 text-[13px] text-muted-foreground space-y-0.5">
-      {row.invited > 0 && (
+      {row.invited > 0 && a.known && (
         <p>
           <span className="text-foreground font-medium">{a.rate ? `${a.rate} accepted` : 'Acceptance: too early'}</span>
-          {a.rate ? ` (${a.basis} invites${a.few ? ', few so far' : ''})` : ` (an invite counts after ${SETTLE_DAYS} days or an answer)`}
-          {a.waiting > 0 ? ` · ${a.waiting} too recent to count` : ''}
+          {a.rate ? ` (${a.basis} invites${a.few ? ', few so far' : ''})` : ` (counted once an invite is ${MATURE_DAYS} days old)`}
+          {a.waiting > 0 ? ` · ${waitingText(a)} too recent to count` : ''}
         </p>
       )}
-      {!!row.found && <p>{row.passed_filter ?? 0} of {row.found} people found passed the fit check</p>}
+      {!!row.checked && <p>{row.passed_filter ?? 0} of {row.checked} people checked passed the fit check</p>}
       <p className="text-xs">Last 90 days</p>
     </div>
   );
