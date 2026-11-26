@@ -156,12 +156,13 @@ export default function Landing() {
             <motion.h1
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' as const }}
               className="font-display font-bold leading-[1] tracking-tight m-0 [text-wrap:balance]"
-              style={{ fontSize: 'clamp(40px, 4.8vw, 68px)' }}
+              style={{ fontSize: 'clamp(34px, 3.9vw, 54px)' }}
             >
-              Say <span className="text-primary">hello again</span> to the people who already know you.
+              Most of your LinkedIn network has nothing to do with your business.{' '}
+              <span className="text-primary">The part that does is going cold.</span>
             </motion.h1>
-            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[38ch] m-0">
-              Olanovo finds their recent LinkedIn posts and drafts a comment from what you actually think. You read it, edit it and post it yourself.
+            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[42ch] m-0">
+              Olanovo finds the people who matter in your network, shows you what they post, and drafts a comment from what you actually think. You post it yourself.
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
               No automated DMs. No fake compliments. No pretending you know someone.
@@ -220,6 +221,31 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* THE PROBLEM, in the reader's terms, before anything about how the product works. */}
+      <section className="py-16 md:py-24 px-4 section-cream border-t border-border/40" aria-label="The problem">
+        <div className="container mx-auto max-w-6xl grid md:grid-cols-3 gap-6 md:gap-8">
+          {[
+            {
+              title: 'Thousands of contacts, a few hundred that matter.',
+              desc: 'Years of connections from every job and event. Olanovo compares them with your description of who buys from you, and shows you the ones that fit.',
+            },
+            {
+              title: 'They post. You do not see it.',
+              desc: 'The feed shows you everyone else. Olanovo reads the posts of the people you picked and brings you the ones about your subjects, with a draft ready.',
+            },
+            {
+              title: 'Your network stops growing with the right people.',
+              desc: 'Describe who you want to meet. Olanovo finds people who fit and sends the invitation, with your note if you wrote one, at a pace your account can take.',
+            },
+          ].map((pain, i) => (
+            <motion.div key={pain.title} {...fadeUp} transition={{ duration: 0.5, delay: i * 0.08 }} className="rounded-2xl bg-card border border-border p-6 sm:p-7">
+              <h2 className="font-display font-bold tracking-tight text-2xl !leading-[1.15] m-0 [text-wrap:balance]">{pain.title}</h2>
+              <p className="text-base text-muted-foreground mt-3 mb-0">{pain.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
       {/* THE POINT: business. Staying in touch is the means. */}
       <section className="py-16 md:py-24 px-4 section-white border-t border-border/60" aria-label="What it is for">
         <motion.div {...fadeUp} className="container mx-auto max-w-4xl text-center">
@@ -230,8 +256,8 @@ export default function Landing() {
             Show up when they post. Be the name they think of when they need what you sell.
           </p>
           <p className="text-lg text-muted-foreground mt-4 mb-0 max-w-2xl mx-auto">
-            Most deals start with people who already know you. Olanovo keeps you in front of them, and of a few new
-            people you want to meet, with comments worth reading.
+            Most deals start with people who already know you. Olanovo keeps you in front of the ones who matter, and
+            helps you meet more people like them, with comments worth reading.
           </p>
         </motion.div>
       </section>
@@ -289,7 +315,7 @@ export default function Landing() {
               Be present when the people you know speak
             </h2>
             <p className="text-lg text-muted-foreground m-0 max-w-2xl mx-auto">
-              Most business on LinkedIn comes from people who already know you. Olanovo keeps you in front of them with comments worth reading, and helps you meet a few new people the same way.
+              Most business on LinkedIn comes from people who already know you. Olanovo keeps you in front of the ones who matter with comments worth reading, and helps you meet more people with the same profile.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-3 gap-5">
@@ -360,7 +386,7 @@ export default function Landing() {
             ))}
           </div>
           <motion.p {...fadeUp} className="text-center text-slate-400 text-sm mt-10 max-w-2xl mx-auto">
-            We run every limit on our own account before it reaches yours. Olanovo is not affiliated with or endorsed by LinkedIn.
+            The starting pace is the one we ran on our own account, and the ceiling sits inside the range other tools of this kind use. Olanovo is not affiliated with or endorsed by LinkedIn.
           </motion.p>
         </div>
       </section>
@@ -473,10 +499,10 @@ export default function Landing() {
             <div className="absolute top-0 right-0 w-48 h-48 bg-primary/15 rounded-full blur-[80px] pointer-events-none" />
             <div className="relative z-10">
               <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl text-white mb-4">
-                A few minutes a day with the people who matter.
+                Say hello again to the people who already know you.
               </h2>
               <p className="text-slate-300 text-lg mb-8 max-w-lg mx-auto">
-                Tell Olanovo what you think once. Open your Inbox, read the drafts, and post the ones you would sign.
+                A few minutes a day with the people who matter. Open your Inbox, read the drafts, and post the ones you would sign.
               </p>
               <Button asChild
                 size="lg"
