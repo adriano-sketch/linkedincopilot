@@ -118,7 +118,7 @@ export default function Landing() {
     'Comment drafts from what you think, posted by you',
     'Business signals: a contact with a problem you solve goes to the top',
     'New people in your target audience, with invitations and your note',
-    'Low daily limits, inside the hours you choose',
+    'Daily limits that start low, inside the hours you choose',
   ];
 
   return (
@@ -215,7 +215,7 @@ export default function Landing() {
           <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-5 flex flex-wrap justify-between gap-4 font-mono-label text-xs text-slate-400">
             <span>Drafts in the language of each post</span>
             <span>You post every comment</span>
-            <span>Low daily limits</span>
+            <span>Limits that start low</span>
             <span>Sales Navigator optional</span>
           </div>
         </div>
