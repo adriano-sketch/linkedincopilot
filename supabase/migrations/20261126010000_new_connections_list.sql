@@ -27,7 +27,7 @@ create or replace function public.add_accepted_to_list(p_user_id uuid, p_prospec
 returns integer
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   wanted boolean;
@@ -79,6 +79,7 @@ $$;
 revoke all on function public.add_accepted_to_list(uuid, uuid[]) from public, anon, authenticated;
 grant execute on function public.add_accepted_to_list(uuid, uuid[]) to service_role;
 
--- People who accepted before this existed.
+-- People who accepted before this existed. They also go to the front of the line: for the few there
+-- are per account this is the point (they were never looked at).
 select public.add_accepted_to_list(u.user_id, u.ids)
   from (select user_id, array_agg(id) ids from public.network_prospects where status = 'accepted' group by user_id) u;

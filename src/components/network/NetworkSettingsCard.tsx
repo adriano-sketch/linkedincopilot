@@ -58,7 +58,7 @@ export default function NetworkSettingsCard() {
         daily_comment_limit: clamp(form.daily_comment_limit, 0, 40),
         monthly_people_search_budget: clamp(form.monthly_people_search_budget, 0, 3000),
       });
-      toast.success('Limits saved');
+      toast.success('Settings saved');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save');
     }
@@ -156,7 +156,7 @@ export default function NetworkSettingsCard() {
           </div>
         </div>
         <Button onClick={submit} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save limits
+          {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save settings
         </Button>
         <OfflineAlertSettings />
       </CardContent>
