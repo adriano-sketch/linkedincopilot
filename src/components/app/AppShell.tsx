@@ -199,6 +199,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { extensionStatus: shellExtension } = useExtensionStatus();
   const beat = shellExtension?.last_heartbeat_at ? new Date(shellExtension.last_heartbeat_at).getTime() : 0;
   const workingElsewhere = !!shellExtension?.is_connected && Date.now() - beat < 120000;
+  // Nothing redraws this when the other browser simply goes quiet: look again when its last sign of
+  // life turns two minutes old.
+  const [, lookAgain] = useState(0);
+  useEffect(() => {
+    if (!workingElsewhere) return;
+    const t = setTimeout(() => lookAgain(n => n + 1), Math.max(1000, beat + 120000 - Date.now() + 500));
+    return () => clearTimeout(t);
+  }, [workingElsewhere, beat]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();

@@ -270,7 +270,11 @@ export default function SettingsPage() {
   return (
     <AppShell>
       {leavingEverywhere && (
-        <div role="status" aria-live="polite" className="fixed inset-0 z-50 bg-background/80 flex items-center justify-center text-sm text-muted-foreground">
+        <div
+          role="dialog" aria-modal="true" aria-label="Signing out everywhere" tabIndex={-1}
+          ref={el => { if (el && !el.contains(document.activeElement)) el.focus(); }}
+          className="fixed inset-0 z-50 bg-background/90 flex items-center justify-center text-sm text-foreground outline-none"
+        >
           <div className="text-center">
             <p className="m-0">Signing out everywhere…</p>
             {leavingSlow && (
