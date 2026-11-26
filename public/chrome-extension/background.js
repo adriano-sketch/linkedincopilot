@@ -261,7 +261,11 @@ const supabase = {
   async refreshSession() {
     this.refreshRefused = false;
     const stored = await getAuthToken();
-    if (!stored?.refresh_token) return false;
+    if (!stored?.refresh_token) {
+      // A stored session that cannot be renewed at all will never work again: that is a refusal.
+      this.refreshRefused = !!stored;
+      return false;
+    }
     let res;
     try {
       res = await fetch(`${this.url}/auth/v1/token?grant_type=refresh_token`, {
@@ -281,11 +285,22 @@ const supabase = {
     // session, and a failure is not taken as the new session having failed.
     // The check and the write below hold the session lock, so no sign-in can slip between them.
     const data = res.ok ? await res.json().catch(() => null) : null;
+    // A "no" counts as a refusal of this session only when the answer says so. A 401 or 403 can also
+    // come from in front of the sign-in service (a key being rotated, a filter) and says nothing
+    // about the session: taking it as a refusal would sign everyone out at once.
+    let refused = false;
+    if (!res.ok && (res.status === 400 || res.status === 401 || res.status === 403)) {
+      const why = await res.json().catch(() => null);
+      const code = String((why && (why.error_code || why.error)) || '');
+      const said = String((why && (why.msg || why.error_description || why.message)) || '');
+      refused = /^(invalid_grant|refresh_token_not_found|refresh_token_already_used|session_not_found|session_expired|user_banned|user_not_found)$/i.test(code)
+        || /refresh token|session|banned/i.test(said);
+    }
     return withSessionLock(async () => {
     const now = await getAuthToken();
     if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
     if (!res.ok || !data) {
-      this.refreshRefused = res.status === 400 || res.status === 401 || res.status === 403;
+      this.refreshRefused = refused;
       return false;
     }
     // The renewed token must be for the account this session is stored under (the answer names the
@@ -902,6 +917,17 @@ const queueProcessor = {
         }
         if (lastActionAt && Date.now() - lastActionAt < gap) return;
         await setLocalData('catchup_gap_ms', null); // a new random gap for the next late action
+      }
+      // No action is started on a session about to run out that could not be renewed: the action
+      // would be done on LinkedIn and its result refused by the server, then done a second time.
+      const held = await getAuthToken();
+      if (held?.expires_at && Date.now() >= held.expires_at - 300000) {
+        const renewed = await supabase.refreshSession();
+        const after = renewed ? await getAuthToken() : null;
+        if (!after?.expires_at || Date.now() >= after.expires_at - 300000) {
+          console.warn('[QueueProcessor] Session about to expire and not renewed; action left pending');
+          return;
+        }
       }
       await this.executeAction(data[0]);
     } catch (error) {
@@ -1746,7 +1772,8 @@ async function ensureAuth() {
     if (!refreshed) {
       if (!supabase.refreshRefused) {
         console.warn('[LC:Auth] ensureAuth: could not renew right now; keeping the session');
-        return true;
+        // Unless the person signed out while the renewal was on its way.
+        return !!(supabase.accessToken && supabase.userId);
       }
       console.warn('[LC:Auth] ensureAuth: the session was refused, clearing');
       await supabase.clearAuth(stored);
@@ -1857,7 +1884,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         console.warn('[LC:Auth] Scheduled refresh failed — attempting re-init...');
         const recovered = await supabase.init();
         if (!recovered) {
-          console.error('[LC:Auth] Session lost — user needs to re-login');
+          console.error('[LC:Auth] Session not confirmed (signed out, or the renewal will be tried again)');
         }
       } else {
         if (CONFIG.DEBUG) console.log('[LC:Auth] Token refreshed successfully');
