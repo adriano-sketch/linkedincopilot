@@ -18,6 +18,7 @@ import { useUserPlan } from '@/hooks/useUserPlan';
 import { UpgradeModal } from '@/components/UpgradeModal';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import ConnectExtensionButton from '@/components/ConnectExtensionButton';
 
 type NavItem = { to: string; label: string; icon: typeof Inbox; match: (path: string) => boolean; badge?: number };
 
@@ -193,6 +194,11 @@ function TrialBanner() {
 
 /** Shared frame for every logged-in page: sidebar navigation, top bar, ⌘K palette. */
 export default function AppShell({ children }: { children: ReactNode }) {
+  const shellPath = useLocation().pathname;
+  // Signed out in this browser but working in another one (a recent sign of life): no notice.
+  const { extensionStatus: shellExtension } = useExtensionStatus();
+  const beat = shellExtension?.last_heartbeat_at ? new Date(shellExtension.last_heartbeat_at).getTime() : 0;
+  const workingElsewhere = !!shellExtension?.is_connected && Date.now() - beat < 120000;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
@@ -238,7 +244,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </header>
         <TrialBanner />
-        <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8">{children}</main>
+        <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8">
+          {/* Settings shows the same control in its own place. */}
+          {!workingElsewhere && !/^\/settings/.test(shellPath) && <ConnectExtensionButton notice className="mb-5 max-w-[1180px]" />}
+          {children}
+        </main>
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />

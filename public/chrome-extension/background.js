@@ -31,8 +31,38 @@ function getAuthToken() {
   });
 }
 
-// Rejects when the browser could not write: a session that was not stored is gone the next time the
-// worker restarts, so callers must not treat it as signed in.
+// The extension was signed out without the person asking (the session was ended elsewhere, or could
+// not be renewed). Until they connect again nothing runs, so it is said where they will see it: a mark
+// on the toolbar icon and a line in the popup. A deliberate sign-out leaves no mark.
+function markSessionLost() {
+  try {
+    const quiet = () => {};
+    chrome.storage.local.set({ session_lost_at: Date.now() }).catch(quiet);
+    chrome.action.setBadgeBackgroundColor({ color: '#B4232A' }).catch(quiet);
+    chrome.action.setBadgeText({ text: '!' }).catch(quiet);
+    chrome.action.setTitle({ title: 'Olanovo is signed out. Click to connect again.' }).catch(quiet);
+  } catch (e) { console.warn('[LC:Auth] Could not show the signed-out mark:', e && e.message); }
+}
+// The mark on the icon does not survive a browser restart; the note in storage does.
+try {
+  chrome.storage.local.get('session_lost_at', (v) => {
+    if (!chrome.runtime.lastError && v && v.session_lost_at) {
+      const quiet = () => {};
+      chrome.action.setBadgeBackgroundColor({ color: '#B4232A' }).catch(quiet);
+      chrome.action.setBadgeText({ text: '!' }).catch(quiet);
+      chrome.action.setTitle({ title: 'Olanovo is signed out. Click to connect again.' }).catch(quiet);
+    }
+  });
+} catch (e) { /* storage not ready: the popup still shows the note */ }
+function clearSessionLost() {
+  try {
+    const quiet = () => {};
+    chrome.storage.local.remove('session_lost_at').catch(quiet);
+    chrome.action.setBadgeText({ text: '' }).catch(quiet);
+    chrome.action.setTitle({ title: 'Olanovo' }).catch(quiet);
+  } catch (e) { /* nothing to clear */ }
+}
+
 // Changes to the stored session run one at a time. A sign-in, a renewal and a sign-out each read
 // the stored session and then write it; interleaved, the renewal of one account could land on top
 // of a sign-in to another.
@@ -43,6 +73,8 @@ function withSessionLock(fn) {
   return run;
 }
 
+// Rejects when the browser could not write: a session that was not stored is gone the next time the
+// worker restarts, so callers must not treat it as signed in.
 function setAuthToken(auth) {
   return new Promise((resolve, reject) => {
     chrome.storage.local.set({ auth }, () => {
@@ -162,6 +194,7 @@ const supabase = {
   // heartbeat answers, so the queue waits for that answer (it does not run on what the previous
   // account's heartbeat said).
   publish(accessToken, userId) {
+    clearSessionLost();
     const changed = this.userId !== userId;
     this.accessToken = accessToken;
     this.userId = userId;
@@ -268,13 +301,15 @@ const supabase = {
   // still that one: a sign-in that landed in the meantime is kept.
   async clearAuth(expected) {
     await withSessionLock(async () => {
-      if (expected) {
-        const now = await getAuthToken();
-        if (now && (now.refresh_token !== expected.refresh_token || now.user_id !== expected.user_id)) return;
-      }
+      const now = expected ? await getAuthToken() : null;
+      if (expected && now && (now.refresh_token !== expected.refresh_token || now.user_id !== expected.user_id)) return;
       this.accessToken = null;
       this.userId = null;
       await clearAuthToken();
+      // With `expected` this is not the person signing out: the session stopped being accepted.
+      // Only if that session was still there: when the person signed out a moment before, there is
+      // nothing to warn about.
+      if (expected && now) markSessionLost();
     });
   },
 
@@ -1942,6 +1977,7 @@ async function handleLogin(email, password) {
 
 async function handleLogout() {
   await supabase.clearAuth();
+  clearSessionLost(); // the person signed out themselves: nothing to warn about
 }
 
 async function handleSaveSchedule(activeDays, startHour, endHour) {
