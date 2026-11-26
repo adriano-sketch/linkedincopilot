@@ -68,7 +68,7 @@ export default function ConnectExtensionButton({ className, onConnected, notice 
     if (notice) {
       return (
         <div role="status" className={`rounded-xl border border-attention/40 bg-attention/5 px-4 py-3 text-sm ${className || ''}`}>
-          <span className="font-semibold">Nothing is running for this account.</span> {OTHER_ACCOUNT}
+          <span className="font-semibold">This browser is not working for this account.</span> {OTHER_ACCOUNT}
         </div>
       );
     }
@@ -102,7 +102,7 @@ export default function ConnectExtensionButton({ className, onConnected, notice 
       <div role="status" className={`rounded-xl border border-attention/40 bg-attention/5 px-4 py-3 flex flex-wrap items-center justify-between gap-3 ${className || ''}`}>
         <p className="text-sm m-0">
           <span className="font-semibold">The extension in this browser is not connected to your account.</span>{' '}
-          Until it is, nothing is read on LinkedIn and no new drafts arrive.
+          Until it is, this browser reads nothing on LinkedIn and brings no new drafts.
         </p>
         <Button onClick={connect} disabled={busy} size="sm" className="gap-1.5">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}

@@ -195,6 +195,10 @@ function TrialBanner() {
 /** Shared frame for every logged-in page: sidebar navigation, top bar, ⌘K palette. */
 export default function AppShell({ children }: { children: ReactNode }) {
   const shellPath = useLocation().pathname;
+  // Signed out in this browser but working in another one (a recent sign of life): no notice.
+  const { extensionStatus: shellExtension } = useExtensionStatus();
+  const beat = shellExtension?.last_heartbeat_at ? new Date(shellExtension.last_heartbeat_at).getTime() : 0;
+  const workingElsewhere = !!shellExtension?.is_connected && Date.now() - beat < 120000;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
@@ -241,8 +245,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </header>
         <TrialBanner />
         <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8">
-          {/* Settings and the setup guide show the same control in their own place. */}
-          {!/^\/(settings|setup-guide)/.test(shellPath) && <ConnectExtensionButton notice className="mb-5 max-w-[1180px]" />}
+          {/* Settings shows the same control in its own place. */}
+          {!workingElsewhere && !/^\/settings/.test(shellPath) && <ConnectExtensionButton notice className="mb-5 max-w-[1180px]" />}
           {children}
         </main>
       </div>
