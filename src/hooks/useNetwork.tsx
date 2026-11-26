@@ -225,6 +225,8 @@ export type NetworkSettings = {
   weekly_invite_limit: number;
   daily_comment_limit: number;
   monthly_people_search_budget: number;
+  /** People who accept an invitation join the "New connections" list. */
+  add_accepted_to_list: boolean;
 };
 
 export function useNetworkSettings() {
@@ -236,7 +238,7 @@ export function useNetworkSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('extension_status')
-        .select('linkedin_account_tier, linkedin_tier_detected_at, sales_nav_failed_at, weekly_invite_limit, daily_comment_limit, monthly_people_search_budget, invites_paused_until, searches_paused_until, is_connected')
+        .select('linkedin_account_tier, linkedin_tier_detected_at, sales_nav_failed_at, weekly_invite_limit, daily_comment_limit, monthly_people_search_budget, invites_paused_until, searches_paused_until, is_connected, add_accepted_to_list')
         .eq('user_id', user!.id)
         .maybeSingle();
       if (error) throw error;

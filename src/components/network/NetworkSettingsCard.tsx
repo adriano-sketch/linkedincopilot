@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Radar } from 'lucide-react';
@@ -27,6 +28,7 @@ export default function NetworkSettingsCard() {
         weekly_invite_limit: settings.weekly_invite_limit ?? 100,
         daily_comment_limit: settings.daily_comment_limit ?? 20,
         monthly_people_search_budget: settings.monthly_people_search_budget ?? 250,
+        add_accepted_to_list: settings.add_accepted_to_list !== false,
       });
     }
   }, [settings]);
@@ -138,6 +140,18 @@ export default function NetworkSettingsCard() {
               {form.linkedin_account_tier === 'sales_navigator'
                 ? 'Sales Navigator has no monthly cap, but 600 (about 20 a day) keeps the activity human.'
                 : 'Free accounts get roughly 300 per month. We keep a margin.'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 rounded-xl border border-border p-3">
+          <Switch id="add-accepted" checked={form.add_accepted_to_list}
+            onCheckedChange={v => setForm({ ...form, add_accepted_to_list: v })} className="mt-0.5" />
+          <div>
+            <Label htmlFor="add-accepted" className="cursor-pointer">Keep up with people who accept</Label>
+            <p className="text-xs text-muted-foreground mt-1 mb-0">
+              When someone accepts your invitation, they join the list "New connections", so their posts are read and
+              you get drafts for them like for any contact. Off: they are only marked as connected. Applies to people
+              who accept from now on.
             </p>
           </div>
         </div>
