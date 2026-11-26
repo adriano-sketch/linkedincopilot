@@ -527,6 +527,7 @@ export type Database = {
           updated_at: string | null
           user_id: string | null
           visits_today: number | null
+          add_accepted_to_list: boolean
           weekly_invite_limit: number | null
         }
         Insert: {
@@ -567,6 +568,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           visits_today?: number | null
+          add_accepted_to_list?: boolean
           weekly_invite_limit?: number | null
         }
         Update: {
@@ -607,6 +609,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           visits_today?: number | null
+          add_accepted_to_list?: boolean
           weekly_invite_limit?: number | null
         }
         Relationships: []

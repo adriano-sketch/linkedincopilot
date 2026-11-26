@@ -135,7 +135,7 @@ export default function NewConnections({ searchBudget }: { searchBudget?: number
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : people.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              {list === 'accepted' ? 'No new connections yet. Accepted invites show up here after the next sync (twice a day).' : 'Nobody here yet.'}
+              {list === 'accepted' ? 'No new connections yet. Accepted invites show up here after the next sync (twice a day), and join your "New connections" list unless you turned that off in the Network settings.' : 'Nobody here yet.'}
             </p>
           ) : (
             <Table>

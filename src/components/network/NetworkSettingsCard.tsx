@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Radar } from 'lucide-react';
@@ -27,6 +28,7 @@ export default function NetworkSettingsCard() {
         weekly_invite_limit: settings.weekly_invite_limit ?? 100,
         daily_comment_limit: settings.daily_comment_limit ?? 20,
         monthly_people_search_budget: settings.monthly_people_search_budget ?? 250,
+        add_accepted_to_list: settings.add_accepted_to_list !== false,
       });
     }
   }, [settings]);
@@ -56,7 +58,7 @@ export default function NetworkSettingsCard() {
         daily_comment_limit: clamp(form.daily_comment_limit, 0, 40),
         monthly_people_search_budget: clamp(form.monthly_people_search_budget, 0, 3000),
       });
-      toast.success('Limits saved');
+      toast.success('Settings saved');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save');
     }
@@ -141,8 +143,20 @@ export default function NetworkSettingsCard() {
             </p>
           </div>
         </div>
+        <div className="flex items-start gap-3 rounded-xl border border-border p-3">
+          <Switch id="add-accepted" checked={form.add_accepted_to_list}
+            onCheckedChange={v => setForm({ ...form, add_accepted_to_list: v })} className="mt-0.5" />
+          <div>
+            <Label htmlFor="add-accepted" className="cursor-pointer">Keep up with people who accept</Label>
+            <p className="text-xs text-muted-foreground mt-1 mb-0">
+              When someone accepts your invitation, they join the list "New connections", so their posts are read and
+              you get drafts for them like for any contact. Off: they are only marked as connected. Applies to people
+              who accept from now on.
+            </p>
+          </div>
+        </div>
         <Button onClick={submit} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save limits
+          {save.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Save settings
         </Button>
         <OfflineAlertSettings />
       </CardContent>

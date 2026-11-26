@@ -125,7 +125,9 @@ export function useCampaignProfiles() {
   const duplicateCampaign = useMutation({
     mutationFn: async (campaign: CampaignProfile) => {
       if (!user) throw new Error('Not authenticated');
-      const { id, created_at, updated_at, ...rest } = campaign;
+      // auto_source stays with the original: one list per user is the one the product fills by itself.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { id, created_at, updated_at, auto_source, ...rest } = campaign as any;
       const { data, error } = await supabase
         .from('campaign_profiles')
         .insert({ ...rest, user_id: user.id, name: `${rest.name} (copy)`, is_default: false } as any)
@@ -142,7 +144,9 @@ export function useCampaignProfiles() {
   const saveAsTemplate = useMutation({
     mutationFn: async (campaign: CampaignProfile) => {
       if (!user) throw new Error('Not authenticated');
-      const { id, created_at, updated_at, ...rest } = campaign;
+      // auto_source stays with the original: one list per user is the one the product fills by itself.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { id, created_at, updated_at, auto_source, ...rest } = campaign as any;
       const { error } = await supabase
         .from('campaign_profiles')
         .insert({ ...rest, user_id: user.id, name: `${rest.name} (template)`, is_template: true, is_default: false } as any);

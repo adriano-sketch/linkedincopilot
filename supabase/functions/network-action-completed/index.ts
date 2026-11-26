@@ -505,6 +505,15 @@ async function handleSync(supabase: Supa, userId: string, success: boolean, resu
     if (error) console.error("accept update failed:", error);
     accepted = rows?.length || 0;
   }
+  // People who accepted join the "New connections" list, so their posts are read like any contact's
+  // (unless the user turned that off). The database marks each acceptance; this takes every mark
+  // still standing, so an addition that failed on an earlier sync is tried again on this one. A
+  // failure does not undo the acceptance.
+  {
+    const { data: added, error: addErr } = await supabase.rpc("add_pending_accepted_to_list", { p_user_id: userId });
+    if (addErr) console.error("add_pending_accepted_to_list failed:", addErr.message);
+    else if (added) console.log(`${added} new connection(s) added to the list`);
+  }
   await supabase.from("extension_status").update({ last_connections_sync_at: now }).eq("user_id", userId);
   return { ok: true, accepted };
 }
