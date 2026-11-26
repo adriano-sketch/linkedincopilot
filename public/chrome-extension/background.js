@@ -249,7 +249,10 @@ const supabase = {
     // a switch in the middle of an action would leave that action unreported. The person
     // disconnects in the popup first.
     await withSessionLock(async () => {
-      const current = await getAuthToken();
+      // Without knowing what is stored, nothing is written over it: it could be another account's.
+      const held = await readAuth();
+      if (!held.ok) throw new Error('storage_unavailable');
+      const current = held.auth;
       if (current?.user_id && current.user_id !== user.id) throw new Error('other_account');
       const seconds = Number(expires_in);
       await setAuthToken({
@@ -329,7 +332,12 @@ const supabase = {
         || /refresh token|session|banned/i.test(said);
     }
     return withSessionLock(async () => {
-    const now = await getAuthToken();
+    const again = await readAuth();
+    if (!again.ok) {
+      console.warn('[LC:Auth] Could not re-read the stored session; the renewal answer is dropped');
+      return false;
+    }
+    const now = again.auth;
     if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
     if (!res.ok || !data) {
       // A "no" that was not recognised as a refusal is taken as temporary, but not for ever: if it
@@ -965,7 +973,9 @@ const queueProcessor = {
       }
       // No action is started on a session about to run out that could not be renewed: the action
       // would be done on LinkedIn and its result refused by the server, then done a second time.
-      const held = await getAuthToken();
+      const heldRead = await readAuth();
+      if (!heldRead.ok) return; // cannot tell how long the session has left: the action waits
+      const held = heldRead.auth;
       if (held?.expires_at && Date.now() >= held.expires_at - 300000) {
         const renewed = await supabase.refreshSession();
         const after = renewed ? await getAuthToken() : null;

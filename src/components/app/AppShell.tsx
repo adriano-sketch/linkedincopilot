@@ -214,6 +214,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        // Not over a page that has put a cover up (its own dialog): the list would open on top of it.
+        if (document.querySelector('[data-blocks-shortcuts]')) return;
         e.preventDefault();
         setPaletteOpen(o => !o);
       }

@@ -271,11 +271,13 @@ export default function SettingsPage() {
     <AppShell>
       {leavingEverywhere && (
         <div
-          role="dialog" aria-modal="true" aria-label="Signing out everywhere" tabIndex={-1}
+          role="dialog" aria-modal="true" aria-label="Signing out everywhere" tabIndex={-1} data-blocks-shortcuts=""
           ref={el => { if (el && !el.contains(document.activeElement)) el.focus(); }}
           // The focus stays in here: Tab goes to the one control there is (or nowhere), never to the
           // header behind, where a click on "New list" would leave the page mid-request.
           onKeyDown={e => {
+            // The app's own shortcut (the command list) would open on top and let the person leave.
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); e.stopPropagation(); return; }
             if (e.key !== 'Tab') return;
             e.preventDefault();
             const control = e.currentTarget.querySelector('button');
