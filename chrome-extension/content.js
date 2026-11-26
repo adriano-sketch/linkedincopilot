@@ -1444,8 +1444,11 @@ async function lcShowLinkedPost() {
         // Last look. A long marker can differ from the card near its end (a counter read as text, an
         // edit, the text collapsed). Its first 40 characters decide, but only when one post has them.
         const close = cards.filter((c) => c.fingerprint && c.fingerprint.startsWith(wanted.slice(0, 40)));
-        // Counted by text: an older page layout lists the same post twice (a wrapper and its inside).
-        if (new Set(close.map((c) => c.fingerprint)).size === 1) card = close[0];
+        // An older page layout lists the same post twice, a wrapper and the element inside it: the
+        // wrappers are set aside. Two separate posts with the same opening stay two, and no choice
+        // is made between them.
+        const posts = close.filter((c) => !close.some((o) => o !== c && c.el.contains(o.el)));
+        if (posts.length === 1) card = posts[0];
       }
       if (card || attempt === 6) break;
       window.scrollBy(0, 700);

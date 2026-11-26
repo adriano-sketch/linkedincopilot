@@ -23,12 +23,28 @@ const CONFIG = {
 };
 
 // ── STORAGE HELPERS ──
-function getAuthToken() {
+// Always answers, even when the browser could not read its storage (then `ok` is false). A read
+// that never answered would hold everything waiting on it, the renewals above all.
+function readAuth() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['auth'], (result) => {
-      resolve(result.auth || null);
-    });
+    try {
+      chrome.storage.local.get(['auth'], (result) => {
+        if (chrome.runtime.lastError || !result) {
+          console.warn('[LC:Auth] Could not read the stored session:', chrome.runtime.lastError && chrome.runtime.lastError.message);
+          resolve({ ok: false, auth: null });
+          return;
+        }
+        resolve({ ok: true, auth: result.auth || null });
+      });
+    } catch (e) {
+      resolve({ ok: false, auth: null });
+    }
   });
+}
+// The stored session, or null. Null also when the read failed: where "nothing stored" and "could not
+// read" must not be confused (before deleting anything), use readAuth.
+function getAuthToken() {
+  return readAuth().then((r) => r.auth);
 }
 
 // The extension was signed out without the person asking (the session was ended elsewhere, or could
@@ -54,8 +70,11 @@ try {
     }
   });
 } catch (e) { /* storage not ready: the popup still shows the note */ }
+// How long an unrecognised "no" to a renewal is taken as temporary once the session has run out.
+const RENEW_GIVE_UP_MS = 8 * 60 * 60 * 1000;
 function clearSessionLost() {
   try {
+    chrome.storage.local.remove('renew_failing_since').catch(() => {});
     const quiet = () => {};
     chrome.storage.local.remove('session_lost_at').catch(quiet);
     chrome.action.setBadgeText({ text: '' }).catch(quiet);
@@ -94,7 +113,7 @@ function clearAuthToken() {
 function getLocalData(key) {
   return new Promise((resolve) => {
     chrome.storage.local.get([key], (result) => {
-      resolve(result[key] || null);
+      resolve((result && result[key]) || null);
     });
   });
 }
@@ -132,6 +151,11 @@ const supabase = {
   anonKey: CONFIG.SUPABASE_ANON_KEY,
   accessToken: null,
   userId: null,
+  // Set by refreshSession: true only when the server said no to this session (it was ended, or the
+  // token is not accepted). A failure of any other kind (no network, a server error, too many
+  // requests) leaves it false: the session is kept and the renewal is tried again later. Signing
+  // the person out for a hiccup on the server stops their lists for no reason.
+  refreshRefused: false,
 
   async init() {
     const stored = await getAuthToken();
@@ -157,6 +181,10 @@ const supabase = {
         return true;
       }
       
+      if (!this.refreshRefused) {
+        console.warn('[LC:Auth] Could not renew the session right now; keeping it and trying again later');
+        return false;
+      }
       console.warn('[LC:Auth] All recovery attempts failed, clearing auth');
       await this.clearAuth(stored);
       return false;
@@ -221,7 +249,10 @@ const supabase = {
     // a switch in the middle of an action would leave that action unreported. The person
     // disconnects in the popup first.
     await withSessionLock(async () => {
-      const current = await getAuthToken();
+      // Without knowing what is stored, nothing is written over it: it could be another account's.
+      const held = await readAuth();
+      if (!held.ok) throw new Error('storage_unavailable');
+      const current = held.auth;
       if (current?.user_id && current.user_id !== user.id) throw new Error('other_account');
       const seconds = Number(expires_in);
       await setAuthToken({
@@ -249,35 +280,89 @@ const supabase = {
     }
   },
 
-  async refreshSession() {
-    const stored = await getAuthToken();
-    if (!stored?.refresh_token) return false;
-    const res = await fetch(`${this.url}/auth/v1/token?grant_type=refresh_token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': this.anonKey
-      },
-      body: JSON.stringify({ refresh_token: stored.refresh_token })
-    });
+  // One renewal at a time: the queue, the heartbeat and the alarm can all ask at the same moment,
+  // and a second request with a token the first one has just used up comes back as a refusal.
+  refreshSession() {
+    if (this.renewing) return this.renewing;
+    const run = this.renewOnce().finally(() => { if (this.renewing === run) this.renewing = null; });
+    this.renewing = run;
+    return run;
+  },
+
+  async renewOnce() {
+    this.refreshRefused = false;
+    const first = await readAuth();
+    if (!first.ok) return false; // storage trouble: temporary, the session is not judged
+    const stored = first.auth;
+    if (!stored?.refresh_token) {
+      // A stored session that cannot be renewed at all will never work again: that is a refusal.
+      this.refreshRefused = !!stored;
+      return false;
+    }
+    let res;
+    try {
+      res = await fetch(`${this.url}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': this.anonKey
+        },
+        body: JSON.stringify({ refresh_token: stored.refresh_token }),
+        // Renewals wait for one another: one that never answers must not hold the rest.
+        signal: AbortSignal.timeout(20000)
+      });
+    } catch (e) {
+      console.warn('[LC:Auth] Could not reach the server to renew the session:', e && e.message);
+      return false;
+    }
     // The stored session may have been replaced while this request was on its way (a new sign-in):
     // then this answer, good or bad, belongs to the old one. It is dropped: not written over the new
     // session, and a failure is not taken as the new session having failed.
     // The check and the write below hold the session lock, so no sign-in can slip between them.
     const data = res.ok ? await res.json().catch(() => null) : null;
+    // A "no" counts as a refusal of this session only when the answer says so. A 401 or 403 can also
+    // come from in front of the sign-in service (a key being rotated, a filter) and says nothing
+    // about the session: taking it as a refusal would sign everyone out at once.
+    let refused = false;
+    if (!res.ok && (res.status === 400 || res.status === 401 || res.status === 403)) {
+      const why = await res.json().catch(() => null);
+      const code = String((why && (why.error_code || why.error)) || '');
+      const said = String((why && (why.msg || why.error_description || why.message)) || '');
+      refused = /^(invalid_grant|refresh_token_not_found|refresh_token_already_used|session_not_found|session_expired|user_banned|user_not_found)$/i.test(code)
+        || /refresh token|session|banned/i.test(said);
+    }
     return withSessionLock(async () => {
-    const now = await getAuthToken();
+    const again = await readAuth();
+    if (!again.ok) {
+      console.warn('[LC:Auth] Could not re-read the stored session; the renewal answer is dropped');
+      return false;
+    }
+    const now = again.auth;
     if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
-    if (!res.ok || !data) return false;
+    if (!res.ok || !data) {
+      // A "no" that was not recognised as a refusal is taken as temporary, but not for ever: if it
+      // goes on for hours after the session ran out, it is a refusal in a form not seen before, and
+      // the person has to be told (the mark on the icon) instead of the extension staying dead.
+      if (!refused && !res.ok && (res.status === 400 || res.status === 401 || res.status === 403)
+          && stored.expires_at && Date.now() >= stored.expires_at) {
+        const since = Number(await getLocalData('renew_failing_since')) || 0;
+        if (!since) await setLocalData('renew_failing_since', Date.now());
+        else if (Date.now() - since > RENEW_GIVE_UP_MS) refused = true;
+      }
+      this.refreshRefused = refused;
+      return false;
+    }
     // The renewed token must be for the account this session is stored under (the answer names the
     // account; if it ever does not, the check is skipped, not failed). Tokens that say otherwise are
     // not kept: the stored identity and the credentials would no longer match.
     if (!data.access_token || !data.refresh_token) {
       console.error('[LC:Auth] Renewed session is incomplete; not kept');
+      this.refreshRefused = true;
       return false;
     }
     if (data.user?.id && data.user.id !== stored.user_id) {
       console.error('[LC:Auth] Renewed session is not for the stored account; not kept');
+      this.refreshRefused = true;
       return false;
     }
     try {
@@ -291,6 +376,7 @@ const supabase = {
       console.error('[LC:Auth] Could not store the renewed session:', e.message);
       return false;
     }
+    try { await setLocalData('renew_failing_since', null); } catch (e) { /* only a note */ }
     // Only for the account in use (nothing in use yet at start-up: then the stored one is it).
     if (!this.userId || this.userId === stored.user_id) this.accessToken = data.access_token;
     return true;
@@ -301,7 +387,10 @@ const supabase = {
   // still that one: a sign-in that landed in the meantime is kept.
   async clearAuth(expected) {
     await withSessionLock(async () => {
-      const now = expected ? await getAuthToken() : null;
+      const read = expected ? await readAuth() : null;
+      // Could not read what is stored: nothing is deleted on a guess. The next cycle decides.
+      if (read && !read.ok) return;
+      const now = read ? read.auth : null;
       if (expected && now && (now.refresh_token !== expected.refresh_token || now.user_id !== expected.user_id)) return;
       this.accessToken = null;
       this.userId = null;
@@ -705,9 +794,12 @@ async function sendHeartbeat() {
 
     if (patchRes.status === 401) {
       console.warn('[LC:Auth] Heartbeat got 401, attempting session refresh...');
+      const heldBefore = await getAuthToken();
       const refreshed = await supabase.refreshSession();
       if (!refreshed) {
         console.error('[LC:Auth] Session refresh failed during heartbeat');
+        // Refused for good: say so now (the mark on the icon), not at the next scheduled renewal.
+        if (supabase.refreshRefused && heldBefore) await supabase.clearAuth(heldBefore);
       } else {
         console.log('[LC:Auth] Session refreshed after heartbeat 401, will retry next cycle');
       }
@@ -878,6 +970,19 @@ const queueProcessor = {
         }
         if (lastActionAt && Date.now() - lastActionAt < gap) return;
         await setLocalData('catchup_gap_ms', null); // a new random gap for the next late action
+      }
+      // No action is started on a session about to run out that could not be renewed: the action
+      // would be done on LinkedIn and its result refused by the server, then done a second time.
+      const heldRead = await readAuth();
+      if (!heldRead.ok) return; // cannot tell how long the session has left: the action waits
+      const held = heldRead.auth;
+      if (held?.expires_at && Date.now() >= held.expires_at - 300000) {
+        const renewed = await supabase.refreshSession();
+        const after = renewed ? await getAuthToken() : null;
+        if (!after?.expires_at || Date.now() >= after.expires_at - 300000) {
+          console.warn('[QueueProcessor] Session about to expire and not renewed; action left pending');
+          return;
+        }
       }
       await this.executeAction(data[0]);
     } catch (error) {
@@ -1720,7 +1825,12 @@ async function ensureAuth() {
     console.log('[LC:Auth] ensureAuth: token expiring, refreshing...');
     const refreshed = await supabase.refreshSession();
     if (!refreshed) {
-      console.warn('[LC:Auth] ensureAuth: refresh failed, clearing');
+      if (!supabase.refreshRefused) {
+        console.warn('[LC:Auth] ensureAuth: could not renew right now; keeping the session');
+        // Unless the person signed out while the renewal was on its way.
+        return !!(supabase.accessToken && supabase.userId);
+      }
+      console.warn('[LC:Auth] ensureAuth: the session was refused, clearing');
       await supabase.clearAuth(stored);
       return false;
     }
@@ -1829,7 +1939,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         console.warn('[LC:Auth] Scheduled refresh failed — attempting re-init...');
         const recovered = await supabase.init();
         if (!recovered) {
-          console.error('[LC:Auth] Session lost — user needs to re-login');
+          console.error('[LC:Auth] Session not confirmed (signed out, or the renewal will be tried again)');
         }
       } else {
         if (CONFIG.DEBUG) console.log('[LC:Auth] Token refreshed successfully');
