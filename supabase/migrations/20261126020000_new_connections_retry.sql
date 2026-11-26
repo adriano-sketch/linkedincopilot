@@ -14,6 +14,7 @@ create index if not exists network_prospects_list_add_pending
 create or replace function public.network_prospects_mark_list_add()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   if new.status = 'accepted' and old.status is distinct from 'accepted' then
