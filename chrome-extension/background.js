@@ -97,7 +97,7 @@ function clearAuthToken() {
 function getLocalData(key) {
   return new Promise((resolve) => {
     chrome.storage.local.get([key], (result) => {
-      resolve(result[key] || null);
+      resolve((result && result[key]) || null);
     });
   });
 }
@@ -286,7 +286,9 @@ const supabase = {
           'Content-Type': 'application/json',
           'apikey': this.anonKey
         },
-        body: JSON.stringify({ refresh_token: stored.refresh_token })
+        body: JSON.stringify({ refresh_token: stored.refresh_token }),
+        // Renewals wait for one another: one that never answers must not hold the rest.
+        signal: AbortSignal.timeout(20000)
       });
     } catch (e) {
       console.warn('[LC:Auth] Could not reach the server to renew the session:', e && e.message);
