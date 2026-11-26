@@ -45,6 +45,9 @@ export default function SettingsPage() {
   // While "Sign out everywhere" is on its way the page is covered: an edit typed in that moment
   // would be lost when the session ends, with no warning.
   const [leavingEverywhere, setLeavingEverywhere] = useState(false);
+  // The request can outlast any wait and still succeed, so the page stays covered until it answers;
+  // after a while the cover offers a way out instead of handing the form back.
+  const [leavingSlow, setLeavingSlow] = useState(false);
   const { profile, isLoading, updateProfile } = useProfile();
   const { extensionStatus } = useExtensionStatus();
   const { isFree, isAgency, onTrial, trialDaysLeft, isLoading: planLoading, settings: planSettings, loadFailed: planFailed } = useUserPlan();
@@ -268,7 +271,15 @@ export default function SettingsPage() {
     <AppShell>
       {leavingEverywhere && (
         <div role="status" aria-live="polite" className="fixed inset-0 z-50 bg-background/80 flex items-center justify-center text-sm text-muted-foreground">
-          Signing out everywhere…
+          <div className="text-center">
+            <p className="m-0">Signing out everywhere…</p>
+            {leavingSlow && (
+              <p className="m-0 mt-2">
+                This is taking longer than usual.{' '}
+                <button type="button" className="underline hover:text-foreground" onClick={() => window.location.reload()}>Reload the page</button>
+              </p>
+            )}
+          </div>
         </div>
       )}
       {/* inert: no clicks and no typing underneath. Passed as a plain attribute; this React version has no prop for it. */}
@@ -491,15 +502,16 @@ export default function SettingsPage() {
                         // One click must not stop the extension everywhere by accident.
                         if (!window.confirm('Sign out of every browser and disconnect the extension on every computer?')) return;
                         setLeavingEverywhere(true);
-                        // A request that never answers must not keep the page covered.
-                        const giveUp = new Promise<{ error: Error | null }>((resolve) =>
-                          setTimeout(() => resolve({ error: new Error('timeout') }), 15000));
+                        setLeavingSlow(false);
+                        const slow = setTimeout(() => setLeavingSlow(true), 15000);
                         try {
-                          const { error } = await Promise.race([signOutEverywhere(), giveUp]);
+                          const { error } = await signOutEverywhere();
                           if (error) { setLeavingEverywhere(false); toast.error('Could not sign out everywhere. Try again.'); }
                         } catch {
                           setLeavingEverywhere(false);
                           toast.error('Could not sign out everywhere. Try again.');
+                        } finally {
+                          clearTimeout(slow);
                         }
                       }}
                     >

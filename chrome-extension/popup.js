@@ -205,6 +205,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function showLoginView() {
     hideAllViews();
     loginView.classList.remove('hidden');
+    // Signed out without asking (the session ended elsewhere): say so, or the form alone reads as
+    // if nothing had happened.
+    const note = document.getElementById('signed-out-note');
+    if (note) {
+      chrome.storage.local.get('session_lost_at', (v) => {
+        note.classList.toggle('hidden', !!chrome.runtime.lastError || !(v && v.session_lost_at));
+      });
+    }
   }
 
   function showStatusView() {

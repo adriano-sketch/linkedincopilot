@@ -201,3 +201,4 @@ body {
 /* Under the sign-in form: how to connect an account that has no password. */
 .login-hint { margin-top: 12px; font-size: 11px; line-height: 1.45; color: var(--ink-soft); text-align: center; }
 .login-hint a { color: var(--violet); text-decoration: underline; }
+.signed-out-note { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: #FDECEC; color: #8A1C22; font-size: 12px; line-height: 1.45; }

@@ -12,7 +12,12 @@ const OTHER_ACCOUNT = 'The extension in this browser is connected to another Ola
  * the extension. Shows nothing when the extension is not installed, is an older version that does
  * not answer the site, or nobody is signed in; the written steps around it cover those cases.
  */
-export default function ConnectExtensionButton({ className, onConnected }: { className?: string; onConnected?: () => void }) {
+export default function ConnectExtensionButton({ className, onConnected, notice }: {
+  className?: string;
+  onConnected?: () => void;
+  /** Shown across the app: says why nothing is running, and shows nothing at all once connected. */
+  notice?: boolean;
+}) {
   const { user } = useAuth();
   const userId = user?.id || null;
   // Kept with the account it was asked for: after a change of account the old answer is not shown.
@@ -50,6 +55,7 @@ export default function ConnectExtensionButton({ className, onConnected }: { cla
   if (!userId || !state?.found) return null;
 
   if (state.authenticated && state.sameUser) {
+    if (notice) return null;
     return (
       <p className={`text-sm text-muted-foreground flex items-center gap-1.5 ${className || ''}`}>
         <Check className="w-4 h-4 text-primary" /> The extension is connected to this account.
@@ -59,6 +65,13 @@ export default function ConnectExtensionButton({ className, onConnected }: { cla
 
   // On another account the extension refuses to be switched from the site, so there is no button.
   if (state.authenticated) {
+    if (notice) {
+      return (
+        <div role="status" className={`rounded-xl border border-attention/40 bg-attention/5 px-4 py-3 text-sm ${className || ''}`}>
+          <span className="font-semibold">Nothing is running for this account.</span> {OTHER_ACCOUNT}
+        </div>
+      );
+    }
     return <p className={`text-xs text-muted-foreground ${className || ''}`}>{OTHER_ACCOUNT}</p>;
   }
 
@@ -83,6 +96,21 @@ export default function ConnectExtensionButton({ className, onConnected }: { cla
       setBusy(false);
     }
   };
+
+  if (notice) {
+    return (
+      <div role="status" className={`rounded-xl border border-attention/40 bg-attention/5 px-4 py-3 flex flex-wrap items-center justify-between gap-3 ${className || ''}`}>
+        <p className="text-sm m-0">
+          <span className="font-semibold">The extension in this browser is not connected to your account.</span>{' '}
+          Until it is, nothing is read on LinkedIn and no new drafts arrive.
+        </p>
+        <Button onClick={connect} disabled={busy} size="sm" className="gap-1.5">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
+          Connect the extension
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className={className}>
