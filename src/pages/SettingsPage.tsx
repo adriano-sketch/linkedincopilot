@@ -273,6 +273,14 @@ export default function SettingsPage() {
         <div
           role="dialog" aria-modal="true" aria-label="Signing out everywhere" tabIndex={-1}
           ref={el => { if (el && !el.contains(document.activeElement)) el.focus(); }}
+          // The focus stays in here: Tab goes to the one control there is (or nowhere), never to the
+          // header behind, where a click on "New list" would leave the page mid-request.
+          onKeyDown={e => {
+            if (e.key !== 'Tab') return;
+            e.preventDefault();
+            const control = e.currentTarget.querySelector('button');
+            (control || e.currentTarget).focus();
+          }}
           className="fixed inset-0 z-50 bg-background/90 flex items-center justify-center text-sm text-foreground outline-none"
         >
           <div className="text-center" aria-live="polite">

@@ -23,12 +23,28 @@ const CONFIG = {
 };
 
 // ── STORAGE HELPERS ──
-function getAuthToken() {
+// Always answers, even when the browser could not read its storage (then `ok` is false). A read
+// that never answered would hold everything waiting on it, the renewals above all.
+function readAuth() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['auth'], (result) => {
-      resolve(result.auth || null);
-    });
+    try {
+      chrome.storage.local.get(['auth'], (result) => {
+        if (chrome.runtime.lastError || !result) {
+          console.warn('[LC:Auth] Could not read the stored session:', chrome.runtime.lastError && chrome.runtime.lastError.message);
+          resolve({ ok: false, auth: null });
+          return;
+        }
+        resolve({ ok: true, auth: result.auth || null });
+      });
+    } catch (e) {
+      resolve({ ok: false, auth: null });
+    }
   });
+}
+// The stored session, or null. Null also when the read failed: where "nothing stored" and "could not
+// read" must not be confused (before deleting anything), use readAuth.
+function getAuthToken() {
+  return readAuth().then((r) => r.auth);
 }
 
 // The extension was signed out without the person asking (the session was ended elsewhere, or could
@@ -272,7 +288,9 @@ const supabase = {
 
   async renewOnce() {
     this.refreshRefused = false;
-    const stored = await getAuthToken();
+    const first = await readAuth();
+    if (!first.ok) return false; // storage trouble: temporary, the session is not judged
+    const stored = first.auth;
     if (!stored?.refresh_token) {
       // A stored session that cannot be renewed at all will never work again: that is a refusal.
       this.refreshRefused = !!stored;
@@ -361,7 +379,10 @@ const supabase = {
   // still that one: a sign-in that landed in the meantime is kept.
   async clearAuth(expected) {
     await withSessionLock(async () => {
-      const now = expected ? await getAuthToken() : null;
+      const read = expected ? await readAuth() : null;
+      // Could not read what is stored: nothing is deleted on a guess. The next cycle decides.
+      if (read && !read.ok) return;
+      const now = read ? read.auth : null;
       if (expected && now && (now.refresh_token !== expected.refresh_token || now.user_id !== expected.user_id)) return;
       this.accessToken = null;
       this.userId = null;
