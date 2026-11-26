@@ -54,8 +54,11 @@ try {
     }
   });
 } catch (e) { /* storage not ready: the popup still shows the note */ }
+// How long an unrecognised "no" to a renewal is taken as temporary once the session has run out.
+const RENEW_GIVE_UP_MS = 8 * 60 * 60 * 1000;
 function clearSessionLost() {
   try {
+    chrome.storage.local.remove('renew_failing_since').catch(() => {});
     const quiet = () => {};
     chrome.storage.local.remove('session_lost_at').catch(quiet);
     chrome.action.setBadgeText({ text: '' }).catch(quiet);
@@ -258,7 +261,16 @@ const supabase = {
     }
   },
 
-  async refreshSession() {
+  // One renewal at a time: the queue, the heartbeat and the alarm can all ask at the same moment,
+  // and a second request with a token the first one has just used up comes back as a refusal.
+  refreshSession() {
+    if (this.renewing) return this.renewing;
+    const run = this.renewOnce().finally(() => { if (this.renewing === run) this.renewing = null; });
+    this.renewing = run;
+    return run;
+  },
+
+  async renewOnce() {
     this.refreshRefused = false;
     const stored = await getAuthToken();
     if (!stored?.refresh_token) {
@@ -300,6 +312,15 @@ const supabase = {
     const now = await getAuthToken();
     if (!now || now.refresh_token !== stored.refresh_token || now.user_id !== stored.user_id) return !!now;
     if (!res.ok || !data) {
+      // A "no" that was not recognised as a refusal is taken as temporary, but not for ever: if it
+      // goes on for hours after the session ran out, it is a refusal in a form not seen before, and
+      // the person has to be told (the mark on the icon) instead of the extension staying dead.
+      if (!refused && !res.ok && (res.status === 400 || res.status === 401 || res.status === 403)
+          && stored.expires_at && Date.now() >= stored.expires_at) {
+        const since = Number(await getLocalData('renew_failing_since')) || 0;
+        if (!since) await setLocalData('renew_failing_since', Date.now());
+        else if (Date.now() - since > RENEW_GIVE_UP_MS) refused = true;
+      }
       this.refreshRefused = refused;
       return false;
     }
@@ -327,6 +348,7 @@ const supabase = {
       console.error('[LC:Auth] Could not store the renewed session:', e.message);
       return false;
     }
+    try { await setLocalData('renew_failing_since', null); } catch (e) { /* only a note */ }
     // Only for the account in use (nothing in use yet at start-up: then the stored one is it).
     if (!this.userId || this.userId === stored.user_id) this.accessToken = data.access_token;
     return true;
