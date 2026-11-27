@@ -162,7 +162,7 @@ export default function Landing() {
               <span className="text-primary">The part that does is going cold.</span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[42ch] m-0">
-              Olanovo helps you find the people who matter in your network, reads what they post, and drafts a comment from what you actually think. You post it yourself.
+              Leave it running in Chrome. Olanovo invites people who fit the audience you describe, reads what the people who matter post, and drafts your comments. Your part is about ten minutes a day.
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
               No automated DMs. No fake compliments. No pretending you know someone.
@@ -216,7 +216,7 @@ export default function Landing() {
             <span>Drafts in the language of each post</span>
             <span>You post every comment</span>
             <span>Limits that start low</span>
-            <span>Sales Navigator optional</span>
+            <span>About ten minutes a day</span>
           </div>
         </div>
       </section>
@@ -244,6 +244,57 @@ export default function Landing() {
               <p className="text-base text-muted-foreground mt-3 mb-0">{pain.desc}</p>
             </motion.article>
           ))}
+        </div>
+      </section>
+
+      {/* THE PROMISE: what runs by itself, and how little is left for the person. */}
+      <section className="py-16 md:py-24 px-4 bg-background border-t border-border/40" aria-labelledby="ten-minutes-heading">
+        <div className="container mx-auto max-w-5xl">
+          <motion.div {...fadeUp} className="text-center max-w-3xl mx-auto mb-10 md:mb-14">
+            <h2 id="ten-minutes-heading" className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl m-0">
+              Growing your network runs in the background.{' '}
+              <span className="text-gradient-gold">Your part is about ten minutes a day.</span>
+            </h2>
+            <p className="text-lg text-muted-foreground mt-5 mb-0">
+              Finding and inviting people runs on autopilot, inside the limits you set. The conversation stays yours.
+            </p>
+          </motion.div>
+          <div className="grid md:grid-cols-2 gap-6">
+            {[
+              {
+                title: 'What runs by itself',
+                items: [
+                  'Finds people who fit the audience you described',
+                  'Invites them inside the weekly number you set, with your note if you wrote one',
+                  'Adds the ones who accept to the people whose posts it reads, along with the contacts you picked',
+                  'Reads their posts and keeps the ones about your subjects',
+                  'Writes a draft from what you think, in the language of the post',
+                ],
+              },
+              {
+                title: 'Your ten minutes',
+                items: [
+                  'Open your Inbox',
+                  'Read the drafts and change what you want',
+                  'Post the ones you would sign, yourself, on LinkedIn',
+                ],
+              },
+            ].map((col, i) => (
+              <motion.article key={col.title} {...stagger(i)} className="rounded-2xl bg-card border border-border p-6 sm:p-8">
+                <h3 className="font-display font-bold tracking-tight text-2xl m-0">{col.title}</h3>
+                <ul className="list-none p-0 mt-5 mb-0 space-y-3">
+                  {col.items.map((item) => (
+                    <li key={item} className="flex gap-2.5 items-start text-base text-muted-foreground">
+                      <Check className="w-4 h-4 mt-1 shrink-0 text-gold-dark" />{item}
+                    </li>
+                  ))}
+                </ul>
+              </motion.article>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground text-center mt-8 mb-0 max-w-2xl mx-auto">
+            It works while Chrome is open on your computer, inside the days and hours you choose, and pauses if LinkedIn shows a warning. Setup comes first: your connections, who matters, what you think. About ten minutes a day is what it takes us on our own account; yours depends on how many drafts you get.
+          </p>
         </div>
       </section>
 
@@ -503,7 +554,7 @@ export default function Landing() {
                 Say hello again to the people who already know you.
               </h2>
               <p className="text-slate-300 text-lg mb-8 max-w-lg mx-auto">
-                A few minutes a day with the people who matter. Open your Inbox, read the drafts, and post the ones you would sign.
+                About ten minutes a day with the people who matter. The rest runs while Chrome is open, inside the hours you choose.
               </p>
               <Button asChild
                 size="lg"
