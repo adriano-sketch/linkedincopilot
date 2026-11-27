@@ -311,6 +311,18 @@ export default function Landing() {
             Most deals start with people who already know you. Olanovo keeps you in front of the ones who matter, and
             helps you meet new people who fit the audience you describe, with comments worth reading.
           </p>
+          <p className="text-base text-muted-foreground mt-6 mb-0 max-w-2xl mx-auto">
+            In one study of 134,522 LinkedIn posts, the typical post by someone with fewer than 3,000 followers got no
+            comments. Your comment may be the only one that post gets.{' '}
+            <a
+              href="https://ligosocial.com/research/linkedin-engagement-benchmarks"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-foreground whitespace-nowrap"
+            >
+              Source: LigoSocial, 2026<span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          </p>
         </motion.div>
       </section>
 
