@@ -313,13 +313,13 @@ export default function Landing() {
             {[
               {
                 figure: '0 comments',
-                text: 'In a study of 134,522 posts, the typical post by someone with fewer than 3,000 followers got no comments. Yours may be the only one that person reads.',
+                text: 'In a study of 134,522 posts by users of a LinkedIn tool, the typical post by someone with fewer than 3,000 followers got no comments. Your comment may be the only one that post gets.',
                 source: 'LigoSocial, LinkedIn engagement benchmarks, 2026',
                 href: 'https://ligosocial.com/research/linkedin-engagement-benchmarks',
               },
               {
                 figure: '20% vs 4%',
-                text: 'In the same study, comments were 20% of engagement (reactions, comments and reposts) on personal profiles and 4% on company pages.',
+                text: 'In the same 134,522 posts, comments were 20% of engagement (reactions, comments and reposts) on personal profiles and 4% on company pages.',
                 source: 'LigoSocial, The State of LinkedIn 2026',
                 href: 'https://ligosocial.com/research/state-of-linkedin-2026',
               },
@@ -349,7 +349,7 @@ export default function Landing() {
             ))}
           </div>
           <p className="text-sm text-muted-foreground text-center mt-8 mb-0 max-w-2xl mx-auto">
-            These figures come from the sources named and describe LinkedIn in general. They are not a promise of what your comments will get. Olanovo is not affiliated with or endorsed by LinkedIn.
+            These figures come from the sources named, not from Olanovo. They are not a promise of what your comments will get. Olanovo is not affiliated with or endorsed by LinkedIn.
           </p>
         </div>
       </section>
