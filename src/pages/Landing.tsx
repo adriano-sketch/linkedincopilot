@@ -67,7 +67,7 @@ export default function Landing() {
     {
       icon: Radar,
       title: 'Meet new people',
-      desc: 'Describe the audience you want to know. Olanovo looks for people who fit and sends them a connection invitation with the note you wrote.',
+      desc: 'Describe the audience you want to know. Olanovo looks for people who fit and sends them a connection invitation, with your note if you wrote one.',
       bullets: ['Each person is checked against your audience first', 'A few invitations a day, never a burst', 'Sales Navigator is optional and makes the search more precise'],
     },
     {
@@ -85,9 +85,9 @@ export default function Landing() {
   ];
 
   const howSteps = [
-    { num: '1', title: 'Bring your connections', desc: 'Download your connections from LinkedIn (it emails you the file) and upload it. Describe who matters to you, and Olanovo keeps that shortlist: often a few hundred people out of a few thousand.' },
+    { num: '1', title: 'Bring your connections', desc: 'Download your connections from LinkedIn (it emails you the file) and upload it. Describe who matters to you. Olanovo ranks your contacts against it and you pick your list: often a few hundred people out of a few thousand.' },
     { num: '2', title: 'Say what you think', desc: 'List your subjects and, for each one, what you believe and what you have seen in practice. Every draft is written from that, and from nothing else.' },
-    { num: '3', title: 'Olanovo reads their posts', desc: 'A few people a day, inside the hours you set. A post about your subjects gets a draft. When a contact describes a problem you work on, it goes to the top of your Inbox.' },
+    { num: '3', title: 'Olanovo reads their posts', desc: 'A limited number of people a day, inside the hours you set. A post about your subjects gets a draft. When a contact describes a problem you work on, it goes to the top of your Inbox.' },
     { num: '4', title: 'You publish', desc: 'One click copies the draft and opens the post. You paste it and press Comment on LinkedIn. It is your comment, posted by you.' },
   ];
 
@@ -95,12 +95,12 @@ export default function Landing() {
     { icon: Gauge, title: 'One daily ceiling', desc: 'Every profile page the extension opens counts toward a single daily ceiling: contact checks and invitations together. It starts at 20 pages a day and grows by 20 a week, up to 100. Two lists would only split the same ceiling, so we recommend one list at a time.' },
     { icon: Clock, title: 'Your days and hours', desc: 'It works only inside the days and hours you choose. After your computer sleeps, it waits a few minutes and resumes at the normal pace instead of catching up in a burst.' },
     { icon: ShieldAlert, title: 'Stops on a warning', desc: 'If LinkedIn shows a verification page or logs you out, everything pauses. Nothing restarts by itself: only you resume.' },
-    { icon: Hand, title: 'You are in charge', desc: 'Comments are always posted by you. Invitations go out with the note you wrote. One pause button stops everything.' },
+    { icon: Hand, title: 'You are in charge', desc: 'Comments are always posted by you. Invitations go out with your note, if you wrote one. One pause button stops everything.' },
   ];
 
   const faqs = [
     { q: 'Does Olanovo post comments for me?', a: 'No. Olanovo finds the post and writes a draft. You read it, change what you want, open the post and publish the comment yourself on LinkedIn. The extension has no function that posts a comment.' },
-    { q: 'What does the extension do by itself, then?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with the note you wrote. It does not send messages. All of it inside daily limits and inside the hours you choose.' },
+    { q: 'What does the extension do by itself, then?', a: 'It opens LinkedIn pages in your own browser to read them: posts by your connections, search results for the audiences you define, your list of connections. It also sends connection invitations to people who match an audience you set up, with your note if you wrote one. It does not send messages. All of it inside daily limits and inside the hours you choose.' },
     { q: 'Is this allowed by LinkedIn? Can my account be restricted?', a: 'LinkedIn\'s User Agreement restricts third-party tools that automate activity, and no tool can honestly promise zero risk. What Olanovo does is raise the activity gradually and stop when LinkedIn objects: a single daily ceiling for profile pages that starts at 20, your own days and hours, and an automatic pause on any verification or warning page. Using it is your decision. If you want no risk at all, do not use any tool of this kind.' },
     { q: 'Why does it start slowly?', a: 'Because LinkedIn does not publish its limits, and what gets an account noticed is a sudden jump more than the number itself. When LinkedIn objected to a jump in profile pages on our own account, we made it a single budget shared by all features that grows a little every day. The ceiling sits inside the range other tools of this kind use.' },
     { q: 'How does it know what I would say?', a: 'You write it down once: your subjects, what you think about each one, what you have seen in your work, and what you never want to say. Drafts are built from that and from the post. If a post is not about your subjects, there is no draft.' },
@@ -118,7 +118,7 @@ export default function Landing() {
     'Comment drafts from what you think, posted by you',
     'Business signals: a contact with a problem you solve goes to the top',
     'New people in your target audience, with invitations and your note',
-    'Low daily limits, inside the hours you choose',
+    'Daily limits that start low, inside the hours you choose',
   ];
 
   return (
@@ -155,13 +155,14 @@ export default function Landing() {
             </motion.div>
             <motion.h1
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' as const }}
-              className="font-display font-bold leading-[1] tracking-tight m-0 [text-wrap:balance]"
-              style={{ fontSize: 'clamp(40px, 4.8vw, 68px)' }}
+              className="font-display font-bold leading-[1.05] tracking-tight m-0 [text-wrap:balance]"
+              style={{ fontSize: 'clamp(34px, 3.9vw, 54px)' }}
             >
-              Say <span className="text-primary">hello again</span> to the people who already know you.
+              Most of your LinkedIn network has nothing to do with your business.{' '}
+              <span className="text-primary">The part that does is going cold.</span>
             </motion.h1>
-            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[38ch] m-0">
-              Olanovo finds their recent LinkedIn posts and drafts a comment from what you actually think. You read it, edit it and post it yourself.
+            <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[42ch] m-0">
+              Olanovo helps you find the people who matter in your network, reads what they post, and drafts a comment from what you actually think. You post it yourself.
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
               No automated DMs. No fake compliments. No pretending you know someone.
@@ -214,9 +215,35 @@ export default function Landing() {
           <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-5 flex flex-wrap justify-between gap-4 font-mono-label text-xs text-slate-400">
             <span>Drafts in the language of each post</span>
             <span>You post every comment</span>
-            <span>Low daily limits</span>
+            <span>Limits that start low</span>
             <span>Sales Navigator optional</span>
           </div>
+        </div>
+      </section>
+
+      {/* THE PROBLEM, in the reader's terms, before anything about how the product works. */}
+      <section className="py-16 md:py-24 px-4 section-cream border-t border-border/40" aria-labelledby="problem-heading">
+        <h2 id="problem-heading" className="sr-only">The problem</h2>
+        <div className="container mx-auto max-w-6xl grid md:grid-cols-3 gap-6 md:gap-8">
+          {[
+            {
+              title: 'Thousands of contacts. Only some of them matter.',
+              desc: 'Years of connections from every job and event. Olanovo compares them with your description of who matters to your business, and shows you the ones that fit.',
+            },
+            {
+              title: 'They post. You do not see it.',
+              desc: 'Their posts get lost in a feed full of everyone else. Olanovo reads the posts of the people you picked and brings you the ones about your subjects, with a draft ready.',
+            },
+            {
+              title: 'Your network stops growing with the right people.',
+              desc: 'Describe who you want to meet. Olanovo finds people who fit and sends the invitation, with your note if you wrote one, inside the weekly number you set.',
+            },
+          ].map((pain, i) => (
+            <motion.article key={pain.title} {...stagger(i)} className="rounded-2xl bg-card border border-border p-6 sm:p-7">
+              <h3 className="font-display font-bold tracking-tight text-2xl !leading-[1.15] m-0 [text-wrap:balance]">{pain.title}</h3>
+              <p className="text-base text-muted-foreground mt-3 mb-0">{pain.desc}</p>
+            </motion.article>
+          ))}
         </div>
       </section>
 
@@ -230,8 +257,8 @@ export default function Landing() {
             Show up when they post. Be the name they think of when they need what you sell.
           </p>
           <p className="text-lg text-muted-foreground mt-4 mb-0 max-w-2xl mx-auto">
-            Most deals start with people who already know you. Olanovo keeps you in front of them, and of a few new
-            people you want to meet, with comments worth reading.
+            Most deals start with people who already know you. Olanovo keeps you in front of the ones who matter, and
+            helps you meet new people who fit the audience you describe, with comments worth reading.
           </p>
         </motion.div>
       </section>
@@ -289,7 +316,7 @@ export default function Landing() {
               Be present when the people you know speak
             </h2>
             <p className="text-lg text-muted-foreground m-0 max-w-2xl mx-auto">
-              Most business on LinkedIn comes from people who already know you. Olanovo keeps you in front of them with comments worth reading, and helps you meet a few new people the same way.
+              Most business on LinkedIn comes from people who already know you. Olanovo keeps you in front of the ones who matter with comments worth reading, and helps you meet new people who fit the audience you describe.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-3 gap-5">
@@ -360,7 +387,7 @@ export default function Landing() {
             ))}
           </div>
           <motion.p {...fadeUp} className="text-center text-slate-400 text-sm mt-10 max-w-2xl mx-auto">
-            We run every limit on our own account before it reaches yours. Olanovo is not affiliated with or endorsed by LinkedIn.
+            The starting pace is the one we ran on our own account, and the ceiling sits inside the range other tools of this kind use. Olanovo is not affiliated with or endorsed by LinkedIn.
           </motion.p>
         </div>
       </section>
@@ -473,10 +500,10 @@ export default function Landing() {
             <div className="absolute top-0 right-0 w-48 h-48 bg-primary/15 rounded-full blur-[80px] pointer-events-none" />
             <div className="relative z-10">
               <h2 className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl text-white mb-4">
-                A few minutes a day with the people who matter.
+                Say hello again to the people who already know you.
               </h2>
               <p className="text-slate-300 text-lg mb-8 max-w-lg mx-auto">
-                Tell Olanovo what you think once. Open your Inbox, read the drafts, and post the ones you would sign.
+                A few minutes a day with the people who matter. Open your Inbox, read the drafts, and post the ones you would sign.
               </p>
               <Button asChild
                 size="lg"

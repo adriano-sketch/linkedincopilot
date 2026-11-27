@@ -18,7 +18,7 @@ const PLANS = [
       'Posts from your network, picked by your subjects',
       'Comment drafts from what you think, posted by you',
       'New people in your target audience, with invitations',
-      'Low daily limits, inside the hours you choose',
+      'Daily limits that start low, inside the hours you choose',
     ],
   },
 ];
