@@ -162,7 +162,7 @@ export default function Landing() {
               <span className="text-primary">The part that does is going cold.</span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[42ch] m-0">
-              Olanovo invites the people you want to meet, reads what the people who matter post, and drafts your comments. Your part takes about ten minutes a day.
+              Leave it running in Chrome. Olanovo invites people who fit the audience you describe, reads what the people who matter post, and drafts your comments. Your part is about ten minutes a day.
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
               No automated DMs. No fake compliments. No pretending you know someone.
@@ -216,7 +216,7 @@ export default function Landing() {
             <span>Drafts in the language of each post</span>
             <span>You post every comment</span>
             <span>Limits that start low</span>
-            <span>Sales Navigator optional</span>
+            <span>About ten minutes a day</span>
           </div>
         </div>
       </section>
@@ -252,11 +252,11 @@ export default function Landing() {
         <div className="container mx-auto max-w-5xl">
           <motion.div {...fadeUp} className="text-center max-w-3xl mx-auto mb-10 md:mb-14">
             <h2 id="ten-minutes-heading" className="font-display font-bold tracking-tight !leading-[1.08] [text-wrap:balance] text-3xl sm:text-4xl md:text-5xl m-0">
-              Your network grows in the background.{' '}
-              <span className="text-primary">Your part is about ten minutes a day.</span>
+              Growing your network runs in the background.{' '}
+              <span className="text-gradient-gold">Your part is about ten minutes a day.</span>
             </h2>
             <p className="text-lg text-muted-foreground mt-5 mb-0">
-              Finding people runs on autopilot. The conversation stays yours.
+              Finding and inviting people runs on autopilot, inside the limits you set. The conversation stays yours.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-2 gap-6">
@@ -265,8 +265,8 @@ export default function Landing() {
                 title: 'What runs by itself',
                 items: [
                   'Finds people who fit the audience you described',
-                  'Sends them a connection invitation, with your note if you wrote one',
-                  'Follows the ones who accept, along with the contacts you picked',
+                  'Invites them inside the weekly number you set, with your note if you wrote one',
+                  'Adds the ones who accept to the people whose posts it reads, along with the contacts you picked',
                   'Reads their posts and keeps the ones about your subjects',
                   'Writes a draft from what you think, in the language of the post',
                 ],
@@ -293,7 +293,7 @@ export default function Landing() {
             ))}
           </div>
           <p className="text-sm text-muted-foreground text-center mt-8 mb-0 max-w-2xl mx-auto">
-            It works while Chrome is open on your computer, inside the days and hours you choose. Ten minutes is our own experience; it depends on how many drafts you get.
+            It works while Chrome is open on your computer, inside the days and hours you choose, and pauses if LinkedIn shows a warning. Setup comes first: your connections, who matters, what you think. About ten minutes a day is what it takes us on our own account; yours depends on how many drafts you get.
           </p>
         </div>
       </section>
@@ -554,7 +554,7 @@ export default function Landing() {
                 Say hello again to the people who already know you.
               </h2>
               <p className="text-slate-300 text-lg mb-8 max-w-lg mx-auto">
-                About ten minutes a day with the people who matter. Open your Inbox, read the drafts, and post the ones you would sign.
+                About ten minutes a day with the people who matter. The rest runs while Chrome is open, inside the hours you choose.
               </p>
               <Button asChild
                 size="lg"
