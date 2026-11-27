@@ -7,8 +7,11 @@
 //   2. Cheap local checks (localIssues): praise openers, dashes, links, too long.
 //   3. A strict reviewer model (reviewComments): "would this comment fit a different post?" If yes,
 //      or if it paraphrases the post, invents facts, or pitches, it is rejected.
-// A rejected draft is rewritten once with the reviewer's feedback; if it fails again the post is
-// skipped. Three good comments a day beat twenty forgettable ones.
+// Before the writer, the post is read on its own (readPost): what it is about, which detail to answer,
+// what is only planned. Only then are the sender's notes looked at, and only the ones that bear on that
+// subject reach the writer (factsForPost). A word in common is not a link.
+// A rejected draft is rewritten once with the reviewer's feedback and none of the sender's subject
+// notes; if it fails again the post is skipped. Three good comments a day beat twenty forgettable ones.
 import { callClaude, modelFast, parseJsonArray } from "./network.ts";
 
 /**
@@ -83,6 +86,10 @@ export type SenderFacts = {
   examples?: string | null; // comments they wrote themselves, as a voice reference
   views?: string | null;    // what they think and have seen on their subjects (profiles.comment_views)
   learned?: Learned | null; // what their own Inbox decisions show (loadLearned)
+  // Set by factsForPost: `views` then holds only the notes that bear on ONE post (possibly none), and
+  // `voice` the notes about how they write, which apply to every post.
+  picked?: boolean;
+  voice?: string | null;
 };
 
 /**
@@ -93,7 +100,23 @@ export type SenderFacts = {
  * wording, so they are stored but not shown to the writer.
  */
 export type LearnedComment = { kind: "milestone" | "topic"; text: string; edited: boolean };
-export type Learned = { posted: LearnedComment[]; rejected: { kind: "milestone" | "topic"; text: string; reason: string }[] };
+export type Learned = {
+  posted: LearnedComment[];
+  rejected: { kind: "milestone" | "topic"; text: string; reason: string }[];
+  /**
+   * Edits in which the person changed what the comment was ABOUT, one line each ("On a post about X they
+   * dropped Y"). Each one is a sign of what fits a post like that one. It is never a standing rule: the
+   * dropped subject may be the right one under another post. Edits of fact, tone or style, and edits
+   * whose reason is not clear, are not here.
+   */
+  corrections?: string[];
+};
+/** Why a draft was changed before it was published. Keep in sync with the check on monitored_posts.edit_kind. */
+export type EditKind = "subject" | "fact" | "tone" | "style" | "unclear";
+const EDIT_KINDS: EditKind[] = ["subject", "fact", "tone", "style", "unclear"];
+/** How many unclassified edits one run reads. Small: it is one model call, on the way to a draft. */
+const EDITS_PER_RUN = 3;
+const MAX_CORRECTIONS = 5;
 
 /** Skip reasons the Inbox offers. Keep in sync with the check constraint on monitored_posts.dismiss_reason. */
 export const DISMISS_REASONS: Record<string, string> = {
@@ -113,11 +136,11 @@ const norm = (t: unknown) => String(t || "").replace(/\s+/g, " ").trim();
  */
 // deno-lint-ignore no-explicit-any
 export async function loadLearned(supabase: any, userId: string): Promise<Learned> {
-  const empty: Learned = { posted: [], rejected: [] };
+  const empty: Learned = { posted: [], rejected: [], corrections: [] };
   try {
     const [posted, rejected] = await Promise.all([
       supabase.from("monitored_posts")
-        .select("signal_type, suggested_comment, final_comment, commented_at")
+        .select("id, signal_type, post_text, suggested_comment, final_comment, commented_at, edit_kind, edit_note")
         .eq("user_id", userId).eq("status", "posted")
         .order("commented_at", { ascending: false, nullsFirst: false }).limit(40),
       supabase.from("monitored_posts")
@@ -136,10 +159,70 @@ export async function loadLearned(supabase: any, userId: string): Promise<Learne
     const j = ((rejected.data || []) as any[]).map((r) => ({
       kind: kindOf(r.signal_type), text: norm(r.final_comment || r.suggested_comment), reason: DISMISS_REASONS[r.dismiss_reason] || "",
     })).filter((r) => r.text.length >= 25 && r.reason);
-    return { posted: p, rejected: j };
+    // deno-lint-ignore no-explicit-any
+    const rows = ((posted.data || []) as any[]);
+    await classifyEdits(supabase, userId, rows);
+    const corrections = rows.filter((r) => r.edit_kind === "subject" && norm(r.edit_note))
+      .map((r) => norm(r.edit_note).slice(0, 260)).slice(0, MAX_CORRECTIONS);
+    return { posted: p, rejected: j, corrections };
   } catch (e) {
     console.error("loadLearned failed:", e instanceof Error ? e.message : e);
     return empty;
+  }
+}
+
+/** True when the person changed the draft before publishing it. */
+// deno-lint-ignore no-explicit-any
+const wasEdited = (r: any) => !!norm(r.suggested_comment) && !!norm(r.final_comment) && norm(r.final_comment) !== norm(r.suggested_comment);
+
+/** Reads the classifier's reply for one edit. Anything that is not a known kind is "unclear". */
+export function readEditVerdict(v: unknown): { kind: EditKind; note: string } {
+  const o = (v && typeof v === "object" ? v : {}) as { kind?: unknown; note?: unknown };
+  const kind = EDIT_KINDS.includes(o.kind as EditKind) ? (o.kind as EditKind) : "unclear";
+  // Only a change of subject carries a note, and a subject change without one teaches nothing.
+  const note = kind === "subject" ? norm(o.note).slice(0, 260) : "";
+  return kind === "subject" && !note ? { kind: "unclear", note: "" } : { kind, note };
+}
+
+/**
+ * Says WHY each edited draft was changed (subject, fact, tone, style, or unclear) and stores it on the
+ * row, so the reason is worked out once. Changes the rows it is given in place. Never throws: an edit
+ * that could not be classified stays unclassified and is tried again on a later run.
+ */
+// deno-lint-ignore no-explicit-any
+async function classifyEdits(supabase: any, userId: string, rows: any[]): Promise<void> {
+  const todo = rows.filter((r) => r.id && !r.edit_kind && wasEdited(r)).slice(0, EDITS_PER_RUN);
+  if (!todo.length) return;
+  const system = `Someone was given a draft of a LinkedIn comment and changed it before publishing. For each case say what kind of change it was. You do not judge the comment.
+Exactly one of:
+- "subject": they changed what the comment is ABOUT. A subject in the draft was removed or replaced by another one.
+- "fact": same subject, but they corrected a fact, a claim or a number.
+- "tone": same content, a different attitude (warmer, less sure, less critical, more direct).
+- "style": wording, length, rhythm or language only.
+- "unclear": you cannot tell, or several of these at once with no main one.
+When in doubt, "unclear": a wrong reason is worse than none.
+For "subject" only, write a note of at most 35 words, in English, in this shape: "On a post about <what the POST is mainly about>, they dropped <the subject they removed>" and, when they put another subject in its place, " and wrote about <it>". Describe subjects in general words; no names of people or companies. For every other kind the note is empty.
+Reply ONLY with a JSON array: [{"index": n, "kind": "...", "note": "..."}]`;
+  const user = todo.map((r, i) => [
+    `[${i}] POST:\n${String(r.post_text || "").slice(0, 900)}`,
+    `DRAFT:\n${norm(r.suggested_comment).slice(0, 600)}`,
+    `PUBLISHED:\n${norm(r.final_comment).slice(0, 600)}`,
+  ].join("\n")).join("\n=====\n");
+  try {
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 500, temperature: 0 });
+    const res = parseJsonArray<{ index: number }>(text);
+    if (!numberedAsAsked(res, todo.length)) throw new Error("edit reply is not numbered as asked");
+    for (const v of res) {
+      const row = todo[v.index];
+      const verdict = readEditVerdict(v);
+      const { error } = await supabase.from("monitored_posts")
+        .update({ edit_kind: verdict.kind, edit_note: verdict.note || null }).eq("id", row.id).eq("user_id", userId);
+      if (error) { console.error("could not store an edit reason:", error.message); continue; }
+      row.edit_kind = verdict.kind;
+      row.edit_note = verdict.note || null;
+    }
+  } catch (e) {
+    console.error("edit classification failed:", e instanceof Error ? e.message : e);
   }
 }
 
@@ -292,16 +375,120 @@ Reply ONLY with JSON: {"kind": "on_topic"|"milestone"|"off_topic", "topic": "<fo
 }
 
 function factsBlock(f: SenderFacts): string {
+  // For one post (factsForPost): only the notes that bear on it. What the person sells is background, so
+  // the writer knows who is speaking; it is never where the comment's point comes from.
+  const notes = f.picked
+    ? (norm(f.views)
+      ? `Notes of theirs that bear on THIS post (written by them, the only source for opinions and experience):\n${String(f.views).slice(0, 2500)}`
+      : "None of their notes bears on this post. The comment comes from the post itself.")
+    : (f.views ? `What they think and have seen on these subjects (written by them, the only source for opinions and experience):\n${String(f.views).slice(0, 2500)}` : "");
   const lines = [
     f.name ? `Name: ${f.name}` : "",
     f.title ? `Role: ${f.title}` : "",
     f.company ? `Company: ${f.company}` : "",
-    f.about ? `What they do (written by them): ${String(f.about).slice(0, 700)}` : "",
+    f.about ? `What they do (written by them${f.picked ? "; background only, never the point of the comment" : ""}): ${String(f.about).slice(0, 700)}` : "",
     f.topics ? `Subjects they have something to say about: ${String(f.topics).slice(0, 600)}` : "",
     f.avoid ? `Subjects they stay out of: ${String(f.avoid).slice(0, 400)}` : "",
-    f.views ? `What they think and have seen on these subjects (written by them, the only source for opinions and experience):\n${String(f.views).slice(0, 2500)}` : "",
+    notes,
+    norm(f.voice) ? `How they write and what they never do (written by them):\n${String(f.voice).slice(0, 1200)}` : "",
   ].filter(Boolean);
   return lines.length ? lines.join("\n") : "(no facts provided)";
+}
+
+/** The person's notes (profiles.comment_views), one per paragraph. */
+export function splitNotes(views: string | null | undefined): string[] {
+  return String(views || "").split(/\n\s*\n/).map((n) => n.replace(/\s+/g, " ").trim()).filter((n) => n.length >= 12).slice(0, 14);
+}
+
+/**
+ * What a post says, read BEFORE anything the sender knows is looked at, and then which of the sender's
+ * notes bear on it. `available: false` means the model could not answer: the comment is then written
+ * with none of the notes, which is the safe side.
+ */
+export type Reading = {
+  available: boolean;
+  subject: string; // what the post is mainly about
+  intent: string;  // what the author is doing
+  detail: string;  // the concrete detail worth answering ("" when the post has none)
+  plans: string;   // what the post presents as planned or future, not achieved
+  notes: number[]; // notes that bear on the subject (indexes into splitNotes)
+  voice: number[]; // notes about how the person writes
+  why: string;     // why notes were used or left out
+};
+const NO_READING: Reading = { available: false, subject: "", intent: "", detail: "", plans: "", notes: [], voice: [], why: "reading unavailable" };
+
+/** Turns the model's reply into a Reading. Indexes outside the notes are dropped; a voice note is never knowledge. */
+export function readReading(v: unknown, noteCount: number): Reading {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const idx = (x: unknown) => [...new Set((Array.isArray(x) ? x : []).filter((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n < noteCount) as number[])];
+  const voice = idx(o.voice);
+  const subject = norm(o.subject).slice(0, 160);
+  if (!subject) return NO_READING;
+  return {
+    available: true, subject, intent: norm(o.intent).slice(0, 120), detail: norm(o.detail).slice(0, 260), plans: norm(o.plans).slice(0, 260),
+    notes: idx(o.notes).filter((n) => !voice.includes(n)), voice, why: norm(o.why).slice(0, 220),
+  };
+}
+
+export async function readPost(
+  post: string,
+  author: { name?: string | null; title?: string | null; company?: string | null },
+  f: SenderFacts,
+  onModel?: (model: string) => void,
+): Promise<Reading> {
+  const notes = splitNotes(f.views);
+  const corrections = (f.learned?.corrections || []).slice(0, MAX_CORRECTIONS);
+  const system = `You read a LinkedIn post before someone comments on it. You do not write the comment.
+
+STEP 1. From the post alone, before you look at anything else:
+- "subject": what the post is mainly about, max 14 words.
+- "intent": what the author is doing (reporting a result, announcing a talk, asking for something, giving an opinion), max 10 words.
+- "detail": the one concrete detail most worth answering (a number, a result, a method, a claim), taken from the post, max 25 words. Empty when the post has no concrete detail.
+- "plans": what the post presents as planned, future or under development and NOT yet achieved, max 25 words. Empty when there is none. A reported result is not a plan.
+
+STEP 2. Only now look at the person's NOTES. They are numbered.
+- "notes": the numbers of the notes that say something directly about the SUBJECT from step 1, so that a comment on that detail could use them without changing the topic of the post. A shared word is not enough: a note about choosing which pipes to replace does not bear on a post about connecting control systems, even though both say "assets". A note about a product the person sells bears on a post only when the post is about what that product does. When you are not sure, leave the note out. An empty list is a good answer.
+- "voice": the numbers of the notes that are about HOW the person writes or what they never do (style, tone, limits), not about a subject. These apply to every post.
+- "why": one line, max 25 words: why you used those notes or left the others out.
+${corrections.length ? `\nEarlier, this person corrected drafts that brought in the wrong subject. Each line is about ONE kind of post. Use it for posts like that one only; it is not a rule against the subject:\n${corrections.map((c) => `- ${c}`).join("\n")}\n` : ""}
+Write subject, intent, detail, plans and why in English, whatever the language of the post.
+Reply ONLY with JSON: {"subject": "...", "intent": "...", "detail": "...", "plans": "...", "notes": [n], "voice": [n], "why": "..."}`;
+  const user = [
+    `AUTHOR: ${author.name || "Unknown"} (${author.title || "role unknown"}${author.company ? `, ${author.company}` : ""})`,
+    `POST:\n"""\n${String(post).slice(0, 2000)}\n"""`,
+    notes.length ? `NOTES:\n${notes.map((n, i) => `[${i}] ${n.slice(0, 500)}`).join("\n")}` : "NOTES: (none)",
+  ].join("\n\n");
+  try {
+    const text = await callClaude({ model: modelFast(), system, user, maxTokens: 420, temperature: 0, onModel });
+    const m = text.match(/\{[\s\S]*\}/);
+    return readReading(JSON.parse(m ? m[0] : text), notes.length);
+  } catch (e) {
+    console.error("post reading failed:", e instanceof Error ? e.message : e);
+    return NO_READING;
+  }
+}
+
+/**
+ * The facts the writer and the reviewer get for ONE post: the notes the reading picked, and the notes
+ * about voice. With `withNotes: false` (the second attempt after a rejected draft) no subject note at all.
+ */
+export function factsForPost(f: SenderFacts, reading: Reading, withNotes = true): SenderFacts {
+  const notes = splitNotes(f.views);
+  const pick = (list: number[]) => list.map((i) => notes[i]).filter(Boolean).join("\n\n");
+  return { ...f, picked: true, views: withNotes ? pick(reading.notes) : "", voice: pick(reading.voice) };
+}
+
+/** What a draft was built from, kept with the post for diagnosis. Not shown to the person by default. */
+export function draftNotes(f: SenderFacts, reading: Reading | null, o: { attempts: number; withoutNotes: boolean; outcome: string }) {
+  if (!reading) return { reading: null, ...o };
+  const notes = splitNotes(f.views);
+  const head = (i: number) => notes[i]?.slice(0, 70) || "";
+  const left = notes.map((_, i) => i).filter((i) => !reading.notes.includes(i) && !reading.voice.includes(i));
+  return {
+    reading: reading.available, subject: reading.subject, intent: reading.intent, detail: reading.detail, plans: reading.plans,
+    notes_used: (o.withoutNotes ? [] : reading.notes).map(head), notes_left: [...(o.withoutNotes ? reading.notes : []), ...left].map(head),
+    voice_notes: reading.voice.map(head), why: reading.why, ...o,
+  };
 }
 
 function voiceBlock(f: SenderFacts, kind: PostKind = "on_topic"): string {
@@ -312,9 +499,10 @@ function voiceBlock(f: SenderFacts, kind: PostKind = "on_topic"): string {
   if (posted.length) {
     const lines = posted.map((r) => `- ${r.edited ? "[rewritten by them] " : ""}${r.text.slice(0, 320)}`).join("\n");
     parts.push(`Comments this person recently published on posts of this kind. They approved every one; the ones marked
-"rewritten by them" are in their own words and count the most. Use them for voice, length and the kind of point they
-make. They answered OTHER posts: never reuse their sentences, their opening or their structure, and never write a
-comment that could be one of these with a few words swapped:\n${lines}`);
+"rewritten by them" are in their own words and count the most. Use them ONLY for voice, length and rhythm. They are
+not a guide to what to write about: each one answered its own post, and the subject of this comment comes from THIS
+post. Never reuse their sentences, their opening or their structure, and never write a comment that could be one of
+these with a few words swapped:\n${lines}`);
   }
   if (rejected.length) {
     const lines = rejected.map((r) => `- "${r.text.slice(0, 280)}" (their reason: ${r.reason})`).join("\n");
@@ -345,15 +533,20 @@ If the post is not really a milestone of the author, SKIP it.`;
 }
 
 /** Writer rules used by every comment prompt. `kind` comes from triagePost (default: a post on the sender's subjects). */
-export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic = "", need = ""): string {
+export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic = "", need = "", reading: Reading | null = null): string {
   if (kind === "milestone") return milestoneRules(f);
-  // Only when a triage picked this post for a subject (Growth). Network posts are chosen by who wrote them.
-  const lens = hasKnowledgeBase(f) && topic
-    ? `\nThis post was chosen because it touches a subject the sender works on${topic ? ` (${topic})` : ""}. Write from that
-knowledge: the observation must be one that someone who works on that subject would make. Do not drift
-to parts of the post that are outside the sender's subjects (contracts, finance, politics, institutional news).
-The comment must stay on what the post actually describes. If connecting the post to the sender's subject needs a
-stretch, or you are not sure what a technical term in the post means, SKIP: a forced link is worse than no comment.\n`
+  // The post comes first: what it is about and which detail to answer were read before any of the
+  // sender's notes. Without a reading (the model could not answer) the post still leads, with no notes.
+  const lens = reading?.available
+    ? `\nStart from the post. It is mainly about: ${reading.subject}.${reading.detail ? `\nThe detail to answer: ${reading.detail}.` : ""}${reading.plans ? `\nPlanned or future in the post, NOT achieved: ${reading.plans}. Never write as if it had already happened, worked or failed.` : ""}
+Stay on that subject. Any note of the sender listed above is there because it bears on it; if none is listed, write
+from the post alone. Do not bring in another subject the sender works on, however close it looks: a shared word
+("assets", "data", "AI") is not a link. If you are not sure what a technical term in the post means, SKIP.\n`
+    : hasKnowledgeBase(f) && topic
+    ? `\nThis post was chosen because it touches a subject the sender works on (${topic}). The comment must stay on what
+the post actually describes. Do not drift to parts of the post that are outside the sender's subjects (contracts,
+finance, politics, institutional news). If connecting the post to the sender's subject needs a stretch, or you are
+not sure what a technical term in the post means, SKIP: a forced link is worse than no comment.\n`
     : "";
   // The author shows a need the sender's work addresses. The comment helps them think about THEIR problem.
   const needLens = need
@@ -380,6 +573,11 @@ Hard rules:
 - NEVER invent personal experience, projects, clients, numbers, studies or anecdotes. Only use the facts above. When
   the facts include what the sender thinks or has seen on the subject, build the comment on that, in their words.
   Otherwise add a precise consideration that follows from the post itself and that any practitioner would accept.
+- Never invent a problem, a risk or a weakness at the author's organisation, and never predict that something of
+  theirs will fail. Answer what the post says, not what might be wrong behind it.
+- What the post presents as planned or future is not a result. Do not treat it as done, and do not judge it.
+- A reader who knows only the post must understand the comment. Nothing that needs the sender's own context, and no
+  subject the post does not raise.
 - No made-up magnitudes. Do not state that something "doubles", "halves", takes "twice as long", happens "in most
   cases" or "80% of the time" unless that figure is in the post or in the facts above. Describe the effect without
   quantifying it.
@@ -401,7 +599,7 @@ export type Review = { ok: boolean; reason: string };
 
 /** Strict second opinion. Fails closed: if the reviewer cannot answer, every draft is rejected. */
 export async function reviewComments(
-  items: { post: string; comment: string; author?: string | null; language?: string | null }[],
+  items: { post: string; comment: string; author?: string | null; language?: string | null; reading?: Reading | null }[],
   f: SenderFacts,
   kind: PostKind = "on_topic",
   onModel?: (model: string) => void,
@@ -416,6 +614,8 @@ export async function reviewComments(
   const user = toCheck.map((it, idx) => [
     `[${idx}] POST${it.author ? ` by ${it.author}` : ""}:\n${String(it.post).slice(0, 1800)}`,
     cleanLanguage(it.language) ? `POST LANGUAGE: ${cleanLanguage(it.language)}` : "",
+    it.reading?.available ? `POST SUBJECT: ${it.reading.subject}` : "",
+    it.reading?.available && it.reading.plans ? `PLANNED IN THE POST, NOT ACHIEVED: ${it.reading.plans}` : "",
     `DRAFT COMMENT:\n${it.comment}`,
   ].filter(Boolean).join("\n")).join("\n=====\n");
   const milestoneSystem = `You are a strict editor protecting a professional's reputation on LinkedIn. Each post announces a milestone
@@ -440,10 +640,16 @@ ${factsBlock(f)}
 6. opens with praise or flattery, or sounds like AI or marketing copy;
 7. is not in the same language as the post;
 8. questions the author's competence or decisions, or reads like an auditor or an interviewer rather than a peer;
-9. is about a part of the post unrelated to the subjects the sender works on, when those subjects are listed above;
+9. is not about the main subject of the post (given as POST SUBJECT when known), or brings in a subject the post does
+   not raise, even one the sender works on: a word in common ("assets", "data", "AI") is not a link;
 10. is only a question, or is mainly a request for the author to explain how they do something: the comment must
    contribute a statement of its own (a short closing question after a real statement is fine);
-11. changes the topic: it asks about something the post does not describe, or uses a technical term from the post in a way that does not fit what the post says.
+11. changes the topic: it asks about something the post does not describe, or uses a technical term from the post in a way that does not fit what the post says;
+12. invents a problem, a risk or a weakness at the author's organisation, or predicts that something of theirs will
+   fail, when the post does not say so;
+13. treats something the post presents as planned or future as if it were done, or passes judgement on it;
+14. cannot be understood by a reader who knows only the post: it leans on the sender's own context (who approves a
+   budget, how the sender ranks priorities) that the post does not mention.
 Approve only comments a respected peer would be glad to have written.
 Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "reason": "<if rejected: max 20 words, what to fix>"}]`;
 

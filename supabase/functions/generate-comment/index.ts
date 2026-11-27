@@ -13,8 +13,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, reviewComments, reviewUnavailable, triagePost,
-  triageUnavailable, type SenderFacts, type Triage,
+  commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
+  triageUnavailable, type Reading, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
 
@@ -62,7 +62,7 @@ type Draft = { comment: string; skip: string | null };
  * language comes from the triage, which read the post, never from the list or the account.
  */
 async function writeDraft(a: {
-  facts: SenderFacts; triage: Triage; postText: string;
+  facts: SenderFacts; triage: Triage; postText: string; reading: Reading | null;
   author: string | null; authorTitle: string; authorCompany: string; hint: string;
   feedback: { previous: string; why: string } | null;
   onModel?: (model: string) => void;
@@ -74,7 +74,7 @@ async function writeDraft(a: {
     a.hint ? `ANGLE: ${a.hint}` : "",
     a.feedback ? `Your previous draft was REJECTED: "${a.feedback.previous}"\nWhy: ${a.feedback.why}\nWrite a better one or skip.` : "",
   ].filter(Boolean).join("\n\n");
-  const system = `${commentRules(a.facts, a.triage.kind, a.triage.topic || "one of the subjects listed above", a.triage.signalReason)}
+  const system = `${commentRules(a.facts, a.triage.kind, a.triage.topic || "one of the subjects listed above", a.triage.signalReason, a.reading)}
 
 Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
   const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6, onModel: a.onModel });
@@ -140,16 +140,21 @@ serve(async (req) => {
       // With draft: true the writer and the reviewer run as well, on this text only. Still nothing is
       // stored. Used to check what a post in a given language gets before trusting it.
       // It is a check, not the production path: no learned examples, no angle, no company, no rewrite.
+      // It does read the post first and pick the notes, like production, and says what it picked.
       if (body.draft === true && t.kind !== "off_topic") {
         const postText = body.triage_only.slice(0, 2000);
         const author = typeof body.author === "string" ? body.author : "";
+        const authorTitle = typeof body.author_title === "string" ? body.author_title : "";
+        const reading = t.kind === "milestone" ? null : await readPost(postText, { name: author, title: authorTitle }, f);
+        const own = reading ? factsForPost(f, reading) : f;
         const d = await writeDraft({
-          facts: f, triage: t, postText, author,
-          authorTitle: typeof body.author_title === "string" ? body.author_title : "", authorCompany: "", hint: "", feedback: null,
+          facts: own, triage: t, postText, author, reading,
+          authorTitle, authorCompany: "", hint: "", feedback: null,
           onModel: (m) => { models.writer = m; },
         });
-        const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language }], f, t.kind, (m) => { models.reviewer = m; });
-        return json({ success: true, triage: t, draft: d, review, models });
+        const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language, reading }], own, t.kind, (m) => { models.reviewer = m; });
+        const notes = draftNotes(f, reading, { attempts: 1, withoutNotes: false, outcome: d.skip ? `skipped: ${d.skip}` : review?.ok ? "drafted" : `rejected: ${review?.reason || ""}` });
+        return json({ success: true, triage: t, reading: notes, draft: d, review, models });
       }
       return json({ success: true, triage: t, models });
     }
@@ -358,20 +363,31 @@ serve(async (req) => {
       : pickVariant(campaign_lead_id, authorTitle);
 
     // The comment follows the POST's language, never the campaign's.
-    const write = (feedback: { previous: string; why: string } | null) =>
-      writeDraft({ facts, triage, postText, author, authorTitle, authorCompany, hint: variant.hint, feedback });
-
+    // The post is read first: what it is about, which detail to answer, and which of the sender's notes
+    // bear on it. Only those notes reach the writer. A rejected draft is written once more with none.
+    let reading: Reading | null = null;
+    let attempts = 1;
+    let withoutNotes = false;
     let draft: Draft;
     let reviewDown = false;
     try {
-      draft = await write(null);
+      reading = triage.kind === "milestone" ? null : await readPost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
+      const own = reading ? factsForPost(facts, reading) : facts;
+      const bare = reading ? factsForPost(facts, reading, false) : facts;
+      const write = (f: SenderFacts, feedback: { previous: string; why: string } | null) =>
+        writeDraft({ facts: f, triage, postText, reading, author, authorTitle, authorCompany, hint: variant.hint, feedback });
+      const reviewOf = (comment: string, f: SenderFacts) =>
+        reviewComments([{ post: postText, author, comment, language: triage.language, reading }], f, triage.kind);
+      draft = await write(own, null);
       if (!draft.skip) {
-        let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment, language: triage.language }], facts, triage.kind);
+        let [rev] = await reviewOf(draft.comment, own);
         // An unreadable review is not feedback to rewrite from, and not a reason to skip the post.
         if (reviewUnavailable(rev)) reviewDown = true;
         else if (!rev.ok) {
-          const second = await write({ previous: draft.comment, why: rev.reason });
-          if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment, language: triage.language }], facts, triage.kind);
+          attempts = 2;
+          withoutNotes = !!reading;
+          const second = await write(bare, { previous: draft.comment, why: rev.reason });
+          if (!second.skip) [rev] = await reviewOf(second.comment, bare);
           if (!second.skip && reviewUnavailable(rev)) reviewDown = true;
           else draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
         }
@@ -391,6 +407,8 @@ serve(async (req) => {
       return json({ success: true, skipped: "quality", reason: draft.skip, lead_id: campaign_lead_id });
     }
     const commentText = draft.comment;
+    // What the draft was built from, kept with the post for diagnosis.
+    const notes = draftNotes(facts, reading, { attempts, withoutNotes, outcome: "drafted" });
 
     // The comment is NOT auto-approved: it waits in the dashboard approval queue
     // (Network > Comments), next to the original post. Approving or skipping there moves
@@ -437,7 +455,7 @@ serve(async (req) => {
       // Drafting took several model calls: only write if the user did not decide on the row meanwhile.
       const { data: written, error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
-        fit_reason: whyCommented, ...signalFields,
+        fit_reason: whyCommented, draft_notes: notes, edit_kind: null, edit_note: null, ...signalFields,
       }).eq("id", existing.id).not("status", "in", `(${DECIDED.join(",")})`).select("id");
       queueErr = error;
       if (!error && (!written || written.length === 0)) {
@@ -461,6 +479,7 @@ serve(async (req) => {
         suggested_comment: commentText,
         status: "pending",
         fit_reason: whyCommented,
+        draft_notes: notes,
         ...signalFields,
       });
       queueErr = error;

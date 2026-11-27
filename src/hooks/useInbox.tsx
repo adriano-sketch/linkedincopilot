@@ -35,6 +35,13 @@ export type InboxItem = {
   why: string | null;
   profileUrl: string | null;
   postUrl: string | null;
+  /** What the draft was built from. Shown only in diagnostics mode. */
+  diagnostics: DraftDiagnostics | null;
+};
+
+export type DraftDiagnostics = {
+  subject?: string; intent?: string; detail?: string; plans?: string; why?: string;
+  notes_used?: string[]; notes_left?: string[]; attempts?: number; withoutNotes?: boolean; outcome?: string;
 };
 
 const SIGNAL_LABEL: Record<string, string> = {
@@ -81,6 +88,7 @@ export function useInbox() {
         signal: sig, signalWhy: sig ? p.signal_reason : null,
         why: p.fit_reason || null,
         profileUrl: p.author_profile_url, postUrl: p.post_url,
+        diagnostics: p.draft_notes && typeof p.draft_notes === 'object' && !Array.isArray(p.draft_notes) ? (p.draft_notes as DraftDiagnostics) : null,
       });
     }
 

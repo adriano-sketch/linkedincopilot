@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  commentRules, cleanLanguage, hasKnowledgeBase, isSkip, languageLine, loadLearned, numberedAsAsked, outageBatches, outageNext, outageState, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type SenderFacts,
+  commentRules, cleanLanguage, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, numberedAsAsked, outageBatches, outageNext, outageState, readPost, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type Reading, type Review, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray, parseWriterReply,
@@ -17,7 +17,6 @@ const PROSPECT_BATCH = 15;
 const MAX_PROSPECTS_PER_RUN = 60;
 const POST_CLASSIFY_BATCH = 15;
 const MAX_POSTS_PER_RUN = 30;
-const DRAFT_BATCH = 5;
 
 // deno-lint-ignore no-explicit-any
 type Supa = any;
@@ -114,6 +113,7 @@ async function writeComments(
   kind: PostKind = "on_topic",
   topic = "",
   need = "",
+  reading: Reading | null = null,
 ): Promise<{ comment: string; skip: string | null }[]> {
   const items = batch.map((d, idx) => [
     `[${idx}] Author: ${d.post.author_name || "Unknown"}`,
@@ -123,7 +123,7 @@ async function writeComments(
     `Post:\n${String(d.post.post_text).slice(0, 2000)}`,
     retry ? `Your previous draft was REJECTED: "${retry[idx].previous}"\nWhy: ${retry[idx].feedback}\nWrite a better one or skip.` : "",
   ].filter(Boolean).join("\n")).join("\n=====\n");
-  const system = `${commentRules(facts, kind, topic, need)}
+  const system = `${commentRules(facts, kind, topic, need, reading)}
 
 Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "comment": "..."}] or
 [{"index": n, "skip": true, "skip_reason": "<max 12 words>"}]`;
@@ -137,6 +137,49 @@ Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "
     else out[i] = { comment: cleanComment(String(r.comment)).slice(0, 1200), skip: null };
   }
   return out;
+}
+
+type DraftInput = { post: any; signal: string; reason: string; language?: string };
+type Drafted = { draft: { comment: string; skip: string | null }; rev: Review; down: boolean; good: boolean; notes: unknown };
+
+/**
+ * One post, start to finish: the post is read first (what it is about, which detail to answer, which of
+ * the sender's notes bear on it), then written and reviewed. A rejected draft is written once more with
+ * none of the sender's subject notes. `down` means the review could not be read: no decision.
+ * Throws when the writer cannot be reached; the caller counts the try.
+ */
+async function draftPost(d: DraftInput, facts: SenderFacts, kind: PostKind, topic: string, need: string): Promise<Drafted> {
+  const text = String(d.post.post_text);
+  // A milestone gets a congratulation: there is no subject to pick notes for.
+  const reading = kind === "milestone" ? null : await readPost(text, { name: d.post.author_name, title: d.post.author_headline }, facts);
+  const own = reading ? factsForPost(facts, reading) : facts;
+  const bare = reading ? factsForPost(facts, reading, false) : facts;
+  const reviewOf = (comment: string, f: SenderFacts) =>
+    reviewComments([{ post: text, author: d.post.author_name, comment, language: d.language, reading }], f, kind);
+  let attempts = 1;
+  let withoutNotes = false;
+  const down = (): Drafted => ({ draft: { comment: "", skip: null }, rev: { ok: false, reason: "" }, down: true, good: false, notes: null });
+
+  let [draft] = await writeComments([d], own, null, kind, topic, need, reading);
+  let rev: Review = { ok: false, reason: draft.skip || "" };
+  if (!draft.skip) {
+    [rev] = await reviewOf(draft.comment, own);
+    if (reviewUnavailable(rev)) return down();
+    if (!rev.ok) {
+      attempts = 2;
+      withoutNotes = !!reading;
+      const [second] = await writeComments([d], bare, [{ previous: draft.comment, feedback: rev.reason }], kind, topic, need, reading);
+      draft = second;
+      if (second.skip) rev = { ok: false, reason: second.skip };
+      else {
+        [rev] = await reviewOf(second.comment, bare);
+        if (reviewUnavailable(rev)) return down();
+      }
+    }
+  }
+  const good = !draft.skip && rev.ok && !isSkip(draft.comment);
+  const outcome = good ? "drafted" : `skipped: ${(draft.skip || rev.reason || "nothing specific to add").slice(0, 160)}`;
+  return { draft, rev, down: false, good, notes: draftNotes(facts, reading, { attempts, withoutNotes, outcome }) };
 }
 
 async function processPosts(supabase: Supa, userId: string, icps: Map<string, Icp>) {
@@ -200,26 +243,14 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
       const triage = await triagePost(String(p.post_text), { name: p.author_name, title: p.author_headline }, facts);
       if (triageUnavailable(triage)) { await tryLater(p, "triage"); continue; }
       if (triage.kind === "off_topic") { await ignore(`Off topic: ${triage.reason}`); kbSkipped++; continue; }
-      const item = [{ post: p, signal: triage.kind, reason: triage.topic || "", language: triage.language }];
+      const item = { post: p, signal: triage.kind, reason: triage.topic || "", language: triage.language };
       const topic = triage.topic || "one of the subjects listed above";
-      let [draft] = await writeComments(item, facts, null, triage.kind, topic, triage.signalReason);
-      let rev = { ok: false, reason: draft.skip || "" };
-      if (!draft.skip) {
-        [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: draft.comment, language: triage.language }], facts, triage.kind);
-        if (reviewUnavailable(rev)) { await tryLater(p, "review"); continue; }
-        if (!rev.ok) {
-          const [second] = await writeComments(item, facts, [{ previous: draft.comment, feedback: rev.reason }], triage.kind, topic, triage.signalReason);
-          draft = second;
-          if (second.skip) rev = { ok: false, reason: second.skip };
-          else {
-            [rev] = await reviewComments([{ post: String(p.post_text), author: p.author_name, comment: second.comment, language: triage.language }], facts, triage.kind);
-            if (reviewUnavailable(rev)) { await tryLater(p, "review"); continue; }
-          }
-        }
-      }
-      if (!draft.skip && rev.ok && !isSkip(draft.comment)) {
+      const res = await draftPost(item, facts, triage.kind, topic, triage.signalReason);
+      if (res.down) { await tryLater(p, "review"); continue; }
+      const { draft, rev } = res;
+      if (res.good) {
         await supabase.from("monitored_posts").update({
-          suggested_comment: draft.comment, status: "pending", last_error: null,
+          suggested_comment: draft.comment, status: "pending", last_error: null, draft_notes: res.notes,
           // A need shown by the author goes to the top of the Inbox, labelled (same values as generate-comment).
           signal_type: triage.signal === "opportunity" ? "business_opportunity" : triage.signal === "pain" ? "pain_point"
             : triage.kind === "milestone" ? "milestone" : "relationship",
@@ -229,7 +260,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
         kbDrafted++;
       } else {
         await supabase.from("monitored_posts").update({
-          status: "ignored", last_error: `quality skip: ${(draft.skip || rev.reason || "nothing specific to add").slice(0, 200)}`,
+          status: "ignored", last_error: `quality skip: ${(draft.skip || rev.reason || "nothing specific to add").slice(0, 200)}`, draft_notes: res.notes,
           fit_reason: triage.kind === "milestone" ? "Milestone of a contact" : `Your subject: ${triage.topic || ""}`.slice(0, 200),
         }).eq("id", p.id).eq("status", "new");
         kbSkipped++;
@@ -332,60 +363,29 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
     }
   }
 
-  // Drafting goes through the quality guard (_shared/comment-quality.ts): writer → local checks →
-  // strict reviewer → one rewrite with feedback → otherwise the post is skipped (status 'ignored').
+  // Drafting goes through the quality guard (_shared/comment-quality.ts), one post at a time: the post is
+  // read first, then writer → local checks → strict reviewer → one rewrite without the sender's subject
+  // notes → otherwise the post is skipped (status 'ignored').
   let drafted = kbDrafted;
   let skipped = kbSkipped;
-  for (const batch of outageBatches(toDraft, DRAFT_BATCH, (d) => outageState(d.post.last_error).tries >= 2)) {
-    let drafts: { comment: string; skip: string | null }[];
+  for (const d of toDraft) {
+    let res: Drafted;
     try {
-      drafts = await writeComments(batch, facts, null);
+      res = await draftPost(d, facts, "on_topic", "", "");
     } catch (e) {
       console.error("comment drafting failed:", e instanceof Error ? e.message : e);
-      // Posts stay 'new' with their classification; the next run retries the draft, a counted number of times.
-      for (const d of batch) await tryLater(d.post, "drafting");
+      // The post stays 'new' with its classification; the next run retries the draft, a counted number of times.
+      await tryLater(d.post, "drafting");
       continue;
     }
-
-    const review = await reviewComments(batch.map((d, k) => ({
-      post: String(d.post.post_text), author: d.post.author_name, comment: drafts[k].comment, language: d.language,
-    })), facts);
-    // Drafts whose review could not be read are not judged: they wait for the next run.
-    const down = new Set<number>(batch.map((_, k) => k).filter((k) => !drafts[k].skip && reviewUnavailable(review[k])));
-    const retryIdx = batch.map((_, k) => k).filter((k) => !drafts[k].skip && !review[k].ok && !down.has(k));
-    if (retryIdx.length) {
-      try {
-        const again = await writeComments(retryIdx.map((k) => batch[k]), facts, retryIdx.map((k) => ({
-          previous: drafts[k].comment, feedback: review[k].reason,
-        })));
-        const review2 = await reviewComments(retryIdx.map((k, j) => ({
-          post: String(batch[k].post.post_text), author: batch[k].post.author_name, comment: again[j].comment, language: batch[k].language,
-        })), facts);
-        retryIdx.forEach((k, j) => {
-          drafts[k] = again[j];
-          if (again[j].skip) review[k] = { ok: false, reason: again[j].skip };
-          else {
-            review[k] = review2[j];
-            if (reviewUnavailable(review2[j])) down.add(k);
-          }
-        });
-      } catch (e) {
-        console.error("comment rewrite failed:", e instanceof Error ? e.message : e);
-      }
-    }
-
-    for (let k = 0; k < batch.length; k++) {
-      const d = batch[k];
-      if (down.has(k)) { await tryLater(d.post, "review"); continue; }
-      const good = !drafts[k].skip && review[k].ok && !isSkip(drafts[k].comment);
-      const update = good
-        ? { suggested_comment: drafts[k].comment, status: "pending", last_error: null }
-        : { status: "ignored", last_error: `quality skip: ${(drafts[k].skip || review[k].reason || "nothing specific to add").slice(0, 200)}` };
-      const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", d.post.id).eq("status", "new");
-      if (upErr) console.error("draft save failed:", upErr);
-      else if (good) drafted++;
-      else skipped++;
-    }
+    if (res.down) { await tryLater(d.post, "review"); continue; }
+    const update = res.good
+      ? { suggested_comment: res.draft.comment, status: "pending", last_error: null, draft_notes: res.notes }
+      : { status: "ignored", last_error: `quality skip: ${(res.draft.skip || res.rev.reason || "nothing specific to add").slice(0, 200)}`, draft_notes: res.notes };
+    const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", d.post.id).eq("status", "new");
+    if (upErr) console.error("draft save failed:", upErr);
+    else if (res.good) drafted++;
+    else skipped++;
   }
   return { classified, drafted, skipped_for_quality: skipped, waiting_for_retry: waiting };
 }
