@@ -162,7 +162,7 @@ export default function Landing() {
               <span className="text-primary">The part that does is going cold.</span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[42ch] m-0">
-              Leave it running in Chrome. Olanovo invites people who fit the audience you describe, reads what the people who matter post, and drafts your comments. Your part is about ten minutes a day.
+              Leave it running in Chrome. Olanovo invites people who fit the audience you describe and, at the same time, reads what the people who matter post and drafts your comments. Your part is about ten minutes a day.
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.22 }} className="text-base font-medium text-white max-w-[44ch] m-0">
               No automated DMs. No fake compliments. No pretending you know someone.
@@ -256,13 +256,13 @@ export default function Landing() {
               <span className="text-gradient-gold">Your part is about ten minutes a day.</span>
             </h2>
             <p className="text-lg text-muted-foreground mt-5 mb-0">
-              Finding and inviting people runs on autopilot, inside the limits you set. The conversation stays yours.
+              Two things run on autopilot at the same time, inside the limits you set: inviting new people and reading the posts of the ones who matter. The conversation stays yours.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-2 gap-6">
             {[
               {
-                title: 'What runs by itself',
+                title: 'What runs by itself, at the same time',
                 items: [
                   'Finds people who fit the audience you described',
                   'Invites them inside the weekly number you set, with your note if you wrote one',
