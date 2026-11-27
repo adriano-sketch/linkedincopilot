@@ -9,6 +9,7 @@ create table if not exists public.first_steps_events (
     'audience_saved',
     'extension_step_opened',
     'store_link_clicked',
+    'extension_detect_started',
     'extension_connected',
     'setup_finished',
     'setup_finished_without_extension'
@@ -25,7 +26,7 @@ create or replace function public.mark_first_step(p_event text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path to ''
 as $$
 begin
   if auth.uid() is null then

@@ -58,20 +58,21 @@ export default function Onboarding() {
 
   // Funnel: where people stop in the setup. Only for someone who still has it to do.
   useEffect(() => {
-    if (user && profile && !profile.onboarding_completed) markFirstStep('setup_opened');
+    if (profile && !profile.onboarding_completed) markFirstStep('setup_opened', user?.id);
   }, [user, profile]);
 
   useEffect(() => {
-    if (step === 2 && user) markFirstStep('extension_step_opened');
+    if (step === 2) markFirstStep('extension_step_opened', user?.id);
   }, [step, user]);
 
   useEffect(() => {
     if (extensionStatus?.is_connected) {
-      markFirstStep('extension_connected');
+      // Only inside the setup itself: someone who finished long ago also passes through this page.
+      if (step === 2 && profile && !profile.onboarding_completed) markFirstStep('extension_connected', user?.id);
       setExtensionDetected(true);
       setWaitingForExtension(false);
     }
-  }, [extensionStatus]);
+  }, [extensionStatus, step, profile, user]);
 
   const handleNext = async () => {
     if (step === 0) {
@@ -87,7 +88,7 @@ export default function Onboarding() {
           company_description: form.company_description,
           master_onboarding_completed: true,
         });
-        markFirstStep('about_saved');
+        markFirstStep('about_saved', user?.id);
         setStep(1);
       } catch {
         toast.error('Failed to save');
@@ -100,7 +101,7 @@ export default function Onboarding() {
       }
       try {
         await updateProfile.mutateAsync({ icp_description: description });
-        markFirstStep('audience_saved');
+        markFirstStep('audience_saved', user?.id);
         setStep(2);
       } catch {
         toast.error('Failed to save');
@@ -109,6 +110,7 @@ export default function Onboarding() {
   };
 
   const handleStartWaiting = () => {
+    markFirstStep('extension_detect_started', user?.id);
     setWaitingForExtension(true);
     setWaitStarted(Date.now());
   };
@@ -123,7 +125,7 @@ export default function Onboarding() {
         company_description: form.company_description,
         onboarding_completed: true,
       });
-      markFirstStep(extensionDetected ? 'setup_finished' : 'setup_finished_without_extension');
+      markFirstStep(extensionDetected ? 'setup_finished' : 'setup_finished_without_extension', user?.id);
       toast.success('Setup complete');
       // Straight to the step that makes the rest work: finding, among their contacts, the people
       // who fit what they just described.
@@ -237,7 +239,7 @@ export default function Onboarding() {
                     <div className="bg-muted/50 rounded-lg p-4 space-y-3">
                       <p className="text-sm font-medium">How to install:</p>
                       <ol className="text-sm text-muted-foreground space-y-2 list-decimal pl-4">
-                        <li>Open <a href={EXTENSION_STORE_URL} onClick={() => markFirstStep('store_link_clicked')} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">the Olanovo extension on the Chrome Web Store</a> and click "Add to Chrome"</li>
+                        <li>Open <a href={EXTENSION_STORE_URL} onClick={() => markFirstStep('store_link_clicked', user?.id)} onAuxClick={(e) => { if (e.button === 1) markFirstStep('store_link_clicked', user?.id); }} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">the Olanovo extension on the Chrome Web Store</a> and click "Add to Chrome"</li>
                         <li>Connect it to your account: use the button below when it appears, or click the extension icon in the Chrome toolbar and sign in with the email and password you use here</li>
                         <li>Log in to LinkedIn in the same browser</li>
                       </ol>
