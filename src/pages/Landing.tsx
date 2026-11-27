@@ -306,44 +306,44 @@ export default function Landing() {
               Why comments, <span className="text-gradient-gold">and why now</span>
             </h2>
             <p className="text-lg text-muted-foreground mt-5 mb-0">
-              The conversation on LinkedIn moved to the comments. The ones that count are written by a person.
+              People spend more time reading comments on LinkedIn, and LinkedIn limits the automated ones.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-3 gap-6 md:gap-8">
             {[
               {
                 figure: '+18%',
-                text: 'Time spent reading comments on LinkedIn grew 18% in a year.',
+                text: 'Time spent reading comments on LinkedIn grew 18% year over year.',
                 source: 'LinkedIn, quarter ended June 2026',
                 href: 'https://news.linkedin.com/2026/q4-earnings-and-business-highlights',
               },
               {
                 figure: '20% vs 4%',
-                text: 'Comments are a fifth of the engagement on personal profiles. On company pages they are 4%. People answer people.',
-                source: 'LigoSocial, The State of LinkedIn 2026, 134,522 posts',
+                text: 'In a study of 134,522 posts, comments were 20% of engagement (reactions, comments and reposts) on personal profiles and 4% on company pages.',
+                source: 'LigoSocial, The State of LinkedIn 2026',
                 href: 'https://ligosocial.com/research/state-of-linkedin-2026',
               },
               {
                 figure: 'Not allowed',
-                text: 'LinkedIn does not allow automated comments and limits their reach. Olanovo writes the draft. You read it, change it and post it.',
+                text: 'LinkedIn says automated comments are not allowed and limits their reach. Olanovo never posts a comment. It writes a draft from your opinions. You read it, change it and post it yourself.',
                 source: 'LinkedIn, March 2026',
                 href: 'https://news.linkedin.com/2026/authentic-content-and-conversations',
               },
             ].map((fact, i) => (
-              <motion.article key={fact.figure} {...stagger(i)} className="rounded-2xl bg-card border border-border p-6 sm:p-7 flex flex-col">
-                <p className="font-display font-bold tracking-tight text-4xl text-gold-dark m-0">{fact.figure}</p>
+              <motion.article key={fact.href} {...stagger(i)} className="rounded-2xl bg-card border border-border p-6 sm:p-7 flex flex-col">
+                <h3 className="font-display font-bold tracking-tight text-4xl text-gold-dark m-0">{fact.figure}</h3>
                 <p className="text-base text-foreground mt-3 mb-0">{fact.text}</p>
                 <p className="text-sm text-muted-foreground mt-auto pt-4 mb-0">
                   Source:{' '}
                   <a href={fact.href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-                    {fact.source}
+                    {fact.source}<span className="sr-only"> (opens in a new tab)</span>
                   </a>
                 </p>
               </motion.article>
             ))}
           </div>
           <p className="text-sm text-muted-foreground text-center mt-8 mb-0 max-w-2xl mx-auto">
-            These figures come from the sources named and describe LinkedIn in general. They are not a promise of what your comments will get.
+            These figures come from the sources named and describe LinkedIn in general. They are not a promise of what your comments will get. Olanovo is not affiliated with or endorsed by LinkedIn.
           </p>
         </div>
       </section>
