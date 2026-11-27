@@ -162,7 +162,7 @@ export default function Onboarding() {
             <CardTitle>Step {step + 1} of {STEPS.length}: {STEPS[step]}</CardTitle>
             <CardDescription>
               {step === 0 && "Tell us about you and your company."}
-              {step === 1 && "The most important step. Most of a LinkedIn network has nothing to do with your business. In the next screen Olanovo compares your contacts with this description and shows you the ones who fit, so you choose who to stay close to."}
+              {step === 1 && "The most important step. Not every LinkedIn contact matters to your business. In the next screen Olanovo compares your contacts with this description and shows you the ones who fit, so you choose who to stay close to."}
               {step === 2 && "Install the Chrome extension. It reads LinkedIn for you; you approve and post everything yourself."}
             </CardDescription>
           </CardHeader>

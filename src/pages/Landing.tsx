@@ -227,16 +227,16 @@ export default function Landing() {
         <div className="container mx-auto max-w-6xl grid md:grid-cols-3 gap-6 md:gap-8">
           {[
             {
+              title: 'Your network is not growing with the right people.',
+              desc: 'Describe who you want to meet. Olanovo finds people who fit and sends the invitation, with your note if you wrote one, inside the weekly number you set.',
+            },
+            {
               title: 'Not every contact matters to your business.',
-              desc: 'Two hundred connections or several thousand, they come from every job and event. Olanovo compares them with your description of who matters to your business, and shows you the ones that fit.',
+              desc: 'Whether you have two hundred connections or several thousand, they come from every job and event. Olanovo compares them with your description of who matters to your business, and shows you the ones that fit.',
             },
             {
               title: 'They post. You do not see it.',
               desc: 'Their posts get lost in a feed full of everyone else. Olanovo reads the posts of the people you picked and brings you the ones about your subjects, with a draft ready.',
-            },
-            {
-              title: 'Your network stops growing with the right people.',
-              desc: 'Describe who you want to meet. Olanovo finds people who fit and sends the invitation, with your note if you wrote one, inside the weekly number you set.',
             },
           ].map((pain, i) => (
             <motion.article key={pain.title} {...stagger(i)} className="rounded-2xl bg-card border border-border p-6 sm:p-7">
