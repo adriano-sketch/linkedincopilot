@@ -298,7 +298,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* WHY COMMENTS: three outside figures, each with its source. Only figures we checked at the source. */}
+      {/* WHY COMMENTS: four outside figures, each with its source. Only figures we checked at the source. */}
       <section className="py-16 md:py-24 px-4 section-cream border-t border-border/40" aria-labelledby="why-comments-heading">
         <div className="container mx-auto max-w-6xl">
           <motion.div {...fadeUp} className="text-center max-w-3xl mx-auto mb-10 md:mb-14">
@@ -309,19 +309,25 @@ export default function Landing() {
               People spend more time reading comments on LinkedIn, and LinkedIn limits the automated ones.
             </p>
           </motion.div>
-          <div className="grid md:grid-cols-3 gap-6 md:gap-8">
+          <div className="grid md:grid-cols-2 gap-6 md:gap-8 max-w-4xl mx-auto">
             {[
+              {
+                figure: '0 comments',
+                text: 'In a study of 134,522 posts, the typical post by someone with fewer than 3,000 followers got no comments. Yours may be the only one that person reads.',
+                source: 'LigoSocial, LinkedIn engagement benchmarks, 2026',
+                href: 'https://ligosocial.com/research/linkedin-engagement-benchmarks',
+              },
+              {
+                figure: '20% vs 4%',
+                text: 'In the same study, comments were 20% of engagement (reactions, comments and reposts) on personal profiles and 4% on company pages.',
+                source: 'LigoSocial, The State of LinkedIn 2026',
+                href: 'https://ligosocial.com/research/state-of-linkedin-2026',
+              },
               {
                 figure: '+18%',
                 text: 'Time spent reading comments on LinkedIn grew 18% year over year.',
                 source: 'LinkedIn, quarter ended June 2026',
                 href: 'https://news.linkedin.com/2026/q4-earnings-and-business-highlights',
-              },
-              {
-                figure: '20% vs 4%',
-                text: 'In a study of 134,522 posts, comments were 20% of engagement (reactions, comments and reposts) on personal profiles and 4% on company pages.',
-                source: 'LigoSocial, The State of LinkedIn 2026',
-                href: 'https://ligosocial.com/research/state-of-linkedin-2026',
               },
               {
                 figure: 'Not allowed',
