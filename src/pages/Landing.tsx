@@ -158,8 +158,8 @@ export default function Landing() {
               className="font-display font-bold leading-[1.05] tracking-tight m-0 [text-wrap:balance]"
               style={{ fontSize: 'clamp(34px, 3.9vw, 54px)' }}
             >
-              Most of your LinkedIn network has nothing to do with your business.{' '}
-              <span className="text-primary">The part that does is going cold.</span>
+              Grow your LinkedIn network with the right people.{' '}
+              <span className="text-primary">Stay close to the ones you already know.</span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-lg sm:text-xl text-slate-300 max-w-[42ch] m-0">
               Leave it running in Chrome. Olanovo invites people who fit your audience. At the same time, it reads posts from the people who matter and drafts your comments. Your part is about ten minutes a day.
@@ -227,8 +227,8 @@ export default function Landing() {
         <div className="container mx-auto max-w-6xl grid md:grid-cols-3 gap-6 md:gap-8">
           {[
             {
-              title: 'Thousands of contacts. Only some of them matter.',
-              desc: 'Years of connections from every job and event. Olanovo compares them with your description of who matters to your business, and shows you the ones that fit.',
+              title: 'Not every contact matters to your business.',
+              desc: 'Two hundred connections or several thousand, they come from every job and event. Olanovo compares them with your description of who matters to your business, and shows you the ones that fit.',
             },
             {
               title: 'They post. You do not see it.',
