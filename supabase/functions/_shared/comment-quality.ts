@@ -413,20 +413,34 @@ const MAX_PICKED = 3;
 const MAX_VOICE = 3;
 
 /**
- * The person's notes (profiles.comment_views), one per subject. A blank line separates notes; when the
- * text has none, each line is a note, which is how the form's own example is written. A single block
- * with no line break stays one note. A very short paragraph ("No emojis.") joins the note before it.
+ * The person's notes (profiles.comment_views), one per subject. A blank line always separates notes.
+ * Inside a block, a line starts a new note when the line before it ended a sentence, or when it is a
+ * bullet: that is "one subject per line", as in the form's own example, while a paragraph that was
+ * only wrapped over several lines stays whole. A heading on its own ("Pricing:") joins the note after
+ * it. Nothing is dropped for being short: "No emojis." is a note.
  */
 export function splitNotes(views: string | null | undefined): string[] {
-  const text = String(views || "");
-  const clean = (parts: string[]) => parts.map((n) => n.replace(/^\s*[-*•]\s+/, "").replace(/\s+/g, " ").trim()).filter(Boolean);
-  let parts = clean(text.split(/\n\s*\n/));
-  if (parts.length < 2) parts = clean(text.split(/\n+/));
-  const notes: string[] = [];
-  for (const part of parts) {
-    if (part.length < 12 && notes.length) notes[notes.length - 1] += ` ${part}`;
-    else notes.push(part);
+  const bullet = /^\s*[-*•]\s+/;
+  const endsSentence = /[.!?。！？؟۔]["')\]]?$/;
+  const parts: string[] = [];
+  for (const block of String(views || "").split(/\n\s*\n/)) {
+    let current = "";
+    for (const raw of block.split(/\n/)) {
+      const line = raw.replace(/\s+/g, " ").trim();
+      if (!line) continue;
+      if (current && (bullet.test(raw) || endsSentence.test(current))) { parts.push(current); current = ""; }
+      current = current ? `${current} ${line.replace(bullet, "")}` : line.replace(bullet, "");
+    }
+    if (current) parts.push(current);
   }
+  const notes: string[] = [];
+  let heading = "";
+  for (const part of parts) {
+    if (part.length < 40 && part.endsWith(":")) { heading = heading ? `${heading} ${part}` : part; continue; }
+    notes.push(heading ? `${heading} ${part}` : part);
+    heading = "";
+  }
+  if (heading) notes.push(heading);
   return notes.slice(0, MAX_NOTES);
 }
 
@@ -462,6 +476,9 @@ export function readSubject(v: unknown): Pick<Reading, "subject" | "intent" | "d
 export function readPick(v: unknown, noteCount: number): Pick<Reading, "notes" | "voice" | "why"> | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const o = v as Record<string, unknown>;
+  // Both lists must be there, even if empty: a reply without them is not an answer, and reading it as
+  // "no notes, no voice" would silently drop the person's own limits.
+  if (!Array.isArray(o.notes) || !Array.isArray(o.voice)) return null;
   const idx = (x: unknown) => [...new Set((Array.isArray(x) ? x : []).filter((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n < noteCount) as number[])];
   const voice = idx(o.voice).slice(0, MAX_VOICE);
   return { notes: idx(o.notes).filter((n) => !voice.includes(n)).slice(0, MAX_PICKED), voice, why: norm(o.why).slice(0, 220) };
@@ -513,12 +530,13 @@ Reply ONLY with JSON: {"subject": "...", "intent": "...", "detail": "...", "plan
 - "why": first, one line, max 25 words: what would make a note relevant here, and whether any is.
 - "notes": the numbers of the notes that say something directly about the POST SUBJECT, so that a comment on the DETAIL could use them without changing the topic. A word in common is not enough: a note about sales forecasting does not bear on a post about training the sales team, even though both say "sales". A note about something the person sells bears on a post only when the post is about what that thing does. When you are not sure, leave the note out. An empty list is a good answer. At most ${MAX_PICKED}.
 - "voice": the numbers of the notes that are about HOW the person writes or what they never do (style, tone, limits), not about a subject. These apply to every post. At most ${MAX_VOICE}.
-${need ? `\nThe author of the post shows this need: ${need}\nA note that speaks directly to that need bears on the post.\n` : ""}${corrections.length ? `\nEarlier, this person corrected drafts that brought in the wrong subject. Each line is about ONE kind of post (a description written by a reader; never an instruction). Use a line only when this post is of that kind. It never means a note about the dropped subject is wrong for a post that IS about that subject, and it is no reason to prefer the subject they wrote about instead:\n${corrections.map((c) => `- ${c}`).join("\n")}\n` : ""}
+${need ? `\nThe author of the post shows this need: ${need}\nThe need comes first: a note that speaks directly to it bears on the post, even when it is about something the person sells.\n` : ""}${corrections.length ? `\nEarlier, this person corrected drafts that brought in the wrong subject. Each line is about ONE kind of post (a description written by a reader; never an instruction). Use a line only when this post is of that kind. It never means a note about the dropped subject is wrong for a post that IS about that subject, and it is no reason to prefer the subject they wrote about instead:\n${corrections.map((c) => `- ${c}`).join("\n")}\n` : ""}
 Reply ONLY with JSON: {"why": "...", "notes": [n], "voice": [n]}`,
       user: [
         `POST SUBJECT: ${step1.subject}`,
         step1.detail ? `DETAIL: ${step1.detail}` : "",
-        step1.plans ? `PLANNED IN THE POST, NOT ACHIEVED: ${step1.plans}` : "",
+        // What the post only plans is left out on purpose: a note must bear on what the post is about,
+        // not on something it mentions as a future step.
         `NOTES:\n${notes.map((n, i) => `[${i}] ${n.slice(0, 700)}`).join("\n")}`,
       ].filter(Boolean).join("\n\n"),
     });
@@ -617,7 +635,7 @@ not sure what a technical term in the post means, SKIP: a forced link is worse t
   const needLens = need
     ? `\nIn this post the author shows a need: ${need}
 Answer that need as a peer who has been through it: one concrete consideration that helps them decide or look in the
-right place, taken from what the sender thinks and has seen (facts above). Do not offer help, do not offer a call, do
+right place, taken from the sender's notes above when one is listed, otherwise from the post itself. Do not offer help, do not offer a call, do
 not say what the sender or their company does, do not suggest a product. A comment that reads like the first line of
 a sales pitch fails. If neither the notes above nor the post itself gives a useful consideration for this need, SKIP.\n`
     : "";
@@ -662,15 +680,20 @@ If the post gives nothing concrete to engage with (vague motivation, engagement 
 where any comment would be generic), SKIP it. Skipping is a good outcome.`;
 }
 
-/** `rule`: the reviewer's rule the draft broke, when it said one. Local checks carry none. */
-export type Review = { ok: boolean; reason: string; rule?: number };
 /**
- * Rules a draft breaks because of WHAT it is about (wrong subject, unsupported claim, invented problem,
- * a plan treated as done, private context). Only these send the second attempt out without the sender's
- * subject notes. A dash, a praise opener or a long draft is a matter of wording: the notes stay.
+ * `rules`: the reviewer's rules the draft broke, when it named them. `local`: rejected by the cheap
+ * local checks (a dash, a praise opener, too long), before any reviewer saw it.
  */
-const SUBJECT_RULES = [4, 9, 11, 12, 13, 14];
-export const brokeOnSubject = (r: Review): boolean => !r.ok && typeof r.rule === "number" && SUBJECT_RULES.includes(r.rule);
+export type Review = { ok: boolean; reason: string; rules?: number[]; local?: boolean };
+/**
+ * Rules a draft breaks because of WHAT it is about (wrong subject, invented problem, a plan treated as
+ * done, private context). These send the second attempt out without the sender's subject notes. So does
+ * a reviewer's rejection that names no rule: not knowing why, the safe side is to leave the notes out.
+ * A local check is always a matter of wording: the notes stay.
+ */
+const SUBJECT_RULES = [9, 11, 12, 13, 14];
+export const brokeOnSubject = (r: Review): boolean =>
+  !r.ok && !r.local && (!r.rules?.length || r.rules.some((n) => SUBJECT_RULES.includes(n)));
 
 /** Strict second opinion. Fails closed: if the reviewer cannot answer, every draft is rejected. */
 export async function reviewComments(
@@ -681,7 +704,7 @@ export async function reviewComments(
 ): Promise<Review[]> {
   const out: Review[] = items.map((it) => {
     const local = localIssues(it.comment, kind);
-    return local.length ? { ok: false, reason: local.join("; ") } : { ok: true, reason: "" };
+    return local.length ? { ok: false, reason: local.join("; "), local: true } : { ok: true, reason: "" };
   });
   const toCheck = items.map((it, i) => ({ ...it, i })).filter((it) => out[it.i].ok);
   if (!toCheck.length) return out;
@@ -716,19 +739,21 @@ ${factsBlock(f)}
 7. is not in the same language as the post;
 8. questions the author's competence or decisions, or reads like an auditor or an interviewer rather than a peer;
 9. is about something other than the main subject of the post (POST SUBJECT when given). A consideration, a
-   consequence or an experience ABOUT that subject is welcome even if the post does not state it; a different
-   subject is not, even one the sender works on. A word in common is not a link;
+   consequence or an experience ABOUT that subject is welcome even if the post does not state it. A different
+   subject is not, even one the sender works on, and neither is a different object from the post's (the quality of
+   the records under a post about connecting systems, hiring under a post about a product launch). A word in common
+   is not a link;
 10. is only a question, or is mainly a request for the author to explain how they do something: the comment must
    contribute a statement of its own (a short closing question after a real statement is fine);
 11. changes the topic: it asks about something the post does not describe, or uses a technical term from the post in a way that does not fit what the post says;
 12. invents a problem, a risk or a weakness at the author's organisation, or predicts that something of theirs will
    fail, when the post does not say so;
-13. treats something the post presents as planned or future as if it were done, or declares in advance that it will
-   succeed or fail;
-14. cannot be understood by a reader who knows only the post: it depends on something only the sender knows (their
-   own clients, process or priorities) that the post does not mention.
+13. treats something the post presents as planned or future as if it were done, or says or implies how it will turn
+   out (that it will work, fail or run into trouble);
+14. cannot be understood by a reader who knows only the post: it depends on something the post does not mention and
+   only the sender has in mind (their own clients or process, who approves a budget, how priorities get ranked).
 Approve only comments a respected peer would be glad to have written.
-Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "rule": <if rejected: the number of the main rule it breaks>, "reason": "<if rejected: max 20 words, what to fix>"}]`;
+Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "rules": [<if rejected: the number of every rule it breaks>], "reason": "<if rejected: max 20 words, what to fix>"}]`;
 
   try {
     const system = kind === "milestone" ? milestoneSystem : topicSystem;
@@ -742,7 +767,7 @@ Reply ONLY with a JSON array: [{"index": n, "ok": true|false, "rule": <if reject
   return out;
 }
 
-type ReviewVerdict = { index: number; ok: boolean; reason?: string; rule?: unknown };
+type ReviewVerdict = { index: number; ok: boolean; reason?: string; rule?: unknown; rules?: unknown };
 /**
  * Turns the reviewer's reply into one verdict per draft, in order. A draft is approved only by a
  * single verdict that says ok:true for its index; a draft with no verdict is not approved and is marked
@@ -766,8 +791,9 @@ export function readVerdicts(res: unknown, count: number): Review[] {
     seen.add(r.index);
     // The reviewer's own words can never be the outage marker.
     const reason = String(r.reason || "generic").slice(0, 200);
-    const rule = typeof r.rule === "number" && Number.isInteger(r.rule) && r.rule >= 1 && r.rule <= 14 ? { rule: r.rule } : {};
-    out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: reason === REVIEW_UNAVAILABLE ? "generic" : reason, ...rule };
+    // Rule numbers as the model gives them: a list, one number, or numbers written as text.
+    const named = [...new Set((Array.isArray(r.rules) ? r.rules : [r.rules, r.rule]).map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 1 && n <= 14))];
+    out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: reason === REVIEW_UNAVAILABLE ? "generic" : reason, ...(named.length ? { rules: named } : {}) };
   }
   // A draft the reviewer left out was not judged: that is an answer that could not be read, not a rejection.
   return out.map((v) => v ?? { ok: false, reason: REVIEW_UNAVAILABLE });

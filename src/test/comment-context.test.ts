@@ -38,9 +38,20 @@ describe('splitNotes', () => {
       'Pricing: discounts train customers to wait.', 'Hiring: the schedule matters more than the pay.',
     ]);
   });
-  it('keeps a very short paragraph by joining it to the note before it', () => {
-    const notes = splitNotes('My voice: short and direct, one point per comment.\n\nNo emojis.');
-    expect(notes).toEqual(['My voice: short and direct, one point per comment. No emojis.']);
+  it('keeps a very short note as its own note', () => {
+    expect(splitNotes('Pricing: discounts train customers to wait.\n\nNo emojis.')).toEqual(['Pricing: discounts train customers to wait.', 'No emojis.']);
+  });
+  it('splits lines inside a block when a blank line appears elsewhere in the text', () => {
+    const notes = splitNotes('Cash flow: growth eats cash.\nField technicians: the schedule matters more than pay.\n\nNever use emojis or praise.');
+    expect(notes).toEqual(['Cash flow: growth eats cash.', 'Field technicians: the schedule matters more than pay.', 'Never use emojis or praise.']);
+  });
+  it('keeps a paragraph whole when it was only wrapped over several lines', () => {
+    expect(splitNotes('Asset management: the budget is limited and not\nevery pipe needs replacing at once, so the order\nhas to be explained.')).toHaveLength(1);
+  });
+  it('joins a heading on its own to the note after it, never the one before', () => {
+    expect(splitNotes('Cash flow: growth eats cash.\n\nPricing:\n\nDiscounts train customers to wait.')).toEqual([
+      'Cash flow: growth eats cash.', 'Pricing: Discounts train customers to wait.',
+    ]);
   });
   it('keeps more than fourteen notes', () => {
     const many = Array.from({ length: 20 }, (_, i) => `Subject ${i}: one thing I have seen about it.`).join('\n\n');
@@ -71,23 +82,27 @@ describe('reading a post', () => {
     const r = readPick({ notes: [], voice: all }, 8)!;
     expect(r.voice).toHaveLength(3);
   });
-  it('treats a reply that is not an object as unreadable', () => {
-    for (const bad of [null, 'text', [1, 2]]) expect(readPick(bad, 4)).toBeNull();
+  it('treats a reply without both lists as unreadable, so voice limits are not dropped by accident', () => {
+    for (const bad of [null, 'text', [1, 2], {}, { notes: [1] }, { voice: [3] }]) expect(readPick(bad, 4)).toBeNull();
+    expect(readPick({ notes: [], voice: [] }, 4)).toEqual({ notes: [], voice: [], why: '' });
   });
 });
 
 describe('which rejection drops the notes on the second attempt', () => {
-  it('reads the rule the reviewer named', () => {
-    const [v] = readVerdicts([{ index: 0, ok: false, rule: 9, reason: 'another subject' }], 1);
-    expect(v).toEqual({ ok: false, reason: 'another subject', rule: 9 });
-    expect(readVerdicts([{ index: 0, ok: false, rule: 'nine', reason: 'x' }], 1)[0].rule).toBeUndefined();
+  it('reads the rules the reviewer named, as a list, one number, or text', () => {
+    expect(readVerdicts([{ index: 0, ok: false, rules: [1, 9], reason: 'another subject' }], 1)[0]).toEqual({ ok: false, reason: 'another subject', rules: [1, 9] });
+    expect(readVerdicts([{ index: 0, ok: false, rule: '9', reason: 'x' }], 1)[0].rules).toEqual([9]);
+    expect(readVerdicts([{ index: 0, ok: false, rules: ['nine', 99], reason: 'x' }], 1)[0].rules).toBeUndefined();
   });
-  it('drops them when the draft was about the wrong thing', () => {
-    for (const rule of [4, 9, 11, 12, 13, 14]) expect(brokeOnSubject({ ok: false, reason: 'x', rule })).toBe(true);
+  it('drops them when any rule named is about what the draft says', () => {
+    for (const rule of [9, 11, 12, 13, 14]) expect(brokeOnSubject({ ok: false, reason: 'x', rules: [1, rule] })).toBe(true);
   });
-  it('keeps them when the problem was wording, or when no rule was named', () => {
-    for (const rule of [1, 2, 3, 5, 6, 7, 8, 10]) expect(brokeOnSubject({ ok: false, reason: 'x', rule })).toBe(false);
-    expect(brokeOnSubject({ ok: false, reason: 'no em dashes' })).toBe(false);
+  it('drops them when the reviewer rejected without naming a rule: the safe side', () => {
+    expect(brokeOnSubject({ ok: false, reason: 'generic' })).toBe(true);
+  });
+  it('keeps them when the problem was wording only', () => {
+    expect(brokeOnSubject({ ok: false, reason: 'x', rules: [1, 2, 3, 4, 5, 6, 7, 8, 10] })).toBe(false);
+    expect(brokeOnSubject({ ok: false, reason: 'no em dashes', local: true })).toBe(false);
     expect(brokeOnSubject({ ok: true, reason: '' })).toBe(false);
   });
 });

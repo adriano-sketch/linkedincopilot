@@ -142,7 +142,7 @@ Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "
 type DraftInput = { post: any; signal: string; reason: string; language?: string };
 type Drafted = { draft: { comment: string; skip: string | null }; rev: Review; down: "" | "reading" | "review"; good: boolean; notes: unknown; subject: string };
 /** Posts drafted side by side. Each one is still read, written and reviewed on its own. */
-const DRAFTS_AT_ONCE = 4;
+const DRAFTS_AT_ONCE = 2;
 
 /**
  * One post, start to finish: the post is read first (what it is about, which detail to answer, which of
