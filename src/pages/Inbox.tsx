@@ -257,7 +257,9 @@ export default function InboxPage() {
                 {/* Diagnostics: what the draft was built from. Only with ?diagnostics=1 in the address. */}
                 {params.get('diagnostics') === '1' && (
                   <dl className="m-0 rounded-xl border border-dashed border-border p-4 text-[13px] text-muted-foreground grid gap-1.5">
-                    {current.diagnostics ? (
+                    {current.diagnostics?.reading === null ? (
+                      <div>Milestone: a congratulation, written without your subject notes.</div>
+                    ) : current.diagnostics ? (
                       <>
                         <div><dt className="inline font-semibold">Post is about: </dt><dd className="inline m-0">{current.diagnostics.subject || 'not read'}</dd></div>
                         {current.diagnostics.detail && <div><dt className="inline font-semibold">Detail answered: </dt><dd className="inline m-0">{current.diagnostics.detail}</dd></div>}
@@ -265,6 +267,7 @@ export default function InboxPage() {
                         <div><dt className="inline font-semibold">Your notes used: </dt><dd className="inline m-0">{current.diagnostics.notes_used?.length ? current.diagnostics.notes_used.join(' | ') : 'none'}</dd></div>
                         <div><dt className="inline font-semibold">Your notes left out: </dt><dd className="inline m-0">{current.diagnostics.notes_left?.length ? current.diagnostics.notes_left.join(' | ') : 'none'}</dd></div>
                         {current.diagnostics.why && <div><dt className="inline font-semibold">Why: </dt><dd className="inline m-0">{current.diagnostics.why}</dd></div>}
+                        <div><dt className="inline font-semibold">Voice notes applied: </dt><dd className="inline m-0">{current.diagnostics.voice_notes?.length ? current.diagnostics.voice_notes.join(' | ') : 'none'}</dd></div>
                         <div><dt className="inline font-semibold">Attempts: </dt><dd className="inline m-0">{current.diagnostics.attempts ?? 1}{current.diagnostics.withoutNotes ? ' (second one written without your notes)' : ''}</dd></div>
                       </>
                     ) : (

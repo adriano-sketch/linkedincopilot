@@ -93,7 +93,7 @@ export default function CommentKnowledgeBase() {
           <Label htmlFor="kb-views">What you think and what you have seen on these subjects</Label>
           <Textarea id="kb-views" rows={6} value={form.comment_views} onChange={set('comment_views')}
             placeholder={"Two or three sentences per subject, in your own words. For example:\nCash flow: most small manufacturers run out of cash while growing, not while shrinking.\nField technicians: people leave over the schedule more often than over the pay."} />
-          <p className="text-xs text-muted-foreground">Drafts use this to state a point of view. Without it they tend to ask questions, because nothing is invented in your name.</p>
+          <p className="text-xs text-muted-foreground">One subject per line or paragraph: each draft only uses the ones that fit its post. Drafts use this to state a point of view. Without it they tend to ask questions, because nothing is invented in your name.</p>
           <p className="text-xs text-muted-foreground text-right">{form.comment_views.length}/{LIMITS.comment_views}</p>
         </div>
         <div>

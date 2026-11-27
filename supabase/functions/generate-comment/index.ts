@@ -13,7 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
+  brokeOnSubject, commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
   triageUnavailable, type Reading, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
@@ -39,7 +39,7 @@ const COMMENT_VARIANTS = [
   },
   {
     key: "respectful_challenge",
-    hint: "Respectfully raise a 'what about...' angle the author did not cover. Constructive, never confrontational.",
+    hint: "Within the post's own subject, add one consideration the author implied but did not spell out. Constructive, never confrontational.",
   },
 ];
 
@@ -72,7 +72,7 @@ async function writeDraft(a: {
     `POST LANGUAGE: ${languageLine(a.triage.language)}`,
     `POST:\n"""\n${a.postText}\n"""`,
     a.hint ? `ANGLE: ${a.hint}` : "",
-    a.feedback ? `Your previous draft was REJECTED: "${a.feedback.previous}"\nWhy: ${a.feedback.why}\nWrite a better one or skip.` : "",
+    a.feedback ? `Your previous draft was REJECTED${a.feedback.previous ? `: "${a.feedback.previous}"` : "."}\nWhy: ${a.feedback.why}\nWrite a better one or skip.` : "",
   ].filter(Boolean).join("\n\n");
   const system = `${commentRules(a.facts, a.triage.kind, a.triage.topic || "one of the subjects listed above", a.triage.signalReason, a.reading)}
 
@@ -145,7 +145,8 @@ serve(async (req) => {
         const postText = body.triage_only.slice(0, 2000);
         const author = typeof body.author === "string" ? body.author : "";
         const authorTitle = typeof body.author_title === "string" ? body.author_title : "";
-        const reading = t.kind === "milestone" ? null : await readPost(postText, { name: author, title: authorTitle }, f);
+        const reading = t.kind === "milestone" ? null : await readPost(postText, { name: author, title: authorTitle }, f, t.signalReason);
+        if (reading && !reading.available) return json({ success: false, unavailable: "reading", triage: t }, 503);
         const own = reading ? factsForPost(f, reading) : f;
         const d = await writeDraft({
           facts: own, triage: t, postText, author, reading,
@@ -200,8 +201,6 @@ serve(async (req) => {
       about: [me?.company_description, campaign?.proof_points || me?.proof_points].filter(Boolean).join(" "),
       tone: campaign?.dm_tone || me?.dm_tone,
       topics: kb.comment_topics, avoid: kb.comment_avoid, examples: kb.comment_examples, views: kb.comment_views,
-      // What the user's own Inbox decisions show: published comments and rejected drafts.
-      learned: await loadLearned(supabase, lead.user_id),
     };
     const author = lead.full_name || null;
     const authorTitle = String(lead.title || lead.profile_current_title || "");
@@ -304,7 +303,7 @@ serve(async (req) => {
     // or the draft, so no decision is recorded: the lead stays where it is and the scheduler asks again.
     // Each try is logged and the next one waits an hour. After OUTAGE_MAX_TRIES the lead rests like after
     // any other skip, so a post the model can never answer for does not keep it busy for ever.
-    const unavailable = async (step: "triage" | "drafting" | "review") => {
+    const unavailable = async (step: "triage" | "reading" | "drafting" | "review") => {
       // Seven days: tries only happen while the extension is connected, and an earlier cycle ended in a 7-day rest.
       const since = new Date(Date.now() - 7 * 864e5).toISOString();
       const { count, error: countErr } = await supabase.from("activity_log").select("id", { count: "exact", head: true })
@@ -370,8 +369,13 @@ serve(async (req) => {
     let withoutNotes = false;
     let draft: Draft;
     let reviewDown = false;
+    // What the user's own Inbox decisions show: published comments, rejected drafts and corrected subjects.
+    // Read here, after every cheap way out, because it can cost a model call.
+    facts.learned = await loadLearned(supabase, lead.user_id);
+    reading = triage.kind === "milestone" ? null : await readPost(postText, { name: author, title: authorTitle, company: authorCompany }, facts, triage.signalReason);
+    // The post could not be read: an outage, not a reason to write without knowing what it is about.
+    if (reading && !reading.available) return await unavailable("reading");
     try {
-      reading = triage.kind === "milestone" ? null : await readPost(postText, { name: author, title: authorTitle, company: authorCompany }, facts);
       const own = reading ? factsForPost(facts, reading) : facts;
       const bare = reading ? factsForPost(facts, reading, false) : facts;
       const write = (f: SenderFacts, feedback: { previous: string; why: string } | null) =>
@@ -385,9 +389,12 @@ serve(async (req) => {
         if (reviewUnavailable(rev)) reviewDown = true;
         else if (!rev.ok) {
           attempts = 2;
-          withoutNotes = !!reading;
-          const second = await write(bare, { previous: draft.comment, why: rev.reason });
-          if (!second.skip) [rev] = await reviewOf(second.comment, bare);
+          // Rejected for what it was about: no subject notes on the second attempt, and the first draft
+          // (which carried them) is not shown. Rejected for wording: the notes stay.
+          withoutNotes = !!reading && reading.notes.length > 0 && brokeOnSubject(rev);
+          const facts2 = withoutNotes ? bare : own;
+          const second = await write(facts2, { previous: withoutNotes ? "" : draft.comment, why: rev.reason });
+          if (!second.skip) [rev] = await reviewOf(second.comment, facts2);
           if (!second.skip && reviewUnavailable(rev)) reviewDown = true;
           else draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
         }
@@ -402,7 +409,10 @@ serve(async (req) => {
 
     // Nothing worth saying on this post: no comment this cycle, the lead tries again with a newer post in 7 days.
     if (draft.skip || !draft.comment) {
-      await restLead("comment_skipped_quality", { reason: draft.skip || "empty", variant: variant.key, kind: triage.kind });
+      await restLead("comment_skipped_quality", {
+        reason: draft.skip || "empty", variant: variant.key, kind: triage.kind,
+        notes: draftNotes(facts, reading, { attempts, withoutNotes, outcome: `skipped: ${draft.skip || "empty"}` }),
+      });
       console.log(`generate-comment: skipped lead ${campaign_lead_id} for quality (${draft.skip})`);
       return json({ success: true, skipped: "quality", reason: draft.skip, lead_id: campaign_lead_id });
     }
@@ -437,9 +447,10 @@ serve(async (req) => {
     if (!claimed || claimed.length === 0) return json({ success: true, skipped: "lead not in post_liked", lead_id: campaign_lead_id });
 
     // Shown next to the draft, so the user sees why this post got a comment.
+    // What the post is about, as read, and not the subject the triage matched.
     const whyCommented = triage.kind === "milestone"
       ? "Milestone of a contact"
-      : `Your subject: ${triage.topic || "matches what you work on"}`;
+      : (reading?.subject ? `Post about: ${reading.subject}` : `Your subject: ${triage.topic || "matches what you work on"}`).slice(0, 200);
     // The author shows a need the user's work addresses: it goes to the top of the Inbox, labelled.
     const signalFields = triage.signal === "none"
       ? (triage.kind === "milestone" ? { signal_type: "milestone", signal_reason: null, priority: 2 } : { signal_type: null, signal_reason: null, priority: 2 })
@@ -455,7 +466,7 @@ serve(async (req) => {
       // Drafting took several model calls: only write if the user did not decide on the row meanwhile.
       const { data: written, error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
-        fit_reason: whyCommented, draft_notes: notes, edit_kind: null, edit_note: null, ...signalFields,
+        fit_reason: whyCommented, draft_notes: notes, ...signalFields,
       }).eq("id", existing.id).not("status", "in", `(${DECIDED.join(",")})`).select("id");
       queueErr = error;
       if (!error && (!written || written.length === 0)) {

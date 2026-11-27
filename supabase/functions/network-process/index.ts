@@ -7,7 +7,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json, unauthorized } from "../_shared/auth.ts";
 import {
-  commentRules, cleanLanguage, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, numberedAsAsked, outageBatches, outageNext, outageState, readPost, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type Reading, type Review, type SenderFacts,
+  brokeOnSubject, commentRules, cleanLanguage, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, numberedAsAsked, outageBatches, outageNext, outageState, readPost, reviewComments, reviewUnavailable, triagePost, triageUnavailable, type PostKind, type Reading, type Review, type SenderFacts,
 } from "../_shared/comment-quality.ts";
 import {
   callClaude, cleanComment, icpBrief, type Icp, matchesExclusion, modelFast, modelWriter, parseJsonArray, parseWriterReply,
@@ -121,7 +121,7 @@ async function writeComments(
     `Post language: ${languageLine(d.language)}`,
     `Signal: ${d.signal}${d.reason ? ` (${d.reason})` : ""}`,
     `Post:\n${String(d.post.post_text).slice(0, 2000)}`,
-    retry ? `Your previous draft was REJECTED: "${retry[idx].previous}"\nWhy: ${retry[idx].feedback}\nWrite a better one or skip.` : "",
+    retry ? `Your previous draft was REJECTED${retry[idx].previous ? `: "${retry[idx].previous}"` : "."}\nWhy: ${retry[idx].feedback}\nWrite a better one or skip.` : "",
   ].filter(Boolean).join("\n")).join("\n=====\n");
   const system = `${commentRules(facts, kind, topic, need, reading)}
 
@@ -140,46 +140,53 @@ Reply ONLY with a JSON array, one entry per post: [{"index": n, "skip": false, "
 }
 
 type DraftInput = { post: any; signal: string; reason: string; language?: string };
-type Drafted = { draft: { comment: string; skip: string | null }; rev: Review; down: boolean; good: boolean; notes: unknown };
+type Drafted = { draft: { comment: string; skip: string | null }; rev: Review; down: "" | "reading" | "review"; good: boolean; notes: unknown; subject: string };
+/** Posts drafted side by side. Each one is still read, written and reviewed on its own. */
+const DRAFTS_AT_ONCE = 4;
 
 /**
  * One post, start to finish: the post is read first (what it is about, which detail to answer, which of
  * the sender's notes bear on it), then written and reviewed. A rejected draft is written once more with
- * none of the sender's subject notes. `down` means the review could not be read: no decision.
+ * none of the sender's subject notes, when it was rejected for what it was about. `down` names a step
+ * (reading the post, the review) that could not be read: that is an outage, so no decision is made.
  * Throws when the writer cannot be reached; the caller counts the try.
  */
 async function draftPost(d: DraftInput, facts: SenderFacts, kind: PostKind, topic: string, need: string): Promise<Drafted> {
   const text = String(d.post.post_text);
   // A milestone gets a congratulation: there is no subject to pick notes for.
-  const reading = kind === "milestone" ? null : await readPost(text, { name: d.post.author_name, title: d.post.author_headline }, facts);
+  const reading = kind === "milestone" ? null : await readPost(text, { name: d.post.author_name, title: d.post.author_headline }, facts, need);
+  const down = (step: "reading" | "review"): Drafted => ({ draft: { comment: "", skip: null }, rev: { ok: false, reason: "" }, down: step, good: false, notes: null, subject: "" });
+  if (reading && !reading.available) return down("reading");
   const own = reading ? factsForPost(facts, reading) : facts;
   const bare = reading ? factsForPost(facts, reading, false) : facts;
   const reviewOf = (comment: string, f: SenderFacts) =>
     reviewComments([{ post: text, author: d.post.author_name, comment, language: d.language, reading }], f, kind);
   let attempts = 1;
   let withoutNotes = false;
-  const down = (): Drafted => ({ draft: { comment: "", skip: null }, rev: { ok: false, reason: "" }, down: true, good: false, notes: null });
 
   let [draft] = await writeComments([d], own, null, kind, topic, need, reading);
   let rev: Review = { ok: false, reason: draft.skip || "" };
   if (!draft.skip) {
     [rev] = await reviewOf(draft.comment, own);
-    if (reviewUnavailable(rev)) return down();
+    if (reviewUnavailable(rev)) return down("review");
     if (!rev.ok) {
       attempts = 2;
-      withoutNotes = !!reading;
-      const [second] = await writeComments([d], bare, [{ previous: draft.comment, feedback: rev.reason }], kind, topic, need, reading);
+      // Rejected for what it was about: the second attempt gets none of the subject notes, and is not shown
+      // the first draft (which carried them). Rejected for wording: the notes stay.
+      withoutNotes = !!reading && reading.notes.length > 0 && brokeOnSubject(rev);
+      const facts2 = withoutNotes ? bare : own;
+      const [second] = await writeComments([d], facts2, [{ previous: withoutNotes ? "" : draft.comment, feedback: rev.reason }], kind, topic, need, reading);
       draft = second;
       if (second.skip) rev = { ok: false, reason: second.skip };
       else {
-        [rev] = await reviewOf(second.comment, bare);
-        if (reviewUnavailable(rev)) return down();
+        [rev] = await reviewOf(second.comment, facts2);
+        if (reviewUnavailable(rev)) return down("review");
       }
     }
   }
   const good = !draft.skip && rev.ok && !isSkip(draft.comment);
   const outcome = good ? "drafted" : `skipped: ${(draft.skip || rev.reason || "nothing specific to add").slice(0, 160)}`;
-  return { draft, rev, down: false, good, notes: draftNotes(facts, reading, { attempts, withoutNotes, outcome }) };
+  return { draft, rev, down: "", good, notes: draftNotes(facts, reading, { attempts, withoutNotes, outcome }), subject: reading?.subject || "" };
 }
 
 async function processPosts(supabase: Supa, userId: string, icps: Map<string, Icp>) {
@@ -243,11 +250,14 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
       const triage = await triagePost(String(p.post_text), { name: p.author_name, title: p.author_headline }, facts);
       if (triageUnavailable(triage)) { await tryLater(p, "triage"); continue; }
       if (triage.kind === "off_topic") { await ignore(`Off topic: ${triage.reason}`); kbSkipped++; continue; }
-      const item = { post: p, signal: triage.kind, reason: triage.topic || "", language: triage.language };
+      // The subject the triage matched is not handed to the writer: the post's own subject, as read, leads.
+      const item = { post: p, signal: triage.kind, reason: "", language: triage.language };
       const topic = triage.topic || "one of the subjects listed above";
       const res = await draftPost(item, facts, triage.kind, topic, triage.signalReason);
-      if (res.down) { await tryLater(p, "review"); continue; }
+      if (res.down) { await tryLater(p, res.down); continue; }
       const { draft, rev } = res;
+      // Shown beside the draft: what the post is about, as read, and not the subject the triage matched.
+      const about = triage.kind === "milestone" ? "Milestone of a contact" : (res.subject ? `Post about: ${res.subject}` : `Your subject: ${triage.topic || "one of your subjects"}`).slice(0, 200);
       if (res.good) {
         await supabase.from("monitored_posts").update({
           suggested_comment: draft.comment, status: "pending", last_error: null, draft_notes: res.notes,
@@ -255,13 +265,13 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
           signal_type: triage.signal === "opportunity" ? "business_opportunity" : triage.signal === "pain" ? "pain_point"
             : triage.kind === "milestone" ? "milestone" : "relationship",
           ...(triage.signal !== "none" ? { signal_reason: triage.signalReason, priority: triage.signal === "opportunity" ? 95 : 90 } : {}),
-          fit_reason: triage.kind === "milestone" ? "Milestone of a contact" : `Your subject: ${triage.topic || "one of your subjects"}`.slice(0, 200),
+          fit_reason: about,
         }).eq("id", p.id).eq("status", "new");
         kbDrafted++;
       } else {
         await supabase.from("monitored_posts").update({
           status: "ignored", last_error: `quality skip: ${(draft.skip || rev.reason || "nothing specific to add").slice(0, 200)}`, draft_notes: res.notes,
-          fit_reason: triage.kind === "milestone" ? "Milestone of a contact" : `Your subject: ${triage.topic || ""}`.slice(0, 200),
+          fit_reason: about,
         }).eq("id", p.id).eq("status", "new");
         kbSkipped++;
       }
@@ -368,24 +378,28 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
   // notes → otherwise the post is skipped (status 'ignored').
   let drafted = kbDrafted;
   let skipped = kbSkipped;
-  for (const d of toDraft) {
-    let res: Drafted;
-    try {
-      res = await draftPost(d, facts, "on_topic", "", "");
-    } catch (e) {
-      console.error("comment drafting failed:", e instanceof Error ? e.message : e);
+  for (let i = 0; i < toDraft.length; i += DRAFTS_AT_ONCE) {
+    const group = toDraft.slice(i, i + DRAFTS_AT_ONCE);
+    // A post that fails does not take the others in its group down: each result stands alone.
+    const results = await Promise.all(group.map((d) =>
+      draftPost(d, facts, "on_topic", "", "").catch((e) => {
+        console.error("comment drafting failed:", e instanceof Error ? e.message : e);
+        return null;
+      })));
+    for (let k = 0; k < group.length; k++) {
+      const d = group[k];
+      const res = results[k];
       // The post stays 'new' with its classification; the next run retries the draft, a counted number of times.
-      await tryLater(d.post, "drafting");
-      continue;
+      if (!res) { await tryLater(d.post, "drafting"); continue; }
+      if (res.down) { await tryLater(d.post, res.down); continue; }
+      const update = res.good
+        ? { suggested_comment: res.draft.comment, status: "pending", last_error: null, draft_notes: res.notes }
+        : { status: "ignored", last_error: `quality skip: ${(res.draft.skip || res.rev.reason || "nothing specific to add").slice(0, 200)}`, draft_notes: res.notes };
+      const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", d.post.id).eq("status", "new");
+      if (upErr) console.error("draft save failed:", upErr);
+      else if (res.good) drafted++;
+      else skipped++;
     }
-    if (res.down) { await tryLater(d.post, "review"); continue; }
-    const update = res.good
-      ? { suggested_comment: res.draft.comment, status: "pending", last_error: null, draft_notes: res.notes }
-      : { status: "ignored", last_error: `quality skip: ${(res.draft.skip || res.rev.reason || "nothing specific to add").slice(0, 200)}`, draft_notes: res.notes };
-    const { error: upErr } = await supabase.from("monitored_posts").update(update).eq("id", d.post.id).eq("status", "new");
-    if (upErr) console.error("draft save failed:", upErr);
-    else if (res.good) drafted++;
-    else skipped++;
   }
   return { classified, drafted, skipped_for_quality: skipped, waiting_for_retry: waiting };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  commentRules, draftNotes, factsForPost, readEditVerdict, readReading, splitNotes, type Reading, type SenderFacts,
+  brokeOnSubject, commentRules, draftNotes, factsForPost, readEditVerdict, readPick, readSubject, readVerdicts, splitNotes, type Reading, type SenderFacts,
 } from '../../supabase/functions/_shared/comment-quality.ts';
 
 // The case that started this: a post about connecting control systems that mentions "3 million assets"
@@ -27,27 +27,68 @@ describe('splitNotes', () => {
     expect(notes).toHaveLength(4);
     expect(notes[1]).toMatch(/^Asset management/);
   });
+  it('takes one note per line when there is no blank line, as in the form example', () => {
+    const example = 'Two or three sentences per subject, in your own words.\nCash flow: most small manufacturers run out of cash while growing, not while shrinking.\nField technicians: people leave over the schedule more often than over the pay.';
+    const notes = splitNotes(example);
+    expect(notes).toHaveLength(3);
+    expect(notes[2]).toMatch(/^Field technicians/);
+  });
+  it('reads a bullet list as notes', () => {
+    expect(splitNotes('- Pricing: discounts train customers to wait.\n- Hiring: the schedule matters more than the pay.')).toEqual([
+      'Pricing: discounts train customers to wait.', 'Hiring: the schedule matters more than the pay.',
+    ]);
+  });
+  it('keeps a very short paragraph by joining it to the note before it', () => {
+    const notes = splitNotes('My voice: short and direct, one point per comment.\n\nNo emojis.');
+    expect(notes).toEqual(['My voice: short and direct, one point per comment. No emojis.']);
+  });
+  it('keeps more than fourteen notes', () => {
+    const many = Array.from({ length: 20 }, (_, i) => `Subject ${i}: one thing I have seen about it.`).join('\n\n');
+    expect(splitNotes(many)).toHaveLength(20);
+  });
   it('gives nothing for empty text and ignores stray blank lines', () => {
     expect(splitNotes(null)).toEqual([]);
     expect(splitNotes('\n\n   \n\nOnly one real note here.\n\n\n')).toEqual(['Only one real note here.']);
   });
 });
 
-describe('readReading', () => {
+describe('reading a post', () => {
+  it('is not a reading without a subject', () => {
+    for (const bad of [null, 'text', {}, { subject: '  ', detail: 'x' }]) expect(readSubject(bad)).toBeNull();
+    expect(readSubject({ subject: 'a utility connecting its control systems', plans: 'AI forecasting' })?.plans).toBe('AI forecasting');
+  });
   it('keeps only indexes of notes that exist, once each', () => {
-    const r = readReading({ subject: 's', notes: [1, 1, 9, -1, 2.5, '0'], voice: [3] }, 4);
+    const r = readPick({ notes: [1, 1, 9, -1, 2.5, '0'], voice: [3] }, 4)!;
     expect(r.notes).toEqual([1]);
     expect(r.voice).toEqual([3]);
   });
   it('never counts a voice note as knowledge', () => {
-    expect(readReading({ subject: 's', notes: [2, 3], voice: [3] }, 4).notes).toEqual([2]);
+    expect(readPick({ notes: [2, 3], voice: [3] }, 4)!.notes).toEqual([2]);
   });
-  it('is unavailable, with no notes, when the reply has no subject', () => {
-    for (const bad of [null, 'text', {}, { subject: '  ', notes: [1] }]) {
-      const r = readReading(bad, 4);
-      expect(r.available).toBe(false);
-      expect(r.notes).toEqual([]);
-    }
+  it('cannot pass every note along, as knowledge or as voice', () => {
+    const all = [0, 1, 2, 3, 4, 5, 6, 7];
+    expect(readPick({ notes: all, voice: [] }, 8)!.notes).toHaveLength(3);
+    const r = readPick({ notes: [], voice: all }, 8)!;
+    expect(r.voice).toHaveLength(3);
+  });
+  it('treats a reply that is not an object as unreadable', () => {
+    for (const bad of [null, 'text', [1, 2]]) expect(readPick(bad, 4)).toBeNull();
+  });
+});
+
+describe('which rejection drops the notes on the second attempt', () => {
+  it('reads the rule the reviewer named', () => {
+    const [v] = readVerdicts([{ index: 0, ok: false, rule: 9, reason: 'another subject' }], 1);
+    expect(v).toEqual({ ok: false, reason: 'another subject', rule: 9 });
+    expect(readVerdicts([{ index: 0, ok: false, rule: 'nine', reason: 'x' }], 1)[0].rule).toBeUndefined();
+  });
+  it('drops them when the draft was about the wrong thing', () => {
+    for (const rule of [4, 9, 11, 12, 13, 14]) expect(brokeOnSubject({ ok: false, reason: 'x', rule })).toBe(true);
+  });
+  it('keeps them when the problem was wording, or when no rule was named', () => {
+    for (const rule of [1, 2, 3, 5, 6, 7, 8, 10]) expect(brokeOnSubject({ ok: false, reason: 'x', rule })).toBe(false);
+    expect(brokeOnSubject({ ok: false, reason: 'no em dashes' })).toBe(false);
+    expect(brokeOnSubject({ ok: true, reason: '' })).toBe(false);
   });
 });
 
@@ -81,11 +122,9 @@ describe('the writer only gets the notes picked for the post', () => {
     // The old lens told the writer to write from the matched subject. It must not come back.
     expect(prompt).not.toMatch(/Write from that\s+knowledge/);
   });
-  it('gives no notes at all when the post could not be read', () => {
-    const r = readReading(null, 4);
-    const f = factsForPost(FACTS, r);
-    expect(f.views).toBe('');
-    expect(commentRules(f, 'on_topic', 'asset management', '', r)).not.toMatch(/consequence of failure/);
+  it('keeps the list of subjects out of the prompt for one post', () => {
+    const r = reading();
+    expect(commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r)).not.toMatch(/Subjects they have something to say about/);
   });
 });
 

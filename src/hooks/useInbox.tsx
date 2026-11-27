@@ -41,7 +41,9 @@ export type InboxItem = {
 
 export type DraftDiagnostics = {
   subject?: string; intent?: string; detail?: string; plans?: string; why?: string;
-  notes_used?: string[]; notes_left?: string[]; attempts?: number; withoutNotes?: boolean; outcome?: string;
+  /** null for a milestone: a congratulation picks no notes. */
+  reading?: boolean | null;
+  notes_used?: string[]; notes_left?: string[]; voice_notes?: string[]; attempts?: number; withoutNotes?: boolean; outcome?: string;
 };
 
 const SIGNAL_LABEL: Record<string, string> = {
