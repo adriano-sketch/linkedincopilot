@@ -1179,9 +1179,9 @@ const queueProcessor = {
         console.error(`[QueueProcessor] Failed to report failure:`, reportErr.message);
       }
     } finally {
-      this.isProcessing = false;
       // The action is over: the tabs it drove are the person's again.
       await lcQueueReleasesTabs();
+      this.isProcessing = false;
     }
   },
 
@@ -1968,10 +1968,12 @@ const LC_MARKER_TTL_MS = 2 * 60 * 1000;
 // a tab it reuses may hold a note left from the person's click: neither may start the scroll-and-outline.
 // The mark is kept in session storage as well: the worker can be restarted in the middle of an action
 // and its memory is lost. It is taken off when the action ends, so the tab is the person's again.
+// The mark is released when the action ends; this is only the limit for one that never reports its end.
+const LC_QUEUE_MARK_MS = 10 * 60 * 1000;
 const lcQueueTabs = new Map(); // tab id → until when (ms)
 async function lcQueueUsesTab(tabId) {
   if (typeof tabId !== 'number') return;
-  const until = Date.now() + LC_MARKER_TTL_MS;
+  const until = Date.now() + LC_QUEUE_MARK_MS;
   lcQueueTabs.set(tabId, until);
   try {
     await chrome.storage.session.set({ [`lcQueue:${tabId}`]: until });
