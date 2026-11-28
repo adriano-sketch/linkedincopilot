@@ -1087,6 +1087,7 @@ const queueProcessor = {
         const tab = (await chrome.tabs.query({ url: 'https://www.linkedin.com/*' }))[0];
         if (tab) {
           const redirectUrl = result.redirect.startsWith('http') ? result.redirect : `https://www.linkedin.com${result.redirect}`;
+          await lcQueueUsesTab(tab.id);
           await chrome.tabs.update(tab.id, { url: redirectUrl });
           await this.waitForTabLoad(tab.id);
           await this.sleep(4000);
@@ -1310,6 +1311,7 @@ const queueProcessor = {
       tab = tabs[0];
     } else {
       tab = await chrome.tabs.create({ url: 'https://www.linkedin.com/feed/', active: false });
+      await lcQueueUsesTab(tab.id);
       await this.waitForTabLoad(tab.id);
       await this.sleep(3000);
     }
@@ -1384,6 +1386,7 @@ const queueProcessor = {
         }
 
         console.log('[QueueProcessor] Navigating to:', targetUrl);
+        await lcQueueUsesTab(tab.id);
         await chrome.tabs.update(tab.id, { url: targetUrl });
         await this.waitForTabLoad(tab.id);
         await this.sleep(6000);
@@ -1436,7 +1439,8 @@ const queueProcessor = {
             // Not on a profile page at all — definitely wrong
             console.warn(`[QueueProcessor] NOT ON PROFILE PAGE after navigation! Expected /in/${expectedSlug} but got: ${postNavUrl}`);
             console.log('[QueueProcessor] Retrying navigation...');
-            await chrome.tabs.update(tab.id, { url: targetUrl });
+            await lcQueueUsesTab(tab.id);
+        await chrome.tabs.update(tab.id, { url: targetUrl });
             await this.waitForTabLoad(tab.id);
             await this.sleep(8000);
 
@@ -1459,7 +1463,8 @@ const queueProcessor = {
           if (postNavUrl.includes('/messaging/thread/') || postNavUrl.includes('/messaging/compose/')) {
             console.warn(`[QueueProcessor] CRITICAL: Tab is on messaging page after profile navigation! URL: ${postNavUrl}`);
             // Force navigate to profile
-            await chrome.tabs.update(tab.id, { url: targetUrl });
+            await lcQueueUsesTab(tab.id);
+        await chrome.tabs.update(tab.id, { url: targetUrl });
             await this.waitForTabLoad(tab.id);
             await this.sleep(8000);
             const forceTab = await chrome.tabs.get(tab.id);
@@ -1957,33 +1962,40 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // profile names) and the marker is gone before the content script can read it. So the marker is noted
 // here, from the address the tab was opened with, and the content script asks for it.
 const LC_MARKER_TTL_MS = 2 * 60 * 1000;
-const lcSlugOf = (pathOrUrl) => {
-  const m = String(pathOrUrl || '').match(/\/in\/([^/?#]+)\/recent-activity\//);
-  if (!m) return '';
-  try { return decodeURIComponent(m[1]).normalize('NFC').toLowerCase(); } catch (_) { return m[1].toLowerCase(); }
-};
+// Tabs the queue is driving. Its own navigations carry the same marker (it finds the post by itself), and
+// a tab it reuses may hold a note left from the person's click: neither may start the scroll-and-outline.
+const lcQueueTabs = new Map(); // tab id → until when (ms)
+async function lcQueueUsesTab(tabId) {
+  if (typeof tabId !== 'number') return;
+  lcQueueTabs.set(tabId, Date.now() + LC_MARKER_TTL_MS);
+  try { await chrome.storage.session.remove(`lcMarker:${tabId}`); } catch (_) { /* nothing noted */ }
+}
+const lcIsQueueTab = (tabId) => (lcQueueTabs.get(tabId) || 0) > Date.now();
+
 function lcNoteMarker(tabId, url) {
   if (typeof tabId !== 'number' || tabId < 0) return;
-  const m = String(url || '').match(/^https:\/\/www\.linkedin\.com\/in\/[^?#]+\/recent-activity\/[^#]*#lcpost=([^&#\s]+)/);
-  const slug = m ? lcSlugOf(url) : '';
-  if (!m || !slug) return;
-  chrome.storage.session.set({ [`lcMarker:${tabId}`]: { marker: m[1], slug, at: Date.now() } }).catch(() => {});
+  if (lcIsQueueTab(tabId)) return;
+  const m = String(url || '').match(/^https:\/\/(?:www\.)?linkedin\.com\/in\/[^?#]+\/recent-activity\/[^#]*#lcpost=([^&#\s]+)/);
+  if (!m) return;
+  chrome.storage.session.set({ [`lcMarker:${tabId}`]: { marker: m[1], at: Date.now() } }).catch(() => {});
 }
 chrome.tabs.onCreated.addListener((tab) => lcNoteMarker(tab.id, tab.pendingUrl || tab.url));
 chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.url) lcNoteMarker(tabId, info.url); });
-chrome.tabs.onRemoved.addListener((tabId) => { chrome.storage.session.remove(`lcMarker:${tabId}`).catch(() => {}); });
+chrome.tabs.onRemoved.addListener((tabId) => { lcQueueTabs.delete(tabId); chrome.storage.session.remove(`lcMarker:${tabId}`).catch(() => {}); });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'LC_POST_MARKER') {
-    // Only for the tab that asks, only for the same person's page, and only once and soon after.
+    // Only for the tab that asks, only on an activity page, only once and soon after, and never for a
+    // tab the queue is driving. The person's name in the address is not compared: LinkedIn sends old
+    // profile addresses to new ones, and the search itself only stops at a post whose text matches.
     const tabId = sender && sender.tab ? sender.tab.id : -1;
     const key = `lcMarker:${tabId}`;
     chrome.storage.session.get(key).then((got) => {
       const note = got && got[key];
-      const fits = note && Date.now() - note.at < LC_MARKER_TTL_MS && note.slug && note.slug === lcSlugOf(message.path);
+      const fits = note && !lcIsQueueTab(tabId) && Date.now() - note.at < LC_MARKER_TTL_MS && /\/recent-activity\//.test(String(message.path || ''));
       if (note) chrome.storage.session.remove(key).catch(() => {});
-      sendResponse({ marker: fits ? note.marker : '' });
-    }).catch(() => sendResponse({ marker: '' }));
+      sendResponse({ marker: fits ? note.marker : '', queue: lcIsQueueTab(tabId) });
+    }).catch(() => sendResponse({ marker: '', queue: lcIsQueueTab(tabId) }));
     return true;
   }
   if (message.type === 'LOGIN') {

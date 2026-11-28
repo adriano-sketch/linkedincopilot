@@ -1413,6 +1413,24 @@ function detectLinkedInLimitBanner() {
 // How far the search for the post goes: a number of steps down the page, and a time limit.
 const LC_SHOW_POST_STEPS = 16;
 const LC_SHOW_POST_MS = 25000;
+/**
+ * What the background knows about this tab: the marker it noted from the address the tab was opened
+ * with ('' when none), and whether the queue is driving the tab. Never throws.
+ */
+function lcAskPostMarker() {
+  return new Promise((resolve) => {
+    const none = { marker: '', queue: false };
+    try {
+      chrome.runtime.sendMessage({ type: 'LC_POST_MARKER', path: window.location.pathname }, (reply) => {
+        void chrome.runtime.lastError;
+        resolve(reply ? { marker: typeof reply.marker === 'string' ? reply.marker : '', queue: reply.queue === true } : none);
+      });
+    } catch (_) { resolve(none); }
+  });
+}
+// How far the search for the post goes: a number of steps down the page, and a time limit.
+const LC_SHOW_POST_STEPS = 16;
+const LC_SHOW_POST_MS = 25000;
 /** The marker the background noted for this tab, or ''. Never throws: without it there is simply nothing to show. */
 function lcAskPostMarker() {
   return new Promise((resolve) => {
@@ -1431,17 +1449,14 @@ async function lcShowLinkedPost() {
   const url = window.location.href;
   if (!/\/recent-activity\//.test(window.location.pathname)) return;
   let marker = url.match(/#lcpost=([^&]+)/);
-  if (!marker) {
-    // LinkedIn may have rewritten the address and dropped the marker before this script ran. The
-    // background noted it from the address the tab was opened with.
-    const noted = await lcAskPostMarker();
-    if (noted) marker = [`#lcpost=${noted}`, noted];
-  }
-  else {
-    // The marker is in the address: the background's note for this tab is no longer needed. Asking
-    // for it uses it up, so it cannot show the post again on a later page in this tab.
-    lcAskPostMarker();
-  }
+  // Asked every time: it uses up the background's note for this tab (so it cannot show the post again
+  // on a later page), and it says whether the queue is driving the tab. The queue finds its post by
+  // itself: this must not scroll and outline under it.
+  const noted = await lcAskPostMarker();
+  if (noted.queue) return;
+  // LinkedIn may have rewritten the address and dropped the marker before this script ran. The
+  // background noted it from the address the tab was opened with.
+  if (!marker && noted.marker) marker = [`#lcpost=${noted.marker}`, noted.marker];
   if (!marker) return;
   const shown = `${window.location.pathname}|${marker[1]}`;
   if (window.__olanovoShownPost === shown) return;
