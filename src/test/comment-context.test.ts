@@ -87,6 +87,9 @@ describe('reading a post', () => {
     expect(readPick({ ...base, use: [3, 0] }, 4)!.notes).toEqual([3, 0]);
     expect(readPick({ ...base, use: [1, 2] }, 4)!.notes).toEqual([2, 0]);
     expect(readPick({ ...base, use: 'x' }, 4)!.notes).toEqual([0, 2]);
+    expect(readPick({ ...base, use: [3, 3, 0] }, 4)!.notes).toEqual([3, 0]);
+    const withVoice = checks([[0, 'voice', true], [1, 'subject', true]]);
+    expect(readPick({ ...withVoice, use: [0, 1] }, 2)!.notes).toEqual([1]);
   });
   it('cannot pass every note along', () => {
     const all = checks([0, 1, 2, 3, 4, 5].map((n) => [n, 'subject', true] as [number, 'subject', boolean]));

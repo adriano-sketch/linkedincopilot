@@ -190,7 +190,14 @@ async function draftPost(d: DraftInput, facts: SenderFacts, kind: PostKind, topi
   return { draft, rev, down: "", good, notes: draftNotes(facts, reading, { attempts, withoutNotes: withoutNotes || milestone, outcome }), subject: milestone ? "" : reading.subject };
 }
 
+/**
+ * How long one run keeps starting new drafts. A draft is several model calls in a row; a run that is
+ * cut off mid-draft pays for calls whose result is lost. Posts not reached stay 'new' for the next run.
+ */
+const DRAFTING_BUDGET_MS = 120_000;
+
 async function processPosts(supabase: Supa, userId: string, icps: Map<string, Icp>) {
+  const deadline = Date.now() + DRAFTING_BUDGET_MS;
   const { data: fetched, error } = await supabase
     .from("monitored_posts")
     .select("id, icp_id, campaign_lead_id, post_urn, author_name, author_headline, author_degree, post_text, reactions_count, comments_count, icp_fit, signal_type, signal_reason, last_error")
@@ -241,6 +248,7 @@ async function processPosts(supabase: Supa, userId: string, icps: Map<string, Ic
     waiting++;
   };
   for (const p of posts.filter(isMyNetwork)) {
+    if (Date.now() > deadline) break;
     classified++;
     const ignore = (why: string) => supabase.from("monitored_posts").update({
       status: "ignored", signal_type: "ignore", fit_reason: why.slice(0, 200),
@@ -403,6 +411,7 @@ Reply ONLY with a JSON array: [{"index": n, "icp_fit": true|false, "fit_reason":
     else skipped++;
   };
   for (let i = 0; i < toDraft.length; i += DRAFTS_AT_ONCE) {
+    if (Date.now() > deadline) break;
     await Promise.all(toDraft.slice(i, i + DRAFTS_AT_ONCE).map((d) => draftAndSave(d).catch((e) => console.error("draft step failed:", e instanceof Error ? e.message : e))));
   }
   return { classified, drafted, skipped_for_quality: skipped, waiting_for_retry: waiting };

@@ -140,7 +140,7 @@ serve(async (req) => {
         topics: k.comment_topics, avoid: k.comment_avoid, examples: k.comment_examples, views: k.comment_views,
       };
       // Which model answered each step, reported by the call itself (no shared state between requests).
-      const models: { triage: string | null; writer: string | null; reviewer: string | null } = { triage: null, writer: null, reviewer: null };
+      const models: { triage: string | null; reading: string | null; writer: string | null; reviewer: string | null } = { triage: null, reading: null, writer: null, reviewer: null };
       const t = await triagePost(body.triage_only.slice(0, 2000), { name: body.author || null, title: body.author_title || null }, f, (m) => { models.triage = m; });
       // triagePost answers "off_topic / triage unavailable" when the model call fails (so that no comment is
       // written). Here that must not be read as a verdict.
@@ -153,7 +153,7 @@ serve(async (req) => {
         const postText = body.triage_only.slice(0, 2000);
         const author = typeof body.author === "string" ? body.author : "";
         const authorTitle = typeof body.author_title === "string" ? body.author_title : "";
-        const reading = await readPost(postText, { name: author, title: authorTitle }, f, t.signalReason);
+        const reading = await readPost(postText, { name: author, title: authorTitle }, f, t.signalReason, (m) => { models.reading = m; });
         if (!reading.available) return json({ success: false, unavailable: "reading", triage: t }, 503);
         const own = factsForPost(f, reading, t.kind !== "milestone");
         const d = await writeDraft({

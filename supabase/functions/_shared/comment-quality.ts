@@ -510,6 +510,7 @@ export function readPick(v: unknown, noteCount: number): Pick<Reading, "notes" |
   // Every note must be judged: a skipped one could be a voice note, and its limits would be lost unnoticed.
   if (seen.size !== noteCount) return null;
   // "use" orders the fitting notes, best first. It can only reorder notes whose own verdict says they fit.
+  // A fitting note that "use" leaves out still follows the ranked ones, in note order.
   const ranked = (Array.isArray(o.use) ? o.use : []).filter((n): n is number => typeof n === "number" && notes.includes(n));
   const ordered = [...new Set([...ranked, ...notes])];
   return { notes: ordered.slice(0, MAX_PICKED), voice: voice.slice(0, MAX_VOICE), why: typeof o.why === "string" ? norm(o.why).slice(0, 220) : "" };
