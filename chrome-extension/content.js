@@ -1410,6 +1410,9 @@ function detectLinkedInLimitBanner() {
 // activity page with #lcpost=<the post's opening words>. Left there, the person has to scroll and
 // look for the post. This takes them to it: the page is scrolled to the post and it is outlined for a
 // few seconds. Nothing is clicked and nothing is written.
+// How far the search for the post goes: a number of steps down the page, and a time limit.
+const LC_SHOW_POST_STEPS = 16;
+const LC_SHOW_POST_MS = 25000;
 async function lcShowLinkedPost() {
   if (window.top !== window) return;
   // The address is read once: if LinkedIn drops the marker a moment later, this must not go on to
@@ -1435,24 +1438,62 @@ async function lcShowLinkedPost() {
     // The list arrives after the page: give it a moment before the first look.
     await sleep(1500);
     let card = null;
-    for (let attempt = 0; attempt < 7 && !stop && !retired(); attempt++) {
+    // The list loads a few posts at a time, and the next ones only arrive after the page reaches the
+    // end of what is there. So the search goes on step by step, and when it is at the bottom with
+    // nothing new it waits for the next posts instead of giving up. A post found through search can
+    // be a week old, well below the first ones.
+    const started = Date.now();
+    const exact = (cards) => cards.find((c) => c.fingerprint && c.fingerprint.startsWith(wanted)) || null;
+    // Posts that share the marker's first 40 characters, noted at every step: the page may drop a post
+    // once it has scrolled past it, so they cannot be looked for only at the end.
+    const near = new Set();
+    let lastSig = '';
+    let waits = 0;
+    let lastCards = [];
+    for (let step = 0; step < LC_SHOW_POST_STEPS && !stop && !retired() && Date.now() - started < LC_SHOW_POST_MS; step++) {
       // The post's text must begin with the whole marker. A shorter post that merely shares its
       // opening words with the marker is a different post.
-      const cards = lcCollectActivityCards();
-      card = cards.find((c) => c.fingerprint && c.fingerprint.startsWith(wanted)) || null;
-      if (!card && attempt === 6 && wanted.length > 40) {
-        // Last look. A long marker can differ from the card near its end (a counter read as text, an
-        // edit, the text collapsed). Its first 40 characters decide, but only when one post has them.
-        const close = cards.filter((c) => c.fingerprint && c.fingerprint.startsWith(wanted.slice(0, 40)));
-        // An older page layout lists the same post twice, a wrapper and the element inside it: the
-        // wrappers are set aside. Two separate posts with the same opening stay two, and no choice
-        // is made between them.
-        const posts = close.filter((c) => !close.some((o) => o !== c && c.el.contains(o.el)));
-        if (posts.length === 1) card = posts[0];
+      lastCards = lcCollectActivityCards();
+      card = exact(lastCards);
+      if (card) break;
+      if (wanted.length > 40) {
+        for (const c of lastCards) if (c.fingerprint && c.fingerprint.startsWith(wanted.slice(0, 40))) near.add(c.el);
       }
-      if (card || attempt === 6) break;
-      window.scrollBy(0, 700);
-      await sleep(1100);
+      const height = document.documentElement.scrollHeight;
+      const atBottom = window.innerHeight + window.scrollY >= height - 300;
+      // Progress is a longer page or a different last post. The number of posts in the page is not: the
+      // page can drop the ones above while new ones arrive.
+      const last = lastCards[lastCards.length - 1];
+      const sig = `${height}|${last ? last.fingerprint : ''}`;
+      if (atBottom && sig === lastSig) {
+        // At the end, and nothing arrived since the last look: go to the very end (some pages only
+        // load more once it is in view) and wait, a few times.
+        if (++waits > 3) break;
+        window.scrollTo(0, height);
+        await sleep(1300 + Math.random() * 500);
+        continue;
+      }
+      waits = 0;
+      lastSig = sig;
+      window.scrollBy(0, Math.max(500, Math.round(window.innerHeight * (0.7 + Math.random() * 0.2))));
+      await sleep(900 + Math.random() * 500);
+    }
+    if (!card && !stop && !retired() && near.size) {
+      // A long marker can differ from the card near its end (a counter read as text, an edit, the text
+      // collapsed). Its first 40 characters decide, but only when one post still in the page has them.
+      // An older layout lists the same post twice, a wrapper and the element inside it: the wrappers
+      // are set aside. Two separate posts with the same opening stay two, and no choice is made.
+      const els = [...near].filter((e) => e.isConnected);
+      const posts = els.filter((e) => !els.some((o) => o !== e && e.contains(o)));
+      if (posts.length === 1) card = { el: posts[0] };
+    }
+    if (!card && !stop && !retired()) {
+      // Not found. Left in the console so the reason can be read: what was looked for and what the
+      // page showed. Nothing here leaves the browser.
+      console.debug('[Olanovo] post not found on this page', {
+        wanted, steps: LC_SHOW_POST_STEPS, scrollY: Math.round(window.scrollY), height: document.documentElement.scrollHeight,
+        cards: lastCards.map((c) => [c.ageLabel, c.isRepost, (c.fingerprint || '').slice(0, 50)]),
+      });
     }
     if (retired()) return;
     if (!card || !card.el) {
