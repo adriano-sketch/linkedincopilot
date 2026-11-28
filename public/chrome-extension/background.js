@@ -2019,16 +2019,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const tabId = sender && sender.tab ? sender.tab.id : -1;
     const key = `lcMarker:${tabId}`;
     (async () => {
-      const queue = await lcIsQueueTab(tabId);
+      let note = null;
       try {
         const got = await chrome.storage.session.get(key);
-        const note = got && got[key];
-        const fits = note && !queue && Date.now() - note.at < LC_MARKER_TTL_MS && /\/recent-activity\//.test(String(message.path || ''));
+        note = got && got[key];
         if (note) chrome.storage.session.remove(key).catch(() => {});
-        sendResponse({ marker: fits ? note.marker : '', queue });
-      } catch (_) {
-        sendResponse({ marker: '', queue });
-      }
+      } catch (_) { /* no note */ }
+      // Decided last, with nothing awaited after the stored mark is read: the queue may have taken the
+      // tab while the note was being read. The mark in memory is looked at again in the same breath.
+      const stored = await lcIsQueueTab(tabId);
+      const queue = stored || (lcQueueTabs.get(tabId) || 0) > Date.now();
+      const fits = note && !queue && Date.now() - note.at < LC_MARKER_TTL_MS && /\/recent-activity\//.test(String(message.path || ''));
+      sendResponse({ marker: fits ? note.marker : '', queue });
     })();
     return true;
   }

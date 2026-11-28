@@ -1443,6 +1443,10 @@ async function lcShowLinkedPost() {
   if (noted.queue) return;
   // The page changed while the answer was on its way: the marker belongs to the page before.
   if (window.location.pathname !== pathname) return;
+  // So does a marker that was replaced by another one meanwhile: the newer search is the one to run.
+  // (A marker that simply disappeared is the case this lookup exists for, and goes on.)
+  const now = window.location.href.match(/#lcpost=([^&]+)/);
+  if (marker && now && now[1] !== marker[1]) return;
   // LinkedIn may have rewritten the address and dropped the marker before this script ran. The
   // background noted it from the address the tab was opened with.
   if (!marker && noted.marker) marker = [`#lcpost=${noted.marker}`, noted.marker];
@@ -1464,6 +1468,8 @@ async function lcShowLinkedPost() {
     if (wanted.length < 10) return;
     // The list arrives after the page: give it a moment before the first look.
     await sleep(1500);
+    // The queue may have taken this tab during the wait: then the page is its to move, not ours.
+    if (stop || retired() || (await lcAskPostMarker()).queue) return;
     let card = null;
     // The list loads a few posts at a time, and the next ones only arrive after the page reaches the
     // end of what is there. So the search goes on step by step, and when it is at the bottom with
