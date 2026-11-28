@@ -1428,20 +1428,6 @@ function lcAskPostMarker() {
     } catch (_) { resolve(none); }
   });
 }
-// How far the search for the post goes: a number of steps down the page, and a time limit.
-const LC_SHOW_POST_STEPS = 16;
-const LC_SHOW_POST_MS = 25000;
-/** The marker the background noted for this tab, or ''. Never throws: without it there is simply nothing to show. */
-function lcAskPostMarker() {
-  return new Promise((resolve) => {
-    try {
-      chrome.runtime.sendMessage({ type: 'LC_POST_MARKER', path: window.location.pathname }, (reply) => {
-        void chrome.runtime.lastError;
-        resolve(reply && typeof reply.marker === 'string' ? reply.marker : '');
-      });
-    } catch (_) { resolve(''); }
-  });
-}
 async function lcShowLinkedPost() {
   if (window.top !== window) return;
   // The address is read once: if LinkedIn drops the marker a moment later, this must not go on to
