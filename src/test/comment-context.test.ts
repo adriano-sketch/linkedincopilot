@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readDiagnostics } from '@/hooks/useInbox';
 import {
-  brokeOnSubject, commentRules, draftNotes, factsForPost, readEditVerdict, readPick, readSubject, readVerdicts, splitNotes, type Reading, type SenderFacts,
+  brokeOnSubject, commentRules, localIssues, mustAsk, draftNotes, factsForPost, readEditVerdict, readPick, readSubject, readVerdicts, splitNotes, type Reading, type SenderFacts,
 } from '../../supabase/functions/_shared/comment-quality.ts';
 
 // The case that started this: a post about connecting control systems that mentions "3 million assets"
@@ -249,5 +249,55 @@ describe('review comments on the first version', () => {
     expect(readDiagnostics({ notes_used: 'Pricing', subject: 3, attempts: '2' })).toEqual({});
     expect(readDiagnostics({ notes_used: ['a', 1], subject: 's', attempts: 2 })).toMatchObject({ notes_used: ['a'], subject: 's', attempts: 2 });
     for (const bad of [null, 'x', [1]]) expect(readDiagnostics(bad)).toBeNull();
+  });
+});
+
+describe('what the writer is asked for', () => {
+  it('asks for a specific question about a detail when no note bears on the post', () => {
+    const r = reading();
+    const prompt = commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r);
+    expect(prompt).toMatch(/ask ONE specific question about/);
+    expect(prompt).not.toMatch(/STATE, do not ask/);
+  });
+  it('asks for a statement when a note bears on the post', () => {
+    const r = reading({ notes: [1] });
+    const prompt = commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r);
+    expect(prompt).toMatch(/STATE, do not ask/);
+    expect(prompt).not.toMatch(/ask ONE specific question about/);
+  });
+  it('never lets a note be told as something the sender did', () => {
+    const r = reading({ notes: [1] });
+    expect(commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r)).toMatch(/Never turn it into something they did/);
+  });
+});
+
+describe('asking instead of stating', () => {
+  const OWN = 'What caught my attention was the reported 10-20% improvement in energy efficiency at the wastewater plants. Which change in day-to-day process control made the biggest difference, and did the gains hold as influent loads changed?';
+  it('lets through a comment that names a detail and asks about it', () => {
+    expect(localIssues(OWN)).toEqual([]);
+  });
+  it('still stops a bare question', () => {
+    expect(localIssues('Which change in process control made the biggest difference?').join(' ')).toMatch(/only a question/);
+  });
+  it('asks only when notes were picked, none fits, and the author shows no need', () => {
+    const r = reading();
+    expect(mustAsk(factsForPost(FACTS, r))).toBe(true);
+    expect(mustAsk(factsForPost(FACTS, reading({ notes: [1] })))).toBe(false);
+    expect(mustAsk(factsForPost(FACTS, reading({ notes: [1] }), false))).toBe(true);
+    expect(mustAsk(FACTS)).toBe(false);
+    expect(mustAsk(factsForPost(FACTS, r), 'they are looking for a way to rank pipes')).toBe(false);
+  });
+  it('gives one consistent instruction in each case', () => {
+    const r = reading();
+    const asking = commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r);
+    expect(asking).toMatch(/one sharp question about a detail/);
+    expect(asking).not.toMatch(/Otherwise add a precise consideration/);
+    expect(asking).not.toMatch(/A consideration ABOUT that subject is welcome/);
+    const need = commentRules(factsForPost(FACTS, r), 'on_topic', '', 'they are looking for a way to rank pipes', r);
+    expect(need).toMatch(/STATE, do not ask/);
+    expect(need).toMatch(/as a peer in the field/);
+  });
+  it('leaves the congratulation rules alone', () => {
+    expect(commentRules(factsForPost(FACTS, reading(), false), 'milestone')).not.toMatch(/ONE specific question/);
   });
 });
