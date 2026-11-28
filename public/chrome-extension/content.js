@@ -1413,16 +1413,47 @@ function detectLinkedInLimitBanner() {
 // How far the search for the post goes: a number of steps down the page, and a time limit.
 const LC_SHOW_POST_STEPS = 16;
 const LC_SHOW_POST_MS = 25000;
+/**
+ * What the background knows about this tab: the marker it noted from the address the tab was opened
+ * with ('' when none), and whether the queue is driving the tab. Never throws.
+ */
+function lcAskPostMarker() {
+  return new Promise((resolve) => {
+    const none = { marker: '', queue: false };
+    try {
+      chrome.runtime.sendMessage({ type: 'LC_POST_MARKER', path: window.location.pathname }, (reply) => {
+        void chrome.runtime.lastError;
+        resolve(reply ? { marker: typeof reply.marker === 'string' ? reply.marker : '', queue: reply.queue === true } : none);
+      });
+    } catch (_) { resolve(none); }
+  });
+}
 async function lcShowLinkedPost() {
   if (window.top !== window) return;
   // The address is read once: if LinkedIn drops the marker a moment later, this must not go on to
   // outline some other post.
   const url = window.location.href;
-  if (!/\/recent-activity\//.test(window.location.pathname)) return;
-  const marker = url.match(/#lcpost=([^&]+)/);
+  const pathname = window.location.pathname;
+  if (!/\/recent-activity\//.test(pathname)) return;
+  let marker = url.match(/#lcpost=([^&]+)/);
+  // Asked every time: it uses up the background's note for this tab (so it cannot show the post again
+  // on a later page), and it says whether the queue is driving the tab. The queue finds its post by
+  // itself: this must not scroll and outline under it.
+  const noted = await lcAskPostMarker();
+  if (noted.queue) return;
+  // The page changed while the answer was on its way: the marker belongs to the page before.
+  if (window.location.pathname !== pathname) return;
+  // So does a marker that was replaced by another one meanwhile: the newer search is the one to run.
+  // (A marker that simply disappeared is the case this lookup exists for, and goes on.)
+  const now = window.location.href.match(/#lcpost=([^&]+)/);
+  if (marker && now && now[1] !== marker[1]) return;
+  // LinkedIn may have rewritten the address and dropped the marker before this script ran. The
+  // background noted it from the address the tab was opened with.
+  if (!marker && noted.marker) marker = [`#lcpost=${noted.marker}`, noted.marker];
   if (!marker) return;
-  if (window.__olanovoShownPost === url) return;
-  window.__olanovoShownPost = url;
+  const shown = `${pathname}|${marker[1]}`;
+  if (window.__olanovoShownPost === shown) return;
+  window.__olanovoShownPost = shown;
   // A newer search (the marker changed) retires this one: only the latest may move the page.
   const turn = (window.__olanovoPostSearch || 0) + 1;
   window.__olanovoPostSearch = turn;
@@ -1437,6 +1468,8 @@ async function lcShowLinkedPost() {
     if (wanted.length < 10) return;
     // The list arrives after the page: give it a moment before the first look.
     await sleep(1500);
+    // The queue may have taken this tab during the wait: then the page is its to move, not ours.
+    if (stop || retired() || (await lcAskPostMarker()).queue) return;
     let card = null;
     // The list loads a few posts at a time, and the next ones only arrive after the page reaches the
     // end of what is there. So the search goes on step by step, and when it is at the bottom with
