@@ -183,6 +183,12 @@ describe('review comments on the first version', () => {
   it('starts a new note at a labelled line even without a full stop before it', () => {
     expect(splitNotes('Pricing: offer annual plans\nHiring: give predictable shifts')).toEqual(['Pricing: offer annual plans', 'Hiring: give predictable shifts']);
   });
+  it('does not take a link, a time or a colon deep in a sentence for a label', () => {
+    for (const second of ['https://example.com/pricing has the table', '10:30 is when we ship', 'and the rule we follow is simple: never discount', 'Ratio 3:1 works best']) {
+      expect(splitNotes(`Pricing: offer annual plans\n${second}`)).toHaveLength(1);
+    }
+    expect(splitNotes('价格：年度方案更好\n招聘：排班要稳定')).toHaveLength(2);
+  });
   it('keeps an unlabelled continuation line with its paragraph', () => {
     expect(splitNotes('Pricing: offer annual plans\nand never discount in the last week')).toHaveLength(1);
   });

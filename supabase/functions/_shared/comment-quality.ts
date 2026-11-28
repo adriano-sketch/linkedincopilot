@@ -430,9 +430,9 @@ const MAX_VOICE = 3;
 export function splitNotes(views: string | null | undefined): string[] {
   const bullet = /^\s*[-*•]\s+/;
   const endsSentence = /[.!?。！？؟۔]["')\]]?$/;
-  // "Pricing: offer annual plans": a short label, a colon, then text. A new label is a new subject even
-  // when the line before it has no full stop.
-  const labelled = /^\s*[\p{L}\p{N}][^:.!?。：]{0,40}[:：]\s*\S/u;
+  // "Pricing: offer annual plans": a label of at most three words, a colon and a space, then text. A new
+  // label is a new subject even when the line before it has no full stop. A link or a time is not a label.
+  const labelled = /^\s*[\p{L}\p{N}][^\s:.!?。：,;]*(?:\s+[^\s:.!?。：,;]+){0,2}\s*(?::\s+|：\s*)\S/u;
   const parts: string[] = [];
   for (const block of String(views || "").split(/\n\s*\n/)) {
     let current = "";
