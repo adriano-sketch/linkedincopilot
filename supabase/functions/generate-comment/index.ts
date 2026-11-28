@@ -13,7 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  brokeOnSubject, SUBJECT_RETRY_FEEDBACK, commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
+  brokeOnSubject, mustAsk, SUBJECT_RETRY_FEEDBACK, commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
   triageUnavailable, type Reading, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
@@ -46,8 +46,16 @@ const COMMENT_VARIANTS = [
 // A "what about..." from a supplier under a CEO's post reads as a challenge, not as curiosity.
 const SENIOR_TITLE = /\b(ceo|coo|cfo|cto|cio|chief|president[ea]?|diretor[a]?(-presidente)?|director|vp|vice|superintendente|founder|fundador[a]?|owner|s[oó]ci[oa]|partner|head)\b/i;
 
-function pickVariant(leadId: string, authorTitle: string): typeof COMMENT_VARIANTS[0] {
-  const pool = SENIOR_TITLE.test(authorTitle) ? COMMENT_VARIANTS.filter((v) => v.key !== "respectful_challenge") : COMMENT_VARIANTS;
+/** Angles that ask. The other two state a consideration. */
+const ASKING = ["observation_question", "behind_the_number"];
+
+/**
+ * The angle for one draft. `asking` says which kind the rules call for on this attempt (a question when
+ * no note of the sender fits the post, a statement otherwise), so the angle never pulls against them.
+ */
+function pickVariant(leadId: string, authorTitle: string, asking: boolean): typeof COMMENT_VARIANTS[0] {
+  const kind = COMMENT_VARIANTS.filter((v) => ASKING.includes(v.key) === asking);
+  const pool = SENIOR_TITLE.test(authorTitle) ? kind.filter((v) => v.key !== "respectful_challenge") : kind;
   let hash = 0;
   for (let i = 0; i < leadId.length; i++) {
     hash = ((hash << 5) - hash + leadId.charCodeAt(i)) | 0;
@@ -359,9 +367,8 @@ serve(async (req) => {
       console.log(`generate-comment: lead ${campaign_lead_id} liked only (off topic: ${triage.reason})`);
       return json({ success: true, skipped: "off_topic", reason: triage.reason, lead_id: campaign_lead_id });
     }
-    const variant = triage.kind === "milestone"
-      ? { key: "milestone", hint: "" }
-      : pickVariant(campaign_lead_id, authorTitle);
+    // The angle is chosen per attempt, once it is known whether that attempt asks or states.
+    let variantKey = "milestone";
 
     // The comment follows the POST's language, never the campaign's.
     // The post is read first: what it is about, which detail to answer, and which of the sender's notes
@@ -382,7 +389,11 @@ serve(async (req) => {
       const bare = factsForPost(facts, reading, false);
       const own = milestone ? bare : factsForPost(facts, reading);
       const write = (f: SenderFacts, feedback: { previous: string; why: string } | null) =>
-        writeDraft({ facts: f, triage, postText, reading, author, authorTitle, authorCompany, hint: variant.hint, feedback });
+      {
+        const variant = milestone ? { key: "milestone", hint: "" } : pickVariant(campaign_lead_id, authorTitle, mustAsk(f, triage.signalReason));
+        variantKey = variant.key;
+        return writeDraft({ facts: f, triage, postText, reading, author, authorTitle, authorCompany, hint: variant.hint, feedback });
+      };
       const reviewOf = (comment: string, f: SenderFacts) =>
         reviewComments([{ post: postText, author, comment, language: triage.language, reading }], f, triage.kind);
       draft = await write(own, null);
@@ -414,7 +425,7 @@ serve(async (req) => {
     // Nothing worth saying on this post: no comment this cycle, the lead tries again with a newer post in 7 days.
     if (draft.skip || !draft.comment) {
       await restLead("comment_skipped_quality", {
-        reason: draft.skip || "empty", variant: variant.key, kind: triage.kind,
+        reason: draft.skip || "empty", variant: variantKey, kind: triage.kind,
         notes: draftNotes(facts, reading, { attempts, withoutNotes: withoutNotes || triage.kind === "milestone", outcome: `skipped: ${draft.skip || "empty"}` }),
       });
       console.log(`generate-comment: skipped lead ${campaign_lead_id} for quality (${draft.skip})`);
@@ -507,12 +518,12 @@ serve(async (req) => {
       return fail("Failed to queue comment for approval", 500);
     }
 
-    console.log(`Generated comment for lead ${campaign_lead_id} (variant: ${variant.key})`);
+    console.log(`Generated comment for lead ${campaign_lead_id} (variant: ${variantKey})`);
 
     return json({
       success: true,
       comment_text: commentText,
-      variant: variant.key,
+      variant: variantKey,
       kind: triage.kind,
       topic: triage.topic,
       lead_id: campaign_lead_id,
