@@ -433,13 +433,15 @@ export function splitNotes(views: string | null | undefined): string[] {
   // "Pricing: offer annual plans": a label of at most three words, a colon and a space, then text. A new
   // label is a new subject even when the line before it has no full stop. A link or a time is not a label.
   const labelled = /^\s*[\p{L}\p{N}][^\s:.!?。：,;]*(?:\s+[^\s:.!?。：,;]+){0,2}\s*(?::\s+|：\s*)\S/u;
+  // "Hiring:" alone on a line: a heading for the lines after it, never the end of the note before it.
+  const headingLine = /^\s*[\p{L}\p{N}][^\s:.!?。：,;]*(?:\s+[^\s:.!?。：,;]+){0,2}\s*[:：]\s*$/u;
   const parts: string[] = [];
   for (const block of String(views || "").split(/\n\s*\n/)) {
     let current = "";
     for (const raw of block.split(/\n/)) {
       const line = raw.replace(/\s+/g, " ").trim();
       if (!line) continue;
-      if (current && (bullet.test(raw) || labelled.test(raw) || endsSentence.test(current))) { parts.push(current); current = ""; }
+      if (current && (bullet.test(raw) || labelled.test(raw) || headingLine.test(raw) || endsSentence.test(current))) { parts.push(current); current = ""; }
       current = current ? `${current} ${line.replace(bullet, "")}` : line.replace(bullet, "");
     }
     if (current) parts.push(current);
