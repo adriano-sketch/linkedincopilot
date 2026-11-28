@@ -189,6 +189,14 @@ describe('review comments on the first version', () => {
     }
     expect(splitNotes('价格：年度方案更好\n招聘：排班要稳定')).toHaveLength(2);
   });
+  it('starts a new note at a heading that stands alone on its line', () => {
+    expect(splitNotes('Pricing: offer annual plans\nHiring:\ngive predictable shifts')).toEqual(['Pricing: offer annual plans', 'Hiring: give predictable shifts']);
+    expect(splitNotes('Pricing: offer annual plans\nwhich is what we sell most:\nthe yearly one')).toHaveLength(1);
+  });
+  it('carries a full-width heading across a blank line, and drops a heading with nothing under it', () => {
+    expect(splitNotes('价格：\n\n年度方案更好')).toEqual(['价格： 年度方案更好']);
+    expect(splitNotes('Pricing: offer annual plans.\nHiring:')).toEqual(['Pricing: offer annual plans.']);
+  });
   it('keeps an unlabelled continuation line with its paragraph', () => {
     expect(splitNotes('Pricing: offer annual plans\nand never discount in the last week')).toHaveLength(1);
   });

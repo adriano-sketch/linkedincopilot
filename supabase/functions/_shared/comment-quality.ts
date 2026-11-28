@@ -433,13 +433,15 @@ export function splitNotes(views: string | null | undefined): string[] {
   // "Pricing: offer annual plans": a label of at most three words, a colon and a space, then text. A new
   // label is a new subject even when the line before it has no full stop. A link or a time is not a label.
   const labelled = /^\s*[\p{L}\p{N}][^\s:.!?。：,;]*(?:\s+[^\s:.!?。：,;]+){0,2}\s*(?::\s+|：\s*)\S/u;
+  // "Hiring:" alone on a line: a heading for the lines after it, never the end of the note before it.
+  const headingLine = /^\s*[\p{L}\p{N}][^\s:.!?。：,;]*(?:\s+[^\s:.!?。：,;]+){0,2}\s*[:：]\s*$/u;
   const parts: string[] = [];
   for (const block of String(views || "").split(/\n\s*\n/)) {
     let current = "";
     for (const raw of block.split(/\n/)) {
       const line = raw.replace(/\s+/g, " ").trim();
       if (!line) continue;
-      if (current && (bullet.test(raw) || labelled.test(raw) || endsSentence.test(current))) { parts.push(current); current = ""; }
+      if (current && (bullet.test(raw) || labelled.test(raw) || headingLine.test(raw) || endsSentence.test(current))) { parts.push(current); current = ""; }
       current = current ? `${current} ${line.replace(bullet, "")}` : line.replace(bullet, "");
     }
     if (current) parts.push(current);
@@ -447,11 +449,11 @@ export function splitNotes(views: string | null | undefined): string[] {
   const notes: string[] = [];
   let heading = "";
   for (const part of parts) {
-    if (part.length < 40 && part.endsWith(":")) { heading = heading ? `${heading} ${part}` : part; continue; }
+    if (part.length < 40 && /[:：]$/.test(part)) { heading = heading ? `${heading} ${part}` : part; continue; }
     notes.push(heading ? `${heading} ${part}` : part);
     heading = "";
   }
-  if (heading) notes.push(heading);
+  // A heading with nothing under it says nothing: it is not a note.
   return notes.slice(0, MAX_NOTES);
 }
 
