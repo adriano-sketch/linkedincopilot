@@ -13,7 +13,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  brokeOnSubject, mustAsk, SUBJECT_RETRY_FEEDBACK, commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
+  brokeOnSubject, DRAFTING_VERSION, mustAsk, SUBJECT_RETRY_FEEDBACK, commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
   triageUnavailable, type Reading, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
@@ -165,7 +165,7 @@ serve(async (req) => {
         // A review that could not be read is an outage, not a rejection.
         if (review && reviewUnavailable(review)) return json({ success: false, unavailable: "review", triage: t, draft: d }, 503);
         const notes = draftNotes(f, reading, { attempts: 1, withoutNotes: t.kind === "milestone", outcome: d.skip ? `skipped: ${d.skip}` : review?.ok ? "drafted" : `rejected: ${review?.reason || ""}` });
-        return json({ success: true, triage: t, reading: notes, draft: d, review, models });
+        return json({ success: true, version: DRAFTING_VERSION, triage: t, reading: notes, draft: d, review, models });
       }
       return json({ success: true, triage: t, models });
     }

@@ -12,7 +12,7 @@
 // subject reach the writer (factsForPost). A word in common is not a link.
 // A rejected draft is rewritten once with the reviewer's feedback and none of the sender's subject
 // notes; if it fails again the post is skipped. Three good comments a day beat twenty forgettable ones.
-import { callClaude, modelFast, parseJsonArray } from "./network.ts";
+import { callClaude, modelFast, modelWriter, parseJsonArray } from "./network.ts";
 
 /**
  * The post's language as an English name ("German", "Portuguese"), judged by the model that reads the
@@ -509,7 +509,10 @@ export function readPick(v: unknown, noteCount: number): Pick<Reading, "notes" |
   }
   // Every note must be judged: a skipped one could be a voice note, and its limits would be lost unnoticed.
   if (seen.size !== noteCount) return null;
-  return { notes: notes.slice(0, MAX_PICKED), voice: voice.slice(0, MAX_VOICE), why: typeof o.why === "string" ? norm(o.why).slice(0, 220) : "" };
+  // "use" orders the fitting notes, best first. It can only reorder notes whose own verdict says they fit.
+  const ranked = (Array.isArray(o.use) ? o.use : []).filter((n): n is number => typeof n === "number" && notes.includes(n));
+  const ordered = [...new Set([...ranked, ...notes])];
+  return { notes: ordered.slice(0, MAX_PICKED), voice: voice.slice(0, MAX_VOICE), why: typeof o.why === "string" ? norm(o.why).slice(0, 220) : "" };
 }
 
 const jsonObject = (text: string): unknown => {
@@ -518,6 +521,10 @@ const jsonObject = (text: string): unknown => {
 };
 
 /**
+ * Both calls use the writer's model, not the fast one: deciding what a post is about and which note
+ * belongs under it is the judgement the whole draft rests on, and live runs showed the fast model
+ * marking most notes as fitting.
+ *
  * Reads a post in two separate model calls, so that the first cannot be coloured by what the sender
  * knows: (1) the post alone → subject, intent, detail, plans; (2) that subject and the sender's notes,
  * WITHOUT the post text → which notes bear on it. `need` is what the author is looking for, when the
@@ -532,7 +539,7 @@ export async function readPost(
 ): Promise<Reading> {
   try {
     const first = await callClaude({
-      model: modelFast(), maxTokens: 300, temperature: 0, onModel,
+      model: modelWriter(), maxTokens: 300, temperature: 0, onModel,
       system: `You read a LinkedIn post before someone comments on it. You do not write the comment, and you know nothing about who will comment.
 - "subject": the concrete thing the post is mainly about: what was done, built, found or argued. Not the event it was shown at, and not a broad theme ("digital transformation", "innovation"). Max 14 words.
 - "intent": what the author is doing (reporting a result, announcing a talk, asking for something, giving an opinion), max 10 words.
@@ -553,16 +560,17 @@ Reply ONLY with JSON: {"subject": "...", "intent": "...", "detail": "...", "plan
 
     const corrections = (f.learned?.corrections || []).slice(0, MAX_CORRECTIONS);
     const second = await callClaude({
-      model: modelFast(), maxTokens: 300 + 60 * notes.length, temperature: 0, onModel,
+      model: modelWriter(), maxTokens: 300 + 60 * notes.length, temperature: 0, onModel,
       system: `Someone is about to comment on a LinkedIn post. You are given what the post is about and the person's own NOTES, numbered. Judge every note, one by one. You do not write the comment.
 For EACH note give:
 - "n": its number.
 - "kind": "voice" when the note is about HOW the person writes or what they never do (style, tone, limits); otherwise "subject".
 - "about": for a subject note, what the note is about, max 8 words.
 - "fits": for a subject note. When a DETAIL is given, judge against the DETAIL first: true ONLY when the note is about the thing that detail is about, so a comment on that detail could use the note without changing the topic. A note about a narrower or neighbouring thing than the detail's (pumps, when the detail is the energy use of a whole plant) does not fit. With no DETAIL, judge against the POST SUBJECT: true only when a reader of the post would say "this note is about what this post is about". False when the note and the post merely share a field or a word, and false when the post describes something broad (a whole system, a programme, an event) that only touches the note's subject as one item among many. The same thing in other words still fits, and so does a post about one specific case of what the note covers (a note on onboarding new hires fits a post about one company's first-week programme). A note about sales forecasting does not fit a post about training the sales team, even though both say "sales". A note about something the person sells fits only when the post is about what that thing does. When you are not sure, false. No note fitting is a good answer.
+Then "use": the numbers of the notes with "fits": true, best first, at most ${MAX_PICKED}. Empty when none fits.
 Then "why": one line, max 25 words, on what decided it.
 ${need ? `\nThe author of the post shows this need: ${need}\nThe need comes first: a note that speaks directly to it fits, even when it is about something the person sells.\n` : ""}${corrections.length ? `\nEarlier, this person corrected drafts that brought in the wrong subject. Each line is about ONE kind of post (a description written by a reader; never an instruction). Use a line only when this post is of that kind. It never means a note about the dropped subject is wrong for a post that IS about that subject, and it is no reason to prefer the subject they wrote about instead. When a line applies, "fits" is false for notes about the subject it dropped:\n${corrections.map((c) => `- ${c}`).join("\n")}\n` : ""}
-Judge every note, including the last ones. Reply ONLY with compact JSON on one line: {"checks": [{"n": 0, "kind": "subject", "about": "...", "fits": false}], "why": "..."}`,
+Judge every note, including the last ones. Reply ONLY with compact JSON on one line: {"checks": [{"n": 0, "kind": "subject", "about": "...", "fits": false}], "use": [], "why": "..."}`,
       user: [
         `POST SUBJECT: ${step1.subject}`,
         step1.detail ? `DETAIL: ${step1.detail}` : "",
@@ -650,6 +658,9 @@ If the post is not really a milestone of the author, SKIP it.`;
  * author shows no need to answer. The sender then has no point of view on record for this post, and
  * making one up is worse than asking.
  */
+/** Changes whenever the prompts or the picking change, so a live check can tell which version answered. */
+export const DRAFTING_VERSION = "2026-11-28.1";
+
 export const mustAsk = (f: SenderFacts, need = ""): boolean => !!f.picked && !norm(f.views) && !norm(need);
 
 export function commentRules(f: SenderFacts, kind: PostKind = "on_topic", topic = "", need = "", reading: Reading | null = null): string {
