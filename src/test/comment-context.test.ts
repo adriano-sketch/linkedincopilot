@@ -82,6 +82,15 @@ describe('reading a post', () => {
     const odd = { checks: [{ n: 0, kind: 'subject', fits: 'true' }, { n: 1, kind: 'subject', fits: 1 }, { n: 2, kind: 'subject' }], why: '' };
     expect(readPick(odd, 3)!.notes).toEqual([]);
   });
+  it('takes the order from "use", which can only reorder notes that fit', () => {
+    const base = checks([[0, 'subject', true], [1, 'subject', false], [2, 'subject', true], [3, 'subject', true]]);
+    expect(readPick({ ...base, use: [3, 0] }, 4)!.notes).toEqual([3, 0]);
+    expect(readPick({ ...base, use: [1, 2] }, 4)!.notes).toEqual([2, 0]);
+    expect(readPick({ ...base, use: 'x' }, 4)!.notes).toEqual([0, 2]);
+    expect(readPick({ ...base, use: [3, 3, 0] }, 4)!.notes).toEqual([3, 0]);
+    const withVoice = checks([[0, 'voice', true], [1, 'subject', true]]);
+    expect(readPick({ ...withVoice, use: [0, 1] }, 2)!.notes).toEqual([1]);
+  });
   it('cannot pass every note along', () => {
     const all = checks([0, 1, 2, 3, 4, 5].map((n) => [n, 'subject', true] as [number, 'subject', boolean]));
     expect(readPick(all, 6)!.notes).toEqual([0, 1]);
