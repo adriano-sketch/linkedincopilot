@@ -1951,7 +1951,41 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
+// ── Which post to show ──
+// Olanovo opens an author's activity page with "#lcpost=<the post's opening words>", and the content
+// script scrolls to that post. LinkedIn rewrites some addresses as the page loads (seen with accented
+// profile names) and the marker is gone before the content script can read it. So the marker is noted
+// here, from the address the tab was opened with, and the content script asks for it.
+const LC_MARKER_TTL_MS = 2 * 60 * 1000;
+const lcSlugOf = (pathOrUrl) => {
+  const m = String(pathOrUrl || '').match(/\/in\/([^/?#]+)\/recent-activity\//);
+  if (!m) return '';
+  try { return decodeURIComponent(m[1]).normalize('NFC').toLowerCase(); } catch (_) { return m[1].toLowerCase(); }
+};
+function lcNoteMarker(tabId, url) {
+  if (typeof tabId !== 'number' || tabId < 0) return;
+  const m = String(url || '').match(/^https:\/\/www\.linkedin\.com\/in\/[^?#]+\/recent-activity\/[^#]*#lcpost=([^&#\s]+)/);
+  const slug = m ? lcSlugOf(url) : '';
+  if (!m || !slug) return;
+  chrome.storage.session.set({ [`lcMarker:${tabId}`]: { marker: m[1], slug, at: Date.now() } }).catch(() => {});
+}
+chrome.tabs.onCreated.addListener((tab) => lcNoteMarker(tab.id, tab.pendingUrl || tab.url));
+chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.url) lcNoteMarker(tabId, info.url); });
+chrome.tabs.onRemoved.addListener((tabId) => { chrome.storage.session.remove(`lcMarker:${tabId}`).catch(() => {}); });
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'LC_POST_MARKER') {
+    // Only for the tab that asks, only for the same person's page, and only once and soon after.
+    const tabId = sender && sender.tab ? sender.tab.id : -1;
+    const key = `lcMarker:${tabId}`;
+    chrome.storage.session.get(key).then((got) => {
+      const note = got && got[key];
+      const fits = note && Date.now() - note.at < LC_MARKER_TTL_MS && note.slug && note.slug === lcSlugOf(message.path);
+      if (note) chrome.storage.session.remove(key).catch(() => {});
+      sendResponse({ marker: fits ? note.marker : '' });
+    }).catch(() => sendResponse({ marker: '' }));
+    return true;
+  }
   if (message.type === 'LOGIN') {
     handleLogin(message.email, message.password)
       .then(result => sendResponse(result))

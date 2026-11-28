@@ -1413,16 +1413,39 @@ function detectLinkedInLimitBanner() {
 // How far the search for the post goes: a number of steps down the page, and a time limit.
 const LC_SHOW_POST_STEPS = 16;
 const LC_SHOW_POST_MS = 25000;
+/** The marker the background noted for this tab, or ''. Never throws: without it there is simply nothing to show. */
+function lcAskPostMarker() {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: 'LC_POST_MARKER', path: window.location.pathname }, (reply) => {
+        void chrome.runtime.lastError;
+        resolve(reply && typeof reply.marker === 'string' ? reply.marker : '');
+      });
+    } catch (_) { resolve(''); }
+  });
+}
 async function lcShowLinkedPost() {
   if (window.top !== window) return;
   // The address is read once: if LinkedIn drops the marker a moment later, this must not go on to
   // outline some other post.
   const url = window.location.href;
   if (!/\/recent-activity\//.test(window.location.pathname)) return;
-  const marker = url.match(/#lcpost=([^&]+)/);
+  let marker = url.match(/#lcpost=([^&]+)/);
+  if (!marker) {
+    // LinkedIn may have rewritten the address and dropped the marker before this script ran. The
+    // background noted it from the address the tab was opened with.
+    const noted = await lcAskPostMarker();
+    if (noted) marker = [`#lcpost=${noted}`, noted];
+  }
+  else {
+    // The marker is in the address: the background's note for this tab is no longer needed. Asking
+    // for it uses it up, so it cannot show the post again on a later page in this tab.
+    lcAskPostMarker();
+  }
   if (!marker) return;
-  if (window.__olanovoShownPost === url) return;
-  window.__olanovoShownPost = url;
+  const shown = `${window.location.pathname}|${marker[1]}`;
+  if (window.__olanovoShownPost === shown) return;
+  window.__olanovoShownPost = shown;
   // A newer search (the marker changed) retires this one: only the latest may move the page.
   const turn = (window.__olanovoPostSearch || 0) + 1;
   window.__olanovoPostSearch = turn;
