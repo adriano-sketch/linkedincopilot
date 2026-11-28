@@ -251,3 +251,22 @@ describe('review comments on the first version', () => {
     for (const bad of [null, 'x', [1]]) expect(readDiagnostics(bad)).toBeNull();
   });
 });
+
+describe('what the writer is asked for', () => {
+  it('asks for a specific question about a detail when no note bears on the post', () => {
+    const r = reading();
+    const prompt = commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r);
+    expect(prompt).toMatch(/ask ONE specific question about it/);
+    expect(prompt).not.toMatch(/STATE, do not ask/);
+  });
+  it('asks for a statement when a note bears on the post', () => {
+    const r = reading({ notes: [1] });
+    const prompt = commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r);
+    expect(prompt).toMatch(/STATE, do not ask/);
+    expect(prompt).not.toMatch(/ask ONE specific question about it/);
+  });
+  it('never lets a note be told as something the sender did', () => {
+    const r = reading({ notes: [1] });
+    expect(commentRules(factsForPost(FACTS, r), 'on_topic', '', '', r)).toMatch(/Never turn it into something they did/);
+  });
+});
