@@ -69,23 +69,30 @@ describe('reading a post', () => {
     for (const bad of [null, 'text', {}, { subject: '  ', detail: 'x' }]) expect(readSubject(bad)).toBeNull();
     expect(readSubject({ subject: 'a utility connecting its control systems', plans: 'AI forecasting' })?.plans).toBe('AI forecasting');
   });
-  it('keeps only indexes of notes that exist, once each', () => {
-    const r = readPick({ notes: [1, 1, 9, -1, 2.5, '0'], voice: [3] }, 4)!;
+  const checks = (list: Array<[number, 'voice' | 'subject', boolean?]>) => ({ checks: list.map(([n, kind, fits]) => ({ n, kind, fits })), why: 'w' });
+  it('uses a note only when its own verdict says it fits', () => {
+    const r = readPick(checks([[0, 'subject', false], [1, 'subject', true], [2, 'subject', false], [3, 'voice']]), 4)!;
     expect(r.notes).toEqual([1]);
     expect(r.voice).toEqual([3]);
   });
-  it('never counts a voice note as knowledge', () => {
-    expect(readPick({ notes: [2, 3], voice: [3] }, 4)!.notes).toEqual([2]);
+  it('never counts a voice note as knowledge, even marked as fitting', () => {
+    expect(readPick(checks([[0, 'voice', true], [1, 'subject', true]]), 2)!.notes).toEqual([1]);
   });
-  it('cannot pass every note along, as knowledge or as voice', () => {
-    const all = [0, 1, 2, 3, 4, 5, 6, 7];
-    expect(readPick({ notes: all, voice: [] }, 8)!.notes).toHaveLength(3);
-    const r = readPick({ notes: [], voice: all }, 8)!;
-    expect(r.voice).toHaveLength(3);
+  it('takes only a plain true as a fit', () => {
+    const odd = { checks: [{ n: 0, kind: 'subject', fits: 'true' }, { n: 1, kind: 'subject', fits: 1 }, { n: 2, kind: 'subject' }], why: '' };
+    expect(readPick(odd, 3)!.notes).toEqual([]);
   });
-  it('treats a reply without both lists as unreadable, so voice limits are not dropped by accident', () => {
-    for (const bad of [null, 'text', [1, 2], {}, { notes: [1] }, { voice: [3] }]) expect(readPick(bad, 4)).toBeNull();
-    expect(readPick({ notes: [], voice: [] }, 4)).toEqual({ notes: [], voice: [], why: '' });
+  it('cannot pass every note along', () => {
+    const all = checks([0, 1, 2, 3, 4, 5].map((n) => [n, 'subject', true] as [number, 'subject', boolean]));
+    expect(readPick(all, 6)!.notes).toEqual([0, 1]);
+  });
+  it('is unreadable when the numbering cannot be trusted, and leaves out a note the reply skipped', () => {
+    expect(readPick(checks([[0, 'subject', true]]), 2)).toEqual({ notes: [0], voice: [], why: 'w' });
+    expect(readPick({ checks: [], why: '' }, 2)).toBeNull();
+    expect(readPick(checks([[0, 'subject', true], [0, 'subject', false]]), 2)).toBeNull();
+    expect(readPick(checks([[0, 'subject', true], [5, 'subject', false]]), 2)).toBeNull();
+    for (const bad of [null, 'text', [1, 2], {}, { notes: [1], voice: [] }]) expect(readPick(bad, 2)).toBeNull();
+    expect(readPick({ checks: [], why: '' }, 0)).toEqual({ notes: [], voice: [], why: '' });
   });
 });
 
@@ -205,10 +212,14 @@ describe('review comments on the first version', () => {
     expect(readSubject({ subject: 42 })).toBeNull();
     expect(readEditVerdict({ kind: 'subject', note: {} })).toEqual({ kind: 'unclear', note: '' });
   });
-  it('never lets a note named as voice through as knowledge, even past the voice cap', () => {
-    const r = readPick({ voice: [0, 1, 2, 3], notes: [3, 4] }, 6)!;
+  it('never lets a note judged as voice through as knowledge, even past the voice cap', () => {
+    const r = readPick({ checks: [0, 1, 2, 3].map((n) => ({ n, kind: 'voice', fits: true })).concat([{ n: 4, kind: 'subject', fits: true }]), why: '' }, 5)!;
     expect(r.voice).toEqual([0, 1, 2]);
     expect(r.notes).toEqual([4]);
+  });
+  it('treats a long heading as a heading too', () => {
+    expect(splitNotes('Internationalization accessibility guidelines:\n\nwrite alt text for every chart.')).toEqual(['Internationalization accessibility guidelines: write alt text for every chart.']);
+    expect(splitNotes('Pricing: annual plans work.\n\nInternationalization accessibility guidelines:')).toEqual(['Pricing: annual plans work.']);
   });
   it('does not turn true into rule 1', () => {
     const [v] = readVerdicts([{ index: 0, ok: false, rules: [true], reason: 'x' }], 1);
