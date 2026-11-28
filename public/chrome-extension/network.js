@@ -651,6 +651,7 @@ async function lcNavigate(processor, tabId, url) {
   try {
     await chrome.scripting.executeScript({ target: { tabId }, func: () => { window.onbeforeunload = null; } });
   } catch (_) { /* page may not allow scripting yet */ }
+  if (typeof lcQueueUsesTab === 'function') await lcQueueUsesTab(tabId);
   await chrome.tabs.update(tabId, { url });
   await processor.waitForTabLoad(tabId);
   await processor.sleep(4000 + Math.random() * 3000);

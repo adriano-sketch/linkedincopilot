@@ -1433,18 +1433,21 @@ async function lcShowLinkedPost() {
   // The address is read once: if LinkedIn drops the marker a moment later, this must not go on to
   // outline some other post.
   const url = window.location.href;
-  if (!/\/recent-activity\//.test(window.location.pathname)) return;
+  const pathname = window.location.pathname;
+  if (!/\/recent-activity\//.test(pathname)) return;
   let marker = url.match(/#lcpost=([^&]+)/);
   // Asked every time: it uses up the background's note for this tab (so it cannot show the post again
   // on a later page), and it says whether the queue is driving the tab. The queue finds its post by
   // itself: this must not scroll and outline under it.
   const noted = await lcAskPostMarker();
   if (noted.queue) return;
+  // The page changed while the answer was on its way: the marker belongs to the page before.
+  if (window.location.pathname !== pathname) return;
   // LinkedIn may have rewritten the address and dropped the marker before this script ran. The
   // background noted it from the address the tab was opened with.
   if (!marker && noted.marker) marker = [`#lcpost=${noted.marker}`, noted.marker];
   if (!marker) return;
-  const shown = `${window.location.pathname}|${marker[1]}`;
+  const shown = `${pathname}|${marker[1]}`;
   if (window.__olanovoShownPost === shown) return;
   window.__olanovoShownPost = shown;
   // A newer search (the marker changed) retires this one: only the latest may move the page.

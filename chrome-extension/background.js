@@ -1180,6 +1180,8 @@ const queueProcessor = {
       }
     } finally {
       this.isProcessing = false;
+      // The action is over: the tabs it drove are the person's again.
+      await lcQueueReleasesTabs();
     }
   },
 
@@ -1964,24 +1966,48 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 const LC_MARKER_TTL_MS = 2 * 60 * 1000;
 // Tabs the queue is driving. Its own navigations carry the same marker (it finds the post by itself), and
 // a tab it reuses may hold a note left from the person's click: neither may start the scroll-and-outline.
+// The mark is kept in session storage as well: the worker can be restarted in the middle of an action
+// and its memory is lost. It is taken off when the action ends, so the tab is the person's again.
 const lcQueueTabs = new Map(); // tab id → until when (ms)
 async function lcQueueUsesTab(tabId) {
   if (typeof tabId !== 'number') return;
-  lcQueueTabs.set(tabId, Date.now() + LC_MARKER_TTL_MS);
-  try { await chrome.storage.session.remove(`lcMarker:${tabId}`); } catch (_) { /* nothing noted */ }
+  const until = Date.now() + LC_MARKER_TTL_MS;
+  lcQueueTabs.set(tabId, until);
+  try {
+    await chrome.storage.session.set({ [`lcQueue:${tabId}`]: until });
+    await chrome.storage.session.remove(`lcMarker:${tabId}`);
+  } catch (_) { /* the mark in memory still stands */ }
 }
-const lcIsQueueTab = (tabId) => (lcQueueTabs.get(tabId) || 0) > Date.now();
+async function lcQueueReleasesTabs() {
+  const ids = [...lcQueueTabs.keys()];
+  lcQueueTabs.clear();
+  try {
+    // After a restart the memory is empty: every stored mark is taken off, not only the remembered ones.
+    const all = await chrome.storage.session.get(null);
+    const keys = Object.keys(all || {}).filter((k) => k.startsWith('lcQueue:'));
+    for (const id of ids) if (!keys.includes(`lcQueue:${id}`)) keys.push(`lcQueue:${id}`);
+    if (keys.length) await chrome.storage.session.remove(keys);
+  } catch (_) { /* marks expire by themselves */ }
+}
+async function lcIsQueueTab(tabId) {
+  if ((lcQueueTabs.get(tabId) || 0) > Date.now()) return true;
+  try {
+    const key = `lcQueue:${tabId}`;
+    const got = await chrome.storage.session.get(key);
+    return Number(got && got[key]) > Date.now();
+  } catch (_) { return false; }
+}
 
-function lcNoteMarker(tabId, url) {
+async function lcNoteMarker(tabId, url) {
   if (typeof tabId !== 'number' || tabId < 0) return;
-  if (lcIsQueueTab(tabId)) return;
   const m = String(url || '').match(/^https:\/\/(?:www\.)?linkedin\.com\/in\/[^?#]+\/recent-activity\/[^#]*#lcpost=([^&#\s]+)/);
   if (!m) return;
+  if (await lcIsQueueTab(tabId)) return;
   chrome.storage.session.set({ [`lcMarker:${tabId}`]: { marker: m[1], at: Date.now() } }).catch(() => {});
 }
-chrome.tabs.onCreated.addListener((tab) => lcNoteMarker(tab.id, tab.pendingUrl || tab.url));
-chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.url) lcNoteMarker(tabId, info.url); });
-chrome.tabs.onRemoved.addListener((tabId) => { lcQueueTabs.delete(tabId); chrome.storage.session.remove(`lcMarker:${tabId}`).catch(() => {}); });
+chrome.tabs.onCreated.addListener((tab) => { lcNoteMarker(tab.id, tab.pendingUrl || tab.url).catch(() => {}); });
+chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.url) lcNoteMarker(tabId, info.url).catch(() => {}); });
+chrome.tabs.onRemoved.addListener((tabId) => { lcQueueTabs.delete(tabId); chrome.storage.session.remove([`lcMarker:${tabId}`, `lcQueue:${tabId}`]).catch(() => {}); });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'LC_POST_MARKER') {
@@ -1990,12 +2016,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // profile addresses to new ones, and the search itself only stops at a post whose text matches.
     const tabId = sender && sender.tab ? sender.tab.id : -1;
     const key = `lcMarker:${tabId}`;
-    chrome.storage.session.get(key).then((got) => {
-      const note = got && got[key];
-      const fits = note && !lcIsQueueTab(tabId) && Date.now() - note.at < LC_MARKER_TTL_MS && /\/recent-activity\//.test(String(message.path || ''));
-      if (note) chrome.storage.session.remove(key).catch(() => {});
-      sendResponse({ marker: fits ? note.marker : '', queue: lcIsQueueTab(tabId) });
-    }).catch(() => sendResponse({ marker: '', queue: lcIsQueueTab(tabId) }));
+    (async () => {
+      const queue = await lcIsQueueTab(tabId);
+      try {
+        const got = await chrome.storage.session.get(key);
+        const note = got && got[key];
+        const fits = note && !queue && Date.now() - note.at < LC_MARKER_TTL_MS && /\/recent-activity\//.test(String(message.path || ''));
+        if (note) chrome.storage.session.remove(key).catch(() => {});
+        sendResponse({ marker: fits ? note.marker : '', queue });
+      } catch (_) {
+        sendResponse({ marker: '', queue });
+      }
+    })();
     return true;
   }
   if (message.type === 'LOGIN') {
