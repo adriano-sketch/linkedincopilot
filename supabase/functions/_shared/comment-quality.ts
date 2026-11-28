@@ -449,11 +449,11 @@ export function splitNotes(views: string | null | undefined): string[] {
   const notes: string[] = [];
   let heading = "";
   for (const part of parts) {
-    if (part.length < 40 && part.endsWith(":")) { heading = heading ? `${heading} ${part}` : part; continue; }
+    if (part.length < 40 && /[:：]$/.test(part)) { heading = heading ? `${heading} ${part}` : part; continue; }
     notes.push(heading ? `${heading} ${part}` : part);
     heading = "";
   }
-  if (heading) notes.push(heading);
+  // A heading with nothing under it says nothing: it is not a note.
   return notes.slice(0, MAX_NOTES);
 }
 
