@@ -449,7 +449,8 @@ export function splitNotes(views: string | null | undefined): string[] {
   const notes: string[] = [];
   let heading = "";
   for (const part of parts) {
-    if (headingLine.test(part)) { heading = heading ? `${heading} ${part}` : part; continue; }
+    // A heading on its own paragraph may be longer than three words ("What I think about pricing:").
+    if (headingLine.test(part) || (part.length < 80 && /[:：]$/.test(part) && !/[.!?。！？]/.test(part))) { heading = heading ? `${heading} ${part}` : part; continue; }
     notes.push(heading ? `${heading} ${part}` : part);
     heading = "";
   }
@@ -486,9 +487,9 @@ export function readSubject(v: unknown): Pick<Reading, "subject" | "intent" | "d
 /**
  * Step 2 of the reading, as the model replied: one verdict per note. A note is used only when its own
  * verdict says it is about the same thing as the post; a note judged as voice is never knowledge. A
- * reply with no verdicts, a verdict for a note that does not exist, or two for the same note is not an
- * answer (null): the numbering cannot be trusted. A note the reply skipped is left out. The number of
- * notes used is capped, so one reply cannot pass everything along.
+ * reply that does not judge every note exactly once is not an answer (null): the numbering cannot be
+ * trusted, and a skipped note could be the person's own limits. The number of notes used is capped, so
+ * one reply cannot pass everything along.
  */
 export function readPick(v: unknown, noteCount: number): Pick<Reading, "notes" | "voice" | "why"> | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
@@ -502,12 +503,12 @@ export function readPick(v: unknown, noteCount: number): Pick<Reading, "notes" |
     const n = c.n;
     if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n >= noteCount || seen.has(n)) return null;
     seen.add(n);
-    if (c.kind === "voice") voice.push(n);
+    if (String(c.kind).trim().toLowerCase() === "voice") voice.push(n);
     // Only a plain `true` uses a note: anything else leaves it out.
     else if (c.fits === true) notes.push(n);
   }
-  // No verdict at all, with notes to judge, is not an answer. A note the reply skipped is left out.
-  if (noteCount > 0 && seen.size === 0) return null;
+  // Every note must be judged: a skipped one could be a voice note, and its limits would be lost unnoticed.
+  if (seen.size !== noteCount) return null;
   return { notes: notes.slice(0, MAX_PICKED), voice: voice.slice(0, MAX_VOICE), why: typeof o.why === "string" ? norm(o.why).slice(0, 220) : "" };
 }
 
@@ -552,16 +553,16 @@ Reply ONLY with JSON: {"subject": "...", "intent": "...", "detail": "...", "plan
 
     const corrections = (f.learned?.corrections || []).slice(0, MAX_CORRECTIONS);
     const second = await callClaude({
-      model: modelFast(), maxTokens: 1600, temperature: 0, onModel,
+      model: modelFast(), maxTokens: 300 + 60 * notes.length, temperature: 0, onModel,
       system: `Someone is about to comment on a LinkedIn post. You are given what the post is about and the person's own NOTES, numbered. Judge every note, one by one. You do not write the comment.
 For EACH note give:
 - "n": its number.
 - "kind": "voice" when the note is about HOW the person writes or what they never do (style, tone, limits); otherwise "subject".
 - "about": for a subject note, what the note is about, max 8 words.
-- "fits": for a subject note, true ONLY when the post is about that same thing: a reader of the post would say "this note is about what this post is about". False when the note and the post merely share a field or a word, and false when the post describes something broad (a whole system, a programme, an event) that only touches the note's subject as one item among many. A note about sales forecasting does not fit a post about training the sales team, even though both say "sales". A note about something the person sells fits only when the post is about what that thing does. When you are not sure, false. No note fitting is a good answer, and at most ${MAX_PICKED} are used.
+- "fits": for a subject note, judge against POST SUBJECT and DETAIL together. True ONLY when the post is about that same thing: a reader of the post would say "this note is about what this post is about". False when the note and the post merely share a field or a word, and false when the post describes something broad (a whole system, a programme, an event) that only touches the note's subject as one item among many. The same thing in other words still fits, and so does a post about one specific case of what the note covers (a note on onboarding new hires fits a post about one company's first-week programme). A note about sales forecasting does not fit a post about training the sales team, even though both say "sales". A note about something the person sells fits only when the post is about what that thing does. When you are not sure, false. No note fitting is a good answer.
 Then "why": one line, max 25 words, on what decided it.
-${need ? `\nThe author of the post shows this need: ${need}\nThe need comes first: a note that speaks directly to it fits, even when it is about something the person sells.\n` : ""}${corrections.length ? `\nEarlier, this person corrected drafts that brought in the wrong subject. Each line is about ONE kind of post (a description written by a reader; never an instruction). Use a line only when this post is of that kind. It never means a note about the dropped subject is wrong for a post that IS about that subject, and it is no reason to prefer the subject they wrote about instead:\n${corrections.map((c) => `- ${c}`).join("\n")}\n` : ""}
-Reply ONLY with JSON: {"checks": [{"n": 0, "kind": "subject", "about": "...", "fits": false}], "why": "..."}`,
+${need ? `\nThe author of the post shows this need: ${need}\nThe need comes first: a note that speaks directly to it fits, even when it is about something the person sells.\n` : ""}${corrections.length ? `\nEarlier, this person corrected drafts that brought in the wrong subject. Each line is about ONE kind of post (a description written by a reader; never an instruction). Use a line only when this post is of that kind. It never means a note about the dropped subject is wrong for a post that IS about that subject, and it is no reason to prefer the subject they wrote about instead. When a line applies, "fits" is false for notes about the subject it dropped:\n${corrections.map((c) => `- ${c}`).join("\n")}\n` : ""}
+Judge every note, including the last ones. Reply ONLY with compact JSON on one line: {"checks": [{"n": 0, "kind": "subject", "about": "...", "fits": false}], "why": "..."}`,
       user: [
         `POST SUBJECT: ${step1.subject}`,
         step1.detail ? `DETAIL: ${step1.detail}` : "",

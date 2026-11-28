@@ -86,9 +86,12 @@ describe('reading a post', () => {
     const all = checks([0, 1, 2, 3, 4, 5].map((n) => [n, 'subject', true] as [number, 'subject', boolean]));
     expect(readPick(all, 6)!.notes).toEqual([0, 1]);
   });
-  it('is unreadable when the numbering cannot be trusted, and leaves out a note the reply skipped', () => {
-    expect(readPick(checks([[0, 'subject', true]]), 2)).toEqual({ notes: [0], voice: [], why: 'w' });
+  it('is unreadable unless every note is judged exactly once', () => {
+    expect(readPick(checks([[0, 'subject', true]]), 2)).toBeNull();
     expect(readPick({ checks: [], why: '' }, 2)).toBeNull();
+    expect(readPick({ checks: [null], why: '' }, 1)).toBeNull();
+    expect(readPick({ checks: [[0]], why: '' }, 1)).toBeNull();
+    expect(readPick({ checks: [{ n: 0, kind: ' Voice ' }], why: 3 }, 1)).toEqual({ notes: [], voice: [0], why: '' });
     expect(readPick(checks([[0, 'subject', true], [0, 'subject', false]]), 2)).toBeNull();
     expect(readPick(checks([[0, 'subject', true], [5, 'subject', false]]), 2)).toBeNull();
     for (const bad of [null, 'text', [1, 2], {}, { notes: [1], voice: [] }]) expect(readPick(bad, 2)).toBeNull();
@@ -216,6 +219,10 @@ describe('review comments on the first version', () => {
     const r = readPick({ checks: [0, 1, 2, 3].map((n) => ({ n, kind: 'voice', fits: true })).concat([{ n: 4, kind: 'subject', fits: true }]), why: '' }, 5)!;
     expect(r.voice).toEqual([0, 1, 2]);
     expect(r.notes).toEqual([4]);
+  });
+  it('joins a heading of more than three words on its own paragraph to the text after it', () => {
+    expect(splitNotes('What I think about pricing:\n\nannual plans work.')).toEqual(['What I think about pricing: annual plans work.']);
+    expect(splitNotes('My view on AI:\n\nit helps.')).toEqual(['My view on AI: it helps.']);
   });
   it('treats a long heading as a heading too', () => {
     expect(splitNotes('Internationalization accessibility guidelines:\n\nwrite alt text for every chart.')).toEqual(['Internationalization accessibility guidelines: write alt text for every chart.']);
