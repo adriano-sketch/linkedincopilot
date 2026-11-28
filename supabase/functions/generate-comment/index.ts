@@ -13,8 +13,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authenticate, corsHeaders, json } from "../_shared/auth.ts";
 import {
-  commentRules, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, reviewComments, reviewUnavailable, triagePost,
-  triageUnavailable, type SenderFacts, type Triage,
+  brokeOnSubject, SUBJECT_RETRY_FEEDBACK, commentRules, draftNotes, factsForPost, hasKnowledgeBase, isSkip, languageLine, loadLearned, OUTAGE_MAX_TRIES, OUTAGE_WAIT_MS, readPost, reviewComments, reviewUnavailable, triagePost,
+  triageUnavailable, type Reading, type SenderFacts, type Triage,
 } from "../_shared/comment-quality.ts";
 import { callClaude, cleanComment, modelWriter, normalizeProfileUrl, parseWriterReply, samePost } from "../_shared/network.ts";
 
@@ -39,7 +39,7 @@ const COMMENT_VARIANTS = [
   },
   {
     key: "respectful_challenge",
-    hint: "Respectfully raise a 'what about...' angle the author did not cover. Constructive, never confrontational.",
+    hint: "Within the post's own subject, add one consideration the author implied but did not spell out. Constructive, never confrontational.",
   },
 ];
 
@@ -62,7 +62,7 @@ type Draft = { comment: string; skip: string | null };
  * language comes from the triage, which read the post, never from the list or the account.
  */
 async function writeDraft(a: {
-  facts: SenderFacts; triage: Triage; postText: string;
+  facts: SenderFacts; triage: Triage; postText: string; reading: Reading | null;
   author: string | null; authorTitle: string; authorCompany: string; hint: string;
   feedback: { previous: string; why: string } | null;
   onModel?: (model: string) => void;
@@ -72,9 +72,9 @@ async function writeDraft(a: {
     `POST LANGUAGE: ${languageLine(a.triage.language)}`,
     `POST:\n"""\n${a.postText}\n"""`,
     a.hint ? `ANGLE: ${a.hint}` : "",
-    a.feedback ? `Your previous draft was REJECTED: "${a.feedback.previous}"\nWhy: ${a.feedback.why}\nWrite a better one or skip.` : "",
+    a.feedback ? `Your previous draft was REJECTED${a.feedback.previous ? `: "${a.feedback.previous}"` : "."}\nWhy: ${a.feedback.why}\nWrite a better one or skip.` : "",
   ].filter(Boolean).join("\n\n");
-  const system = `${commentRules(a.facts, a.triage.kind, a.triage.topic || "one of the subjects listed above", a.triage.signalReason)}
+  const system = `${commentRules(a.facts, a.triage.kind, a.triage.topic || "one of the subjects listed above", a.triage.signalReason, a.reading)}
 
 Reply ONLY with a JSON array with one entry: [{"index": 0, "skip": false, "comment": "..."}] or [{"index": 0, "skip": true, "skip_reason": "<max 12 words>"}]`;
   const text = await callClaude({ model: modelWriter(), system, user, maxTokens: 500, temperature: 0.6, onModel: a.onModel });
@@ -140,16 +140,24 @@ serve(async (req) => {
       // With draft: true the writer and the reviewer run as well, on this text only. Still nothing is
       // stored. Used to check what a post in a given language gets before trusting it.
       // It is a check, not the production path: no learned examples, no angle, no company, no rewrite.
+      // It does read the post first and pick the notes, like production, and says what it picked.
       if (body.draft === true && t.kind !== "off_topic") {
         const postText = body.triage_only.slice(0, 2000);
         const author = typeof body.author === "string" ? body.author : "";
+        const authorTitle = typeof body.author_title === "string" ? body.author_title : "";
+        const reading = await readPost(postText, { name: author, title: authorTitle }, f, t.signalReason);
+        if (!reading.available) return json({ success: false, unavailable: "reading", triage: t }, 503);
+        const own = factsForPost(f, reading, t.kind !== "milestone");
         const d = await writeDraft({
-          facts: f, triage: t, postText, author,
-          authorTitle: typeof body.author_title === "string" ? body.author_title : "", authorCompany: "", hint: "", feedback: null,
+          facts: own, triage: t, postText, author, reading,
+          authorTitle, authorCompany: "", hint: "", feedback: null,
           onModel: (m) => { models.writer = m; },
         });
-        const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language }], f, t.kind, (m) => { models.reviewer = m; });
-        return json({ success: true, triage: t, draft: d, review, models });
+        const [review] = d.skip ? [null] : await reviewComments([{ post: postText, author, comment: d.comment, language: t.language, reading }], own, t.kind, (m) => { models.reviewer = m; });
+        // A review that could not be read is an outage, not a rejection.
+        if (review && reviewUnavailable(review)) return json({ success: false, unavailable: "review", triage: t, draft: d }, 503);
+        const notes = draftNotes(f, reading, { attempts: 1, withoutNotes: t.kind === "milestone", outcome: d.skip ? `skipped: ${d.skip}` : review?.ok ? "drafted" : `rejected: ${review?.reason || ""}` });
+        return json({ success: true, triage: t, reading: notes, draft: d, review, models });
       }
       return json({ success: true, triage: t, models });
     }
@@ -195,8 +203,6 @@ serve(async (req) => {
       about: [me?.company_description, campaign?.proof_points || me?.proof_points].filter(Boolean).join(" "),
       tone: campaign?.dm_tone || me?.dm_tone,
       topics: kb.comment_topics, avoid: kb.comment_avoid, examples: kb.comment_examples, views: kb.comment_views,
-      // What the user's own Inbox decisions show: published comments and rejected drafts.
-      learned: await loadLearned(supabase, lead.user_id),
     };
     const author = lead.full_name || null;
     const authorTitle = String(lead.title || lead.profile_current_title || "");
@@ -299,7 +305,7 @@ serve(async (req) => {
     // or the draft, so no decision is recorded: the lead stays where it is and the scheduler asks again.
     // Each try is logged and the next one waits an hour. After OUTAGE_MAX_TRIES the lead rests like after
     // any other skip, so a post the model can never answer for does not keep it busy for ever.
-    const unavailable = async (step: "triage" | "drafting" | "review") => {
+    const unavailable = async (step: "triage" | "reading" | "drafting" | "review") => {
       // Seven days: tries only happen while the extension is connected, and an earlier cycle ended in a 7-day rest.
       const since = new Date(Date.now() - 7 * 864e5).toISOString();
       const { count, error: countErr } = await supabase.from("activity_log").select("id", { count: "exact", head: true })
@@ -358,20 +364,41 @@ serve(async (req) => {
       : pickVariant(campaign_lead_id, authorTitle);
 
     // The comment follows the POST's language, never the campaign's.
-    const write = (feedback: { previous: string; why: string } | null) =>
-      writeDraft({ facts, triage, postText, author, authorTitle, authorCompany, hint: variant.hint, feedback });
-
+    // The post is read first: what it is about, which detail to answer, and which of the sender's notes
+    // bear on it. Only those notes reach the writer. A rejected draft is written once more with none.
+    let attempts = 1;
+    let withoutNotes = false;
     let draft: Draft;
     let reviewDown = false;
+    // What the user's own Inbox decisions show: published comments, rejected drafts and corrected subjects.
+    // Read here, after every cheap way out, because it can cost a model call.
+    facts.learned = await loadLearned(supabase, lead.user_id);
+    const reading = await readPost(postText, { name: author, title: authorTitle, company: authorCompany }, facts, triage.signalReason);
+    // The post could not be read: an outage, not a reason to write without knowing what it is about.
+    if (!reading.available) return await unavailable("reading");
+    // A milestone gets a congratulation: the person's voice applies, none of their subject notes do.
+    const milestone = triage.kind === "milestone";
     try {
-      draft = await write(null);
+      const bare = factsForPost(facts, reading, false);
+      const own = milestone ? bare : factsForPost(facts, reading);
+      const write = (f: SenderFacts, feedback: { previous: string; why: string } | null) =>
+        writeDraft({ facts: f, triage, postText, reading, author, authorTitle, authorCompany, hint: variant.hint, feedback });
+      const reviewOf = (comment: string, f: SenderFacts) =>
+        reviewComments([{ post: postText, author, comment, language: triage.language, reading }], f, triage.kind);
+      draft = await write(own, null);
       if (!draft.skip) {
-        let [rev] = await reviewComments([{ post: postText, author, comment: draft.comment, language: triage.language }], facts, triage.kind);
+        let [rev] = await reviewOf(draft.comment, own);
         // An unreadable review is not feedback to rewrite from, and not a reason to skip the post.
         if (reviewUnavailable(rev)) reviewDown = true;
         else if (!rev.ok) {
-          const second = await write({ previous: draft.comment, why: rev.reason });
-          if (!second.skip) [rev] = await reviewComments([{ post: postText, author, comment: second.comment, language: triage.language }], facts, triage.kind);
+          attempts = 2;
+          // Rejected for what it was about: no subject notes on the second attempt, and the first draft
+          // (which carried them) is not shown. Rejected for wording: the notes stay.
+          withoutNotes = !milestone && reading.notes.length > 0 && brokeOnSubject(rev);
+          const facts2 = withoutNotes ? bare : own;
+          // After a rejection for subject, the reviewer's own words stay out too: they may quote the note.
+          const second = await write(facts2, { previous: withoutNotes ? "" : draft.comment, why: withoutNotes ? SUBJECT_RETRY_FEEDBACK : rev.reason });
+          if (!second.skip) [rev] = await reviewOf(second.comment, facts2);
           if (!second.skip && reviewUnavailable(rev)) reviewDown = true;
           else draft = second.skip ? second : (rev.ok ? second : { comment: "", skip: rev.reason });
         }
@@ -386,11 +413,16 @@ serve(async (req) => {
 
     // Nothing worth saying on this post: no comment this cycle, the lead tries again with a newer post in 7 days.
     if (draft.skip || !draft.comment) {
-      await restLead("comment_skipped_quality", { reason: draft.skip || "empty", variant: variant.key, kind: triage.kind });
+      await restLead("comment_skipped_quality", {
+        reason: draft.skip || "empty", variant: variant.key, kind: triage.kind,
+        notes: draftNotes(facts, reading, { attempts, withoutNotes: withoutNotes || triage.kind === "milestone", outcome: `skipped: ${draft.skip || "empty"}` }),
+      });
       console.log(`generate-comment: skipped lead ${campaign_lead_id} for quality (${draft.skip})`);
       return json({ success: true, skipped: "quality", reason: draft.skip, lead_id: campaign_lead_id });
     }
     const commentText = draft.comment;
+    // What the draft was built from, kept with the post for diagnosis.
+    const notes = draftNotes(facts, reading, { attempts, withoutNotes: withoutNotes || triage.kind === "milestone", outcome: "drafted" });
 
     // The comment is NOT auto-approved: it waits in the dashboard approval queue
     // (Network > Comments), next to the original post. Approving or skipping there moves
@@ -419,9 +451,10 @@ serve(async (req) => {
     if (!claimed || claimed.length === 0) return json({ success: true, skipped: "lead not in post_liked", lead_id: campaign_lead_id });
 
     // Shown next to the draft, so the user sees why this post got a comment.
+    // What the post is about, as read, and not the subject the triage matched.
     const whyCommented = triage.kind === "milestone"
       ? "Milestone of a contact"
-      : `Your subject: ${triage.topic || "matches what you work on"}`;
+      : (reading.subject ? `Post about: ${reading.subject}` : `Your subject: ${triage.topic || "matches what you work on"}`).slice(0, 200);
     // The author shows a need the user's work addresses: it goes to the top of the Inbox, labelled.
     const signalFields = triage.signal === "none"
       ? (triage.kind === "milestone" ? { signal_type: "milestone", signal_reason: null, priority: 2 } : { signal_type: null, signal_reason: null, priority: 2 })
@@ -437,7 +470,7 @@ serve(async (req) => {
       // Drafting took several model calls: only write if the user did not decide on the row meanwhile.
       const { data: written, error } = await supabase.from("monitored_posts").update({
         campaign_lead_id, suggested_comment: commentText, final_comment: null, status: "pending", updated_at: now,
-        fit_reason: whyCommented, ...signalFields,
+        fit_reason: whyCommented, draft_notes: notes, ...signalFields,
       }).eq("id", existing.id).not("status", "in", `(${DECIDED.join(",")})`).select("id");
       queueErr = error;
       if (!error && (!written || written.length === 0)) {
@@ -461,6 +494,7 @@ serve(async (req) => {
         suggested_comment: commentText,
         status: "pending",
         fit_reason: whyCommented,
+        draft_notes: notes,
         ...signalFields,
       });
       queueErr = error;

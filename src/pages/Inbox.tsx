@@ -140,7 +140,12 @@ export default function InboxPage() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const setFilter = (f: Filter) => { setParams(f === 'all' ? {} : { type: f }, { replace: true }); setSelectedKey(null); };
+  const setFilter = (f: Filter) => {
+    const next: Record<string, string> = f === 'all' ? {} : { type: f };
+    if (params.get('diagnostics') === '1') next.diagnostics = '1';
+    setParams(next, { replace: true });
+    setSelectedKey(null);
+  };
 
   return (
     <AppShell>
@@ -249,6 +254,25 @@ export default function InboxPage() {
                   <span className="font-normal">Change it here, before copying. Olanovo learns from your edits; changes made on LinkedIn are not seen.</span>
                 </label>
                 {current.why && <p className="text-[13px] text-muted-foreground m-0 flex gap-2"><Sparkles className="w-4 h-4 shrink-0 text-gold-dark" />{current.why}</p>}
+                {/* Diagnostics: what the draft was built from. Only with ?diagnostics=1 in the address. */}
+                {params.get('diagnostics') === '1' && (
+                  <dl className="m-0 rounded-xl border border-dashed border-border p-4 text-[13px] text-muted-foreground grid gap-1.5">
+                    {current.diagnostics ? (
+                      <>
+                        <div><dt className="inline font-semibold">Post is about: </dt><dd className="inline m-0">{current.diagnostics.subject || 'not read'}</dd></div>
+                        {current.diagnostics.detail && <div><dt className="inline font-semibold">Detail answered: </dt><dd className="inline m-0">{current.diagnostics.detail}</dd></div>}
+                        {current.diagnostics.plans && <div><dt className="inline font-semibold">Planned, not achieved: </dt><dd className="inline m-0">{current.diagnostics.plans}</dd></div>}
+                        <div><dt className="inline font-semibold">Your notes used: </dt><dd className="inline m-0">{current.diagnostics.notes_used?.length ? current.diagnostics.notes_used.join(' | ') : 'none'}</dd></div>
+                        <div><dt className="inline font-semibold">Your notes left out: </dt><dd className="inline m-0">{current.diagnostics.notes_left?.length ? current.diagnostics.notes_left.join(' | ') : 'none'}</dd></div>
+                        {current.diagnostics.why && <div><dt className="inline font-semibold">Why: </dt><dd className="inline m-0">{current.diagnostics.why}</dd></div>}
+                        <div><dt className="inline font-semibold">Voice notes applied: </dt><dd className="inline m-0">{current.diagnostics.voice_notes?.length ? current.diagnostics.voice_notes.join(' | ') : 'none'}</dd></div>
+                        <div><dt className="inline font-semibold">Attempts: </dt><dd className="inline m-0">{current.diagnostics.attempts ?? 1}{current.diagnostics.withoutNotes ? ' (written without your subject notes)' : ''}</dd></div>
+                      </>
+                    ) : (
+                      <div>No diagnostics for this draft: it was written before they were recorded.</div>
+                    )}
+                  </dl>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2.5">
                   <button onClick={() => doApprove(current)} disabled={busy}

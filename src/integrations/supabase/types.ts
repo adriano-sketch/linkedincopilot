@@ -927,6 +927,9 @@ export type Database = {
           commented_at: string | null
           comments_count: number | null
           created_at: string
+          draft_notes: Json | null
+          edit_kind: string | null
+          edit_note: string | null
           final_comment: string | null
           fit_reason: string | null
           icp_fit: boolean | null
@@ -956,6 +959,9 @@ export type Database = {
           commented_at?: string | null
           comments_count?: number | null
           created_at?: string
+          draft_notes?: Json | null
+          edit_kind?: string | null
+          edit_note?: string | null
           final_comment?: string | null
           fit_reason?: string | null
           icp_fit?: boolean | null
@@ -985,6 +991,9 @@ export type Database = {
           commented_at?: string | null
           comments_count?: number | null
           created_at?: string
+          draft_notes?: Json | null
+          edit_kind?: string | null
+          edit_note?: string | null
           final_comment?: string | null
           fit_reason?: string | null
           icp_fit?: boolean | null
