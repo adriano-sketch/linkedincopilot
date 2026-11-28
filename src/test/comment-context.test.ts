@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readDiagnostics } from '@/hooks/useInbox';
 import {
   brokeOnSubject, commentRules, draftNotes, factsForPost, readEditVerdict, readPick, readSubject, readVerdicts, splitNotes, type Reading, type SenderFacts,
 } from '../../supabase/functions/_shared/comment-quality.ts';
@@ -175,5 +176,46 @@ describe('draftNotes', () => {
     const d = draftNotes(FACTS, reading({ notes: [2] }), { attempts: 2, withoutNotes: true, outcome: 'drafted' }) as Record<string, unknown>;
     expect(d.notes_used).toEqual([]);
     expect((d.notes_left as string[]).some((n) => /^Technology adoption/.test(n))).toBe(true);
+  });
+});
+
+describe('review comments on the first version', () => {
+  it('starts a new note at a labelled line even without a full stop before it', () => {
+    expect(splitNotes('Pricing: offer annual plans\nHiring: give predictable shifts')).toEqual(['Pricing: offer annual plans', 'Hiring: give predictable shifts']);
+  });
+  it('keeps an unlabelled continuation line with its paragraph', () => {
+    expect(splitNotes('Pricing: offer annual plans\nand never discount in the last week')).toHaveLength(1);
+  });
+  it('does not read a subject or an edit note that is not text', () => {
+    expect(readSubject({ subject: {} })).toBeNull();
+    expect(readSubject({ subject: 42 })).toBeNull();
+    expect(readEditVerdict({ kind: 'subject', note: {} })).toEqual({ kind: 'unclear', note: '' });
+  });
+  it('never lets a note named as voice through as knowledge, even past the voice cap', () => {
+    const r = readPick({ voice: [0, 1, 2, 3], notes: [3, 4] }, 6)!;
+    expect(r.voice).toEqual([0, 1, 2]);
+    expect(r.notes).toEqual([4]);
+  });
+  it('does not turn true into rule 1', () => {
+    const [v] = readVerdicts([{ index: 0, ok: false, rules: [true], reason: 'x' }], 1);
+    expect(v.rules).toBeUndefined();
+    expect(brokeOnSubject(v)).toBe(true);
+  });
+  it('gives the writer the same excerpt of a note that the picker saw', () => {
+    const long = `My voice: ${'short and direct. '.repeat(60)}`;
+    const f = factsForPost({ ...FACTS, views: `${long}\n\nNever end on a question, and never name a client.` }, reading({ voice: [0, 1] }));
+    expect(f.voice).toMatch(/never name a client\.$/);
+    expect(commentRules(f, 'on_topic', '', '', reading({ voice: [0, 1] }))).toMatch(/never name a client/);
+  });
+  it('writes a congratulation with the voice notes and none of the subject notes', () => {
+    const r = reading({ notes: [1], voice: [3] });
+    const prompt = commentRules(factsForPost(FACTS, r, false), 'milestone');
+    expect(prompt).not.toMatch(/consequence of failure/);
+    expect(prompt).toMatch(/No automatic praise/);
+  });
+  it('reads stored diagnostics field by field', () => {
+    expect(readDiagnostics({ notes_used: 'Pricing', subject: 3, attempts: '2' })).toEqual({});
+    expect(readDiagnostics({ notes_used: ['a', 1], subject: 's', attempts: 2 })).toMatchObject({ notes_used: ['a'], subject: 's', attempts: 2 });
+    for (const bad of [null, 'x', [1]]) expect(readDiagnostics(bad)).toBeNull();
   });
 });

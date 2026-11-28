@@ -39,10 +39,22 @@ export type InboxItem = {
   diagnostics: DraftDiagnostics | null;
 };
 
+/** Reads stored diagnostics field by field: anything that is not the expected shape is treated as absent. */
+export function readDiagnostics(v: unknown): DraftDiagnostics | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const text = (x: unknown) => (typeof x === 'string' ? x : undefined);
+  const list = (x: unknown) => (Array.isArray(x) ? x.filter((n): n is string => typeof n === 'string') : undefined);
+  return {
+    subject: text(o.subject), intent: text(o.intent), detail: text(o.detail), plans: text(o.plans), why: text(o.why), outcome: text(o.outcome),
+    notes_used: list(o.notes_used), notes_left: list(o.notes_left), voice_notes: list(o.voice_notes),
+    attempts: typeof o.attempts === 'number' ? o.attempts : undefined,
+    withoutNotes: typeof o.withoutNotes === 'boolean' ? o.withoutNotes : undefined,
+  };
+}
+
 export type DraftDiagnostics = {
   subject?: string; intent?: string; detail?: string; plans?: string; why?: string;
-  /** null for a milestone: a congratulation picks no notes. */
-  reading?: boolean | null;
   notes_used?: string[]; notes_left?: string[]; voice_notes?: string[]; attempts?: number; withoutNotes?: boolean; outcome?: string;
 };
 
@@ -90,7 +102,7 @@ export function useInbox() {
         signal: sig, signalWhy: sig ? p.signal_reason : null,
         why: p.fit_reason || null,
         profileUrl: p.author_profile_url, postUrl: p.post_url,
-        diagnostics: p.draft_notes && typeof p.draft_notes === 'object' && !Array.isArray(p.draft_notes) ? (p.draft_notes as DraftDiagnostics) : null,
+        diagnostics: readDiagnostics(p.draft_notes),
       });
     }
 

@@ -180,7 +180,8 @@ export function readEditVerdict(v: unknown): { kind: EditKind; note: string } {
   const o = (v && typeof v === "object" ? v : {}) as { kind?: unknown; note?: unknown };
   const kind = EDIT_KINDS.includes(o.kind as EditKind) ? (o.kind as EditKind) : "unclear";
   // Only a change of subject carries a note, and a subject change without one teaches nothing.
-  const note = kind === "subject" ? norm(o.note).slice(0, 260) : "";
+  // A note that is not text (an object, a number) is no note: it must not be stored as "[object Object]".
+  const note = kind === "subject" && typeof o.note === "string" ? norm(o.note).slice(0, 260) : "";
   return kind === "subject" && !note ? { kind: "unclear", note: "" } : { kind, note };
 }
 
@@ -196,9 +197,13 @@ async function classifyEdits(supabase: any, userId: string, rows: any[]): Promis
   if (!todo.length) return;
   // deno-lint-ignore no-explicit-any
   const store = async (row: any, verdict: { kind: EditKind; note: string }) => {
-    const { error } = await supabase.from("monitored_posts")
-      .update({ edit_kind: verdict.kind, edit_note: verdict.note || null }).eq("id", row.id).eq("user_id", userId);
+    // Only the first verdict for an edit is kept: two runs can read the same row before either writes,
+    // and a later unreadable reply must not replace a stored reason with "unclear".
+    const { data, error } = await supabase.from("monitored_posts")
+      .update({ edit_kind: verdict.kind, edit_note: verdict.note || null })
+      .eq("id", row.id).eq("user_id", userId).is("edit_kind", null).select("id");
     if (error) { console.error("could not store an edit reason:", error.message); return; }
+    if (!data?.length) return;
     row.edit_kind = verdict.kind;
     row.edit_note = verdict.note || null;
   };
@@ -402,33 +407,39 @@ function factsBlock(f: SenderFacts): string {
     f.topics && !f.picked ? `Subjects they have something to say about: ${String(f.topics).slice(0, 600)}` : "",
     f.avoid ? `Subjects they stay out of: ${String(f.avoid).slice(0, 400)}` : "",
     notes,
-    norm(f.voice) ? `How they write and what they never do (written by them):\n${String(f.voice).slice(0, 1200)}` : "",
+    norm(f.voice) ? `How they write and what they never do (written by them):\n${String(f.voice).slice(0, MAX_VOICE * (NOTE_CHARS + 2))}` : "",
   ].filter(Boolean);
   return lines.length ? lines.join("\n") : "(no facts provided)";
 }
 
 const MAX_NOTES = 30;
+/** How much of one note is read. The picker, the writer and the reviewer all see this same excerpt. */
+const NOTE_CHARS = 700;
+const excerpt = (note: string) => note.slice(0, NOTE_CHARS);
 /** How many notes one post may use. More than this is not picking, it is passing everything along. */
 const MAX_PICKED = 3;
 const MAX_VOICE = 3;
 
 /**
  * The person's notes (profiles.comment_views), one per subject. A blank line always separates notes.
- * Inside a block, a line starts a new note when the line before it ended a sentence, or when it is a
- * bullet: that is "one subject per line", as in the form's own example, while a paragraph that was
+ * Inside a block, a line starts a new note when the line before it ended a sentence, when it is a
+ * bullet, or when it opens with a label ("Pricing: ..."): that is "one subject per line", as in the form's own example, while a paragraph that was
  * only wrapped over several lines stays whole. A heading on its own ("Pricing:") joins the note after
  * it. Nothing is dropped for being short: "No emojis." is a note.
  */
 export function splitNotes(views: string | null | undefined): string[] {
   const bullet = /^\s*[-*•]\s+/;
   const endsSentence = /[.!?。！？؟۔]["')\]]?$/;
+  // "Pricing: offer annual plans": a short label, a colon, then text. A new label is a new subject even
+  // when the line before it has no full stop.
+  const labelled = /^\s*[\p{L}\p{N}][^:.!?。：]{0,40}[:：]\s*\S/u;
   const parts: string[] = [];
   for (const block of String(views || "").split(/\n\s*\n/)) {
     let current = "";
     for (const raw of block.split(/\n/)) {
       const line = raw.replace(/\s+/g, " ").trim();
       if (!line) continue;
-      if (current && (bullet.test(raw) || endsSentence.test(current))) { parts.push(current); current = ""; }
+      if (current && (bullet.test(raw) || labelled.test(raw) || endsSentence.test(current))) { parts.push(current); current = ""; }
       current = current ? `${current} ${line.replace(bullet, "")}` : line.replace(bullet, "");
     }
     if (current) parts.push(current);
@@ -464,7 +475,8 @@ const NO_READING: Reading = { available: false, subject: "", intent: "", detail:
 /** Step 1 of the reading, as the model replied. No subject means the reply is not a reading. */
 export function readSubject(v: unknown): Pick<Reading, "subject" | "intent" | "detail" | "plans"> | null {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
-  const subject = norm(o.subject).slice(0, 160);
+  // A subject that is not text is not a reading (an object would otherwise read as "[object Object]").
+  const subject = typeof o.subject === "string" ? norm(o.subject).slice(0, 160) : "";
   if (!subject) return null;
   return { subject, intent: norm(o.intent).slice(0, 120), detail: norm(o.detail).slice(0, 260), plans: norm(o.plans).slice(0, 260) };
 }
@@ -480,8 +492,9 @@ export function readPick(v: unknown, noteCount: number): Pick<Reading, "notes" |
   // "no notes, no voice" would silently drop the person's own limits.
   if (!Array.isArray(o.notes) || !Array.isArray(o.voice)) return null;
   const idx = (x: unknown) => [...new Set((Array.isArray(x) ? x : []).filter((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n < noteCount) as number[])];
-  const voice = idx(o.voice).slice(0, MAX_VOICE);
-  return { notes: idx(o.notes).filter((n) => !voice.includes(n)).slice(0, MAX_PICKED), voice, why: norm(o.why).slice(0, 220) };
+  // A note named as voice is never knowledge, including one the voice cap leaves out.
+  const allVoice = idx(o.voice);
+  return { notes: idx(o.notes).filter((n) => !allVoice.includes(n)).slice(0, MAX_PICKED), voice: allVoice.slice(0, MAX_VOICE), why: norm(o.why).slice(0, 220) };
 }
 
 const jsonObject = (text: string): unknown => {
@@ -537,7 +550,7 @@ Reply ONLY with JSON: {"why": "...", "notes": [n], "voice": [n]}`,
         step1.detail ? `DETAIL: ${step1.detail}` : "",
         // What the post only plans is left out on purpose: a note must bear on what the post is about,
         // not on something it mentions as a future step.
-        `NOTES:\n${notes.map((n, i) => `[${i}] ${n.slice(0, 700)}`).join("\n")}`,
+        `NOTES:\n${notes.map((n, i) => `[${i}] ${excerpt(n)}`).join("\n")}`,
       ].filter(Boolean).join("\n\n"),
     });
     const step2 = readPick(jsonObject(second), notes.length);
@@ -555,7 +568,7 @@ Reply ONLY with JSON: {"why": "...", "notes": [n], "voice": [n]}`,
  */
 export function factsForPost(f: SenderFacts, reading: Reading, withNotes = true): SenderFacts {
   const notes = splitNotes(f.views);
-  const pick = (list: number[]) => list.map((i) => notes[i]).filter(Boolean).join("\n\n");
+  const pick = (list: number[]) => list.map((i) => notes[i]).filter(Boolean).map(excerpt).join("\n\n");
   return { ...f, picked: true, views: withNotes ? pick(reading.notes) : "", voice: pick(reading.voice) };
 }
 
@@ -694,6 +707,11 @@ export type Review = { ok: boolean; reason: string; rules?: number[]; local?: bo
 const SUBJECT_RULES = [9, 11, 12, 13, 14];
 export const brokeOnSubject = (r: Review): boolean =>
   !r.ok && !r.local && (!r.rules?.length || r.rules.some((n) => SUBJECT_RULES.includes(n)));
+/**
+ * What the second writer is told after a rejection for what the draft was about. Fixed wording, never
+ * the reviewer's own: its reason may quote the very note that was just taken out of the prompt.
+ */
+export const SUBJECT_RETRY_FEEDBACK = "The draft was not about the main subject of this post, or it leaned on something the post does not say. Write about the post's own subject and detail only.";
 
 /** Strict second opinion. Fails closed: if the reviewer cannot answer, every draft is rejected. */
 export async function reviewComments(
@@ -792,7 +810,9 @@ export function readVerdicts(res: unknown, count: number): Review[] {
     // The reviewer's own words can never be the outage marker.
     const reason = String(r.reason || "generic").slice(0, 200);
     // Rule numbers as the model gives them: a list, one number, or numbers written as text.
-    const named = [...new Set((Array.isArray(r.rules) ? r.rules : [r.rules, r.rule]).map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 1 && n <= 14))];
+    // Only numbers and numbers written as text count: `true` is not rule 1.
+    const asRule = (n: unknown) => typeof n === "number" ? n : (typeof n === "string" && /^\s*\d{1,2}\s*$/.test(n) ? Number(n) : NaN);
+    const named = [...new Set((Array.isArray(r.rules) ? r.rules : [r.rules, r.rule]).map(asRule).filter((n) => Number.isInteger(n) && n >= 1 && n <= 14))];
     out[r.index] = r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: reason === REVIEW_UNAVAILABLE ? "generic" : reason, ...(named.length ? { rules: named } : {}) };
   }
   // A draft the reviewer left out was not judged: that is an answer that could not be read, not a rejection.
